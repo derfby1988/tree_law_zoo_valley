@@ -3,6 +3,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'services/supabase_service.dart';
 import 'services/otp_service.dart';
 import 'widgets/forgot_password_dialog.dart';
+import 'pages/restaurant_menu_page.dart';
+import 'pages/table_booking_page.dart';
+import 'pages/room_booking_page.dart';
 
 // Helper function to validate email or phone
 bool isValidEmailOrPhone(String input) {
@@ -44,7 +47,10 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'TREE LAW ZOO valley'),
+      home: const MyHomePage(
+        title: 'TREE LAW ZOO valley',
+        isGuestMode: true, // ✅ เริ่มต้นที่ Home Page โดยตรง
+      ),
     );
   }
 }
@@ -93,7 +99,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
   @override
   Widget build(BuildContext context) {
     if (!_isInitialized) {
-      // Show loading screen while initializing
+      // Loading Screen
       return Scaffold(
         body: Container(
           decoration: const BoxDecoration(
@@ -101,9 +107,9 @@ class _AuthWrapperState extends State<AuthWrapper> {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Color(0xFF81D4FA), // Light Blue
-                Color(0xFF80CBC4), // Teal
-                Color(0xFF81C784), // Light Green
+                Color(0xFF81D4FA),
+                Color(0xFF80CBC4),
+                Color(0xFF81C784),
               ],
             ),
           ),
@@ -111,19 +117,10 @@ class _AuthWrapperState extends State<AuthWrapper> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: const [
-                CircularProgressIndicator(
-                  color: Colors.white,
-                  strokeWidth: 3,
-                ),
+                CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
                 SizedBox(height: 20),
-                Text(
-                  'กำลังโหลดแอปพลิเคชัน...',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
+                Text('กำลังโหลดแอปพลิเคชัน...', 
+                     style: TextStyle(color: Colors.white, fontSize: 18)),
               ],
             ),
           ),
@@ -131,15 +128,30 @@ class _AuthWrapperState extends State<AuthWrapper> {
       );
     }
 
-    // Always show home page first, login is optional
-    return const MyHomePage(title: 'TREE LAW ZOO valley');
+    // ✅ ตรวจสอบ user และส่งไปหน้าที่ถูกต้อง
+    final currentUser = SupabaseService.currentUser;
+    
+    if (currentUser != null) {
+      // User Mode - Login แล้ว
+      return const MyHomePage(
+        title: 'TREE LAW ZOO valley',
+        isGuestMode: false, // ✅ User Mode
+      );
+    } else {
+      // Guest Mode - ยังไม่ login
+      return const MyHomePage(
+        title: 'TREE LAW ZOO valley',
+        isGuestMode: true, // ✅ Guest Mode
+      );
+    }
   }
 }
 
 class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+  const MyHomePage({super.key, required this.title, this.isGuestMode = false});
 
   final String title;
+  final bool isGuestMode; // ✅ เพิ่ม parameter
 
   @override
   State<MyHomePage> createState() => _MyHomePageState();
@@ -149,17 +161,18 @@ class _MyHomePageState extends State<MyHomePage> {
   User? get currentUser => SupabaseService.currentUser;
   bool get isLoggedIn => currentUser != null;
 
-  Future<void> _logout() async {
-    await SupabaseService.signOut();
-    setState(() {}); // Refresh UI
-  }
-
-  Future<void> _login() async {
+  // ✅ Actions แยกตาม mode
+  void _login() {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => const LoginPage(),
       ),
     );
+  }
+
+  Future<void> _logout() async {
+    await SupabaseService.signOut();
+    setState(() {});
   }
 
   @override
@@ -171,9 +184,9 @@ class _MyHomePageState extends State<MyHomePage> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Color(0xFF81D4FA), // Light Blue
-              Color(0xFF80CBC4), // Teal
-              Color(0xFF81C784), // Light Green
+              Color(0xFF81D4FA),
+              Color(0xFF80CBC4),
+              Color(0xFF81C784),
             ],
           ),
         ),
@@ -183,221 +196,23 @@ class _MyHomePageState extends State<MyHomePage> {
               padding: const EdgeInsets.all(20.0),
               child: Column(
                 children: [
-                  // Header with user info and login/logout
-                  Row(
-                    children: [
-                      // User avatar or guest icon
-                      CircleAvatar(
-                        radius: 25,
-                        backgroundColor: Colors.white.withOpacity(0.9),
-                        child: Icon(
-                          isLoggedIn ? Icons.person : Icons.person_outline,
-                          size: 30,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                      const SizedBox(width: 15),
-                      
-                      // User info or guest message
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              isLoggedIn ? (currentUser?.email ?? 'ผู้ใช้') : 'ผู้เยี่ยม',
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                            Text(
-                              isLoggedIn ? 'ยินดีต้อนรับ' : 'กรุณาเข้าสู่ระบบ',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.white.withOpacity(0.8),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      
-                      // Login or Logout button
-                      IconButton(
-                        onPressed: isLoggedIn ? _logout : _login,
-                        icon: Icon(
-                          isLoggedIn ? Icons.logout : Icons.login,
-                          color: Colors.white,
-                          size: 24,
-                        ),
-                      ),
-                    ],
-                  ),
+                  // Header
+                  _buildHeader(),
                   
-                  const SizedBox(height: 30),
+                  const SizedBox(height: 20), // ✅ ลด spacing จาก 30 เป็น 20
                   
                   // App title
-                  const Text(
-                    'ช่องทางธรรมชาติ',
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
+                  _buildAppTitle(),
                   
-                  const SizedBox(height: 5),
+                  const SizedBox(height: 30), // ✅ ลด spacing จาก 40 เป็น 30
                   
-                  const Text(
-                    'TREE LAW ZOO valley',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
+                  // Menu Buttons
+                  ..._buildMenuButtons(),
                   
                   const SizedBox(height: 40),
                   
-                  // Menu buttons
-                  _buildMenuButton(
-                    icon: Icons.restaurant,
-                    title: 'สั่งอาหาร',
-                    onTap: () {
-                      // TODO: Navigate to restaurant page
-                    },
-                  ),
-                  
-                  const SizedBox(height: 15),
-                  
-                  _buildMenuButton(
-                    icon: Icons.table_restaurant,
-                    title: 'จองโต๊ะ',
-                    onTap: () {
-                      // TODO: Navigate to table booking page
-                    },
-                  ),
-                  
-                  const SizedBox(height: 15),
-                  
-                  _buildMenuButton(
-                    icon: Icons.fastfood,
-                    title: 'ติดตามคิว',
-                    onTap: () {
-                      // TODO: Navigate to order tracking page
-                    },
-                  ),
-                  
-                  const SizedBox(height: 15),
-                  
-                  _buildMenuButton(
-                    icon: Icons.book_online,
-                    title: 'ข้อมูลการจองโต๊ะ',
-                    onTap: () {
-                      // TODO: Navigate to booking info page
-                    },
-                  ),
-                  
-                  const SizedBox(height: 15),
-                  
-                  _buildMenuButton(
-                    icon: Icons.hotel,
-                    title: 'จองที่พัก',
-                    onTap: () {
-                      // TODO: Navigate to room booking page
-                    },
-                  ),
-                  
-                  const SizedBox(height: 15),
-                  
-                  _buildMenuButton(
-                    icon: Icons.card_membership,
-                    title: 'สมัคร Gold Member',
-                    onTap: () {
-                      // TODO: Navigate to membership page
-                    },
-                  ),
-                  
-                  const SizedBox(height: 40),
-                  
-                  // Footer section
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.9),
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    child: Column(
-                      children: [
-                        // Address section
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.location_on, color: Colors.blue),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'ที่อยู่ / นำทาง',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.black87,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        
-                        const SizedBox(height: 15),
-                        
-                        // Social media icons
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: [
-                            _buildSocialIcon(Icons.facebook, Colors.blue[700]!),
-                            _buildSocialIcon(Icons.tiktok, Colors.black),
-                            _buildSocialIcon(Icons.camera_alt, Colors.pink[600]!),
-                            _buildSocialIcon(Icons.message, Colors.green[600]!),
-                          ],
-                        ),
-                        
-                        const SizedBox(height: 15),
-                        
-                        // Partnership and Admin
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            GestureDetector(
-                              onTap: () {
-                                // TODO: Navigate to partnership page
-                              },
-                              child: const Text(
-                                'ร่วมงานกับเรา',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.blue,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                            GestureDetector(
-                              onTap: () {
-                                // TODO: Navigate to admin page
-                              },
-                              child: const Text(
-                                'Admin',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.blue,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
+                  // Footer
+                  _buildFooter(),
                   
                   const SizedBox(height: 20),
                 ],
@@ -409,18 +224,151 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
+  // ✅ Header แยกตาม mode
+  Widget _buildHeader() {
+    return Row(
+      children: [
+        // User avatar or guest icon
+        CircleAvatar(
+          radius: 25,
+          backgroundColor: Colors.white.withOpacity(0.9),
+          child: Icon(
+            widget.isGuestMode ? Icons.person_outline : Icons.person,
+            size: 30,
+            color: Colors.grey[600],
+          ),
+        ),
+        const SizedBox(width: 15),
+        
+        // User info or guest message
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.isGuestMode ? 'ผู้เยี่ยม' : (currentUser?.email ?? 'ผู้ใช้'),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+              Text(
+                widget.isGuestMode ? 'กรุณาเข้าสู่ระบบ' : 'ยินดีต้อนรับ',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.white.withOpacity(0.8),
+                ),
+              ),
+            ],
+          ),
+        ),
+        
+        // Login or Logout button
+        if (widget.isGuestMode)
+          // ✅ Guest Mode - แสดงปุ่มเข้าสู่ระบบ
+          ElevatedButton(
+            onPressed: _login,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.blue[600],
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            ),
+            child: const Text(
+              'เข้าสู่ระบบ',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          )
+        else
+          // ✅ User Mode - แสดงปุ่ม logout
+          IconButton(
+            onPressed: _logout,
+            icon: const Icon(
+              Icons.logout,
+              color: Colors.white,
+              size: 24,
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildAppTitle() {
+    return Column(
+      children: [
+        const Text(
+          'ช่องทางธรรมชาติ',
+          style: TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        const SizedBox(height: 5),
+        const Text(
+          'TREE LAW ZOO valley',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ✅ Menu Buttons แยกตาม mode
+  List<Widget> _buildMenuButtons() {
+    final menuItems = [
+      {'icon': Icons.restaurant, 'title': 'สั่งอาหาร', 'guestAllowed': true},
+      {'icon': Icons.table_restaurant, 'title': 'จองโต๊ะ', 'guestAllowed': true},
+      {'icon': Icons.fastfood, 'title': 'ติดตามคิว', 'guestAllowed': false},
+      {'icon': Icons.book_online, 'title': 'ข้อมูลการจองโต๊ะ', 'guestAllowed': false},
+      {'icon': Icons.hotel, 'title': 'จองที่พัก', 'guestAllowed': true},
+      {'icon': Icons.card_membership, 'title': 'สมัคร Gold Member', 'guestAllowed': false},
+    ];
+
+    List<Widget> buttons = [];
+    for (var item in menuItems) {
+      buttons.add(_buildMenuButton(
+        icon: item['icon'] as IconData,
+        title: item['title'] as String,
+        guestAllowed: item['guestAllowed'] as bool,
+        onTap: () => _handleMenuTap(
+          title: item['title'] as String,
+          guestAllowed: item['guestAllowed'] as bool,
+        ),
+      ));
+      buttons.add(const SizedBox(height: 15));
+    }
+    return buttons;
+  }
+
+  // ✅ Menu Button แยกตาม mode
   Widget _buildMenuButton({
     required IconData icon,
     required String title,
+    required bool guestAllowed,
     required VoidCallback onTap,
   }) {
+    final isGuestMode = widget.isGuestMode;
+    final isDisabled = isGuestMode && !guestAllowed;
+
     return GestureDetector(
-      onTap: onTap,
+      onTap: isDisabled ? null : onTap,
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.9),
+          color: isDisabled 
+            ? Colors.grey.withOpacity(0.3) // ✅ ปุ่ม disabled
+            : Colors.white.withOpacity(0.9),
           borderRadius: BorderRadius.circular(15),
           boxShadow: [
             BoxShadow(
@@ -435,33 +383,246 @@ class _MyHomePageState extends State<MyHomePage> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.2),
+                color: isDisabled
+                  ? Colors.grey.withOpacity(0.2) // ✅ Guest disabled
+                  : guestAllowed && isGuestMode
+                    ? Colors.green.withOpacity(0.2) // ✅ Guest allowed
+                    : Colors.blue.withOpacity(0.2), // ✅ User mode
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(
                 icon,
                 size: 24,
-                color: Colors.blue[700],
+                color: isDisabled
+                  ? Colors.grey[400] // ✅ Disabled icon
+                  : guestAllowed && isGuestMode
+                    ? Colors.green[600] // ✅ Guest allowed icon
+                    : Colors.blue[700], // ✅ User mode icon
               ),
             ),
             const SizedBox(width: 15),
             Expanded(
               child: Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
-                  color: Colors.black87,
+                  color: isDisabled
+                    ? Colors.grey[400] // ✅ Disabled text
+                    : Colors.black87,
                 ),
               ),
             ),
-            Icon(
-                Icons.arrow_forward_ios,
-                color: Colors.grey,
-                size: 16,
+            if (guestAllowed && isGuestMode) ...[
+              // ✅ Badge สำหรับ Guest ที่ใช้ได้
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.green[100],
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  'ดูได้',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.green[700],
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
+              const SizedBox(width: 8),
+            ],
+            Icon(
+              Icons.arrow_forward_ios,
+              color: isDisabled
+                ? Colors.grey[300] // ✅ Disabled arrow
+                : Colors.grey[400],
+              size: 16,
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildFooter() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.9),
+        borderRadius: BorderRadius.circular(15),
+      ),
+      child: Column(
+        children: [
+          // Address section
+          Row(
+            children: [
+              Icon(Icons.location_on, color: Colors.blue),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'ที่อยู่ / นำทาง',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          
+          const SizedBox(height: 15),
+          
+          // Social media icons
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _buildSocialIcon(Icons.facebook, Colors.blue[700]!),
+              _buildSocialIcon(Icons.tiktok, Colors.black),
+              _buildSocialIcon(Icons.camera_alt, Colors.pink[600]!),
+              _buildSocialIcon(Icons.message, Colors.green[600]!),
+            ],
+          ),
+          
+          const SizedBox(height: 15),
+          
+          // Partnership and Admin
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              GestureDetector(
+                onTap: () {
+                  // TODO: Navigate to partnership page
+                },
+                child: const Text(
+                  'ร่วมงานกับเรา',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.blue,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              GestureDetector(
+                onTap: () {
+                  // TODO: Navigate to admin page
+                },
+                child: const Text(
+                  'Admin',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.blue,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _handleMenuTap({required String title, required bool guestAllowed}) {
+    if (widget.isGuestMode && guestAllowed) {
+      // ✅ Guest สามารถเข้าดูได้
+      _navigateToGuestFeature(title);
+    } else if (widget.isGuestMode && !guestAllowed) {
+      // ❌ Guest ไม่สามารถเข้าใช้ได้
+      _showLoginRequired(title);
+    } else {
+      // ✅ User ใช้งานได้ปกติ
+      _navigateToUserFeature(title);
+    }
+  }
+
+  void _navigateToGuestFeature(String feature) {
+    // ✅ Guest Mode - ดูเมนู/เลือกโต๊ะ/จองที่พักได้
+    switch (feature) {
+      case 'สั่งอาหาร':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const RestaurantMenuPage(
+              isGuestMode: true,
+            ),
+          ),
+        );
+        break;
+      case 'จองโต๊ะ':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const TableBookingPage(
+              isGuestMode: true,
+            ),
+          ),
+        );
+        break;
+      case 'จองที่พัก':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const RoomBookingPage(
+              isGuestMode: true,
+            ),
+          ),
+        );
+        break;
+    }
+  }
+
+  void _navigateToUserFeature(String feature) {
+    // ✅ User Mode - ใช้งานได้เต็มที่
+    switch (feature) {
+      case 'สั่งอาหาร':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const RestaurantMenuPage(
+              isGuestMode: false,
+            ),
+          ),
+        );
+        break;
+      case 'จองโต๊ะ':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const TableBookingPage(
+              isGuestMode: false,
+            ),
+          ),
+        );
+        break;
+      case 'จองที่พัก':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const RoomBookingPage(
+              isGuestMode: false,
+            ),
+          ),
+        );
+        break;
+      // ... features อื่นๆ
+    }
+  }
+
+  void _showLoginRequired(String feature) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('ต้องการเข้าสู่ระบบ'),
+        content: Text('ฟีเจอร์ "$feature" ต้องการเข้าสู่ระบบก่อนใช้งาน'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('ยกเลิก'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop(); // ปิด dialog
+              _login(); // ไปหน้า login
+            },
+            child: const Text('เข้าสู่ระบบ'),
+          ),
+        ],
       ),
     );
   }
@@ -480,103 +641,19 @@ class _MyHomePageState extends State<MyHomePage> {
       ),
     );
   }
-
-  Widget _buildFeatureCard({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required Color color,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.9),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(15),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: Icon(
-                icon,
-                size: 40,
-                color: color,
-              ),
-            ),
-            const SizedBox(height: 15),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
-            ),
-            const SizedBox(height: 5),
-            Text(
-              subtitle,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildQuickAction({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.grey[100],
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              icon,
-              size: 24,
-              color: Colors.grey[700],
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey[700],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+  const LoginPage({
+    super.key, 
+    this.returnToMenu = false, 
+    this.returnToBooking = false,
+    this.returnToRoomBooking = false, // ✅ เพิ่ม parameter ใหม่
+  });
+
+  final bool returnToMenu;
+  final bool returnToBooking;
+  final bool returnToRoomBooking;
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -596,11 +673,10 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
 
-    // Validate email or phone format
-    final validationError = validateEmailOrPhone(_emailController.text);
-    if (validationError != null) {
+    // Validate email format only for login
+    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(_emailController.text)) {
       setState(() {
-        _errorMessage = validationError;
+        _errorMessage = 'กรุณากรอกอีเมลให้ถูกต้อง';
       });
       return;
     }
@@ -611,24 +687,58 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
+      debugPrint('Attempting login with email: ${_emailController.text.trim()}');
+      
       final response = await SupabaseService.signInWithEmail(
         _emailController.text.trim(),
         _passwordController.text.trim(),
       );
 
+      debugPrint('Login response: ${response.user != null ? 'SUCCESS' : 'FAILED'}');
+      debugPrint('Response user: ${response.user?.email}');
+
       if (response.user != null) {
-        // Login successful - navigate to home page
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (context) => const MyHomePage(title: 'TREE LAW ZOO valley'),
-          ),
-        );
+        // Login successful - navigate based on return flags
+        if (widget.returnToMenu) {
+          // กลับไปหน้าเมนู
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(
+              builder: (context) => const RestaurantMenuPage(isGuestMode: false),
+            ),
+            (route) => false,
+          );
+        } else if (widget.returnToBooking) {
+          // กลับไปหน้าจองโต๊ะ
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(
+              builder: (context) => const TableBookingPage(isGuestMode: false),
+            ),
+            (route) => false,
+          );
+        } else if (widget.returnToRoomBooking) {
+          // กลับไปหน้าจองที่พัก
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(
+              builder: (context) => const RoomBookingPage(isGuestMode: false),
+            ),
+            (route) => false,
+          );
+        } else {
+          // กลับไปหน้า Home (User Mode)
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(
+              builder: (context) => const MyHomePage(title: 'TREE LAW ZOO valley', isGuestMode: false),
+            ),
+            (route) => false,
+          );
+        }
       } else {
         setState(() {
-          _errorMessage = 'เข้าสู่ระบบล้มเหลว กรุณาลองใหม่';
+          _errorMessage = 'อีเมลหรือรหัสผ่านไม่ถูกต้อง กรุณาลองใหม่';
         });
       }
     } catch (e) {
+      debugPrint('Login error: $e');
       setState(() {
         _errorMessage = 'เกิดข้อผิดพลาด: ${e.toString()}';
       });
@@ -805,7 +915,6 @@ class _LoginPageState extends State<LoginPage> {
                 
                 const Spacer(),
                 
-                                
                 // Register link
                 Align(
                   alignment: Alignment.bottomCenter,
@@ -927,7 +1036,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
   void _startCountdown() {
     Future.delayed(const Duration(seconds: 1), () {
-      if (_otpCountdown > 0) {
+      if (mounted && _otpCountdown > 0) {
         setState(() {
           _otpCountdown--;
         });
@@ -1000,13 +1109,36 @@ class _RegisterPageState extends State<RegisterPage> {
     });
 
     try {
+      // สร้าง email ที่ถูกต้องเสมอ
+      final email = _emailController.text.trim().isEmpty 
+          ? 'user${DateTime.now().millisecondsSinceEpoch % 100000}@gmail.com'
+          : _emailController.text.trim();
+      
+      debugPrint('Attempting to register with email: $email');
+      
       final response = await SupabaseService.signUpWithEmail(
-        _emailController.text.trim(),
+        email,
         _passwordController.text.trim(),
       );
 
+      debugPrint('Registration response: ${response.user != null ? 'SUCCESS' : 'FAILED'}');
+      debugPrint('Response user: ${response.user?.email}');
+      debugPrint('Response session: ${response.session?.accessToken}');
+
       if (response.user != null) {
         // Registration successful - navigate to login
+        setState(() {
+          _errorMessage = null;
+        });
+        
+        // แสดง success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('สมัครสมาชิกสำเร็จ! กรุณาเข้าสู่ระบบ'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (context) => const LoginPage(),
@@ -1014,10 +1146,11 @@ class _RegisterPageState extends State<RegisterPage> {
         );
       } else {
         setState(() {
-          _errorMessage = 'สมัครสมาชิกล้มเหลว กรุณาลองใหม่';
+          _errorMessage = 'สมัครสมาชิกล้มเหลว: ไม่สามารถสร้างผู้ใช้ได้ กรุณาลองใหม่';
         });
       }
     } catch (e) {
+      debugPrint('Registration error: $e');
       setState(() {
         _errorMessage = 'เกิดข้อผิดพลาด: ${e.toString()}';
       });
@@ -1045,327 +1178,277 @@ class _RegisterPageState extends State<RegisterPage> {
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(20.0),
-            child: Column(
-              children: [
-                // Header
-                Row(
-                  children: [
-                    IconButton(
-                      onPressed: () {
-                        Navigator.of(context).pushReplacement(
-                          MaterialPageRoute(
-                            builder: (context) => const LoginPage(),
-                          ),
-                        );
-                      },
-                      icon: const Icon(
-                        Icons.arrow_back,
-                        color: Colors.white,
-                        size: 28,
-                      ),
-                    ),
-                    const Expanded(
-                      child: Center(
-                        child: Text(
-                          'สมัครสมาชิก',
-                          style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 48), // Balance the back button
-                  ],
-                ),
-                const SizedBox(height: 20),
-                const Text(
-                  'TREE LAW ZOO valley',
-                  style: TextStyle(
-                    fontSize: 18,
-                    color: Colors.white,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                
-                const Spacer(),
-                
-                // Form
-                Container(
-                  padding: const EdgeInsets.all(30),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.9),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Column(
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  // Header
+                  Row(
                     children: [
-                      // Error message
-                      if (_errorMessage != null)
-                        Container(
-                          margin: const EdgeInsets.only(bottom: 20),
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.red[50],
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.red[200]!),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(Icons.error, color: Colors.red[600], size: 20),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  _errorMessage!,
-                                  style: TextStyle(
-                                    color: Colors.red[600],
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      
-                      // Username field
-                      TextField(
-                        controller: _usernameController,
-                        decoration: InputDecoration(
-                          hintText: 'ชื่อผู้ใช้',
-                          filled: true,
-                          fillColor: Colors.grey[200],
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: BorderSide.none,
-                          ),
-                          prefixIcon: Icon(Icons.person_outline, color: Colors.grey[600]),
+                      IconButton(
+                        onPressed: () {
+                          Navigator.of(context).pushReplacement(
+                            MaterialPageRoute(
+                              builder: (context) => const LoginPage(),
+                            ),
+                          );
+                        },
+                        icon: const Icon(
+                          Icons.arrow_back,
+                          color: Colors.white,
+                          size: 28,
                         ),
                       ),
-                      const SizedBox(height: 20),
-                      
-                      // Email field
-                      TextField(
-                        controller: _emailController,
-                        keyboardType: TextInputType.emailAddress,
-                        decoration: InputDecoration(
-                          hintText: 'อีเมล',
-                          filled: true,
-                          fillColor: Colors.grey[200],
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: BorderSide.none,
-                          ),
-                          prefixIcon: Icon(Icons.email_outlined, color: Colors.grey[600]),
-                          suffixText: 'ไม่บังคับ',
-                          suffixStyle: TextStyle(
-                            color: Colors.grey[400],
-                            fontSize: 12,
+                      const Expanded(
+                        child: Center(
+                          child: Text(
+                            'สมัครสมาชิก',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                       ),
-                      const SizedBox(height: 20),
-                      
-                      // Password field
-                      TextField(
-                        controller: _passwordController,
-                        obscureText: true,
-                        decoration: InputDecoration(
-                          hintText: 'รหัสผ่าน (อย่างน้อย 6 ตัวอักษร)',
-                          filled: true,
-                          fillColor: Colors.grey[200],
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: BorderSide.none,
-                          ),
-                          prefixIcon: Icon(Icons.person_outline, color: Colors.grey[600]),
+                      const SizedBox(width: 48), // Balance the back button
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'TREE LAW ZOO valley',
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 30),
+                  
+                  // Registration form
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.9),
+                      borderRadius: BorderRadius.circular(15),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 10,
+                          offset: const Offset(0, 5),
                         ),
-                      ),
-                      const SizedBox(height: 20),
-                      
-                      // Confirm password field
-                      TextField(
-                        controller: _confirmPasswordController,
-                        obscureText: true,
-                        decoration: InputDecoration(
-                          hintText: 'ยืนยันรหัสผ่าน',
-                          filled: true,
-                          fillColor: Colors.grey[200],
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: BorderSide.none,
-                          ),
-                          prefixIcon: Icon(Icons.person_outline, color: Colors.grey[600]),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      
-                      // Phone field (required)
-                      TextField(
-                        controller: _phoneController,
-                        keyboardType: TextInputType.phone,
-                        decoration: InputDecoration(
-                          hintText: 'เบอร์โทรศัพท์* (08xxxxxxxx)',
-                          filled: true,
-                          fillColor: Colors.grey[200],
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: BorderSide.none,
-                          ),
-                          prefixIcon: Icon(Icons.phone_outlined, color: Colors.grey[600]),
-                          suffixIcon: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (_otpCountdown > 0)
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 8),
-                                  child: Text(
-                                    '$_otpCountdown',
-                                    style: TextStyle(
-                                      color: Colors.grey[600],
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ),
-                              TextButton(
-                                onPressed: (_otpCountdown > 0 || _isSendingOTP) ? null : _sendOTP,
-                                child: _isSendingOTP
-                                    ? const SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.blue,
-                                        ),
-                                      )
-                                    : Text(
-                                        _otpCountdown > 0 ? 'ส่งใหม่' : 'ส่ง OTP',
-                                        style: TextStyle(
-                                          color: _otpCountdown > 0 ? Colors.grey : Colors.orange,
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      
-                      // OTP field (shown after phone is entered)
-                      if (_otpSent) ...[
+                      ],
+                    ),
+                    child: Column(
+                      children: [
+                        // Email field
                         TextField(
-                          controller: _otpController,
-                          keyboardType: TextInputType.number,
-                          maxLength: 6,
+                          controller: _emailController,
                           decoration: InputDecoration(
-                            hintText: 'รหัส OTP 6 หลัก',
-                            filled: true,
-                            fillColor: Colors.grey[200],
+                            labelText: 'อีเมล (ไม่บังคับ)',
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
-                              borderSide: BorderSide.none,
                             ),
-                            prefixIcon: Icon(Icons.verified_outlined, color: Colors.grey[600]),
-                            counterText: '',
+                            prefixIcon: const Icon(Icons.email),
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        if (_otpMessage != null)
+                        const SizedBox(height: 15),
+                        
+                        // Username field
+                        TextField(
+                          controller: _usernameController,
+                          decoration: InputDecoration(
+                            labelText: 'ชื่อผู้ใช้',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            prefixIcon: const Icon(Icons.person),
+                          ),
+                        ),
+                        const SizedBox(height: 15),
+                        
+                        // Phone field
+                        TextField(
+                          controller: _phoneController,
+                          decoration: InputDecoration(
+                            labelText: 'เบอร์โทรศัพท์',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            prefixIcon: const Icon(Icons.phone),
+                          ),
+                          keyboardType: TextInputType.phone,
+                        ),
+                        const SizedBox(height: 15),
+                        
+                        // Password field
+                        TextField(
+                          controller: _passwordController,
+                          obscureText: true,
+                          decoration: InputDecoration(
+                            labelText: 'รหัสผ่าน',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            prefixIcon: const Icon(Icons.lock),
+                          ),
+                        ),
+                        const SizedBox(height: 15),
+                        
+                        // Confirm password field
+                        TextField(
+                          controller: _confirmPasswordController,
+                          obscureText: true,
+                          decoration: InputDecoration(
+                            labelText: 'ยืนยันรหัสผ่าน',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            prefixIcon: const Icon(Icons.lock_outline),
+                          ),
+                        ),
+                        const SizedBox(height: 15),
+                        
+                        // OTP section
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _otpController,
+                                decoration: InputDecoration(
+                                  labelText: 'OTP',
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  prefixIcon: const Icon(Icons.message),
+                                ),
+                                keyboardType: TextInputType.number,
+                                maxLength: 6,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            ElevatedButton(
+                              onPressed: _isSendingOTP ? null : _sendOTP,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue[600],
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                              child: _isSendingOTP
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : Text(
+                                      _otpCountdown > 0 ? '($_otpCountdown)' : 'ส่ง OTP',
+                                      style: const TextStyle(color: Colors.white),
+                                    ),
+                            ),
+                          ],
+                        ),
+                        
+                        const SizedBox(height: 20),
+                        
+                        // Error message
+                        if (_errorMessage != null)
                           Container(
-                            padding: const EdgeInsets.all(8),
+                            padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: Colors.green[50],
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.green[200]!),
+                              color: Colors.red[50],
+                              borderRadius: BorderRadius.circular(10),
                             ),
                             child: Row(
                               children: [
-                                Icon(Icons.check_circle, color: Colors.green[600], size: 16),
+                                Icon(Icons.error, color: Colors.red[600], size: 20),
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
-                                    _otpMessage!,
+                                    _errorMessage!,
                                     style: TextStyle(
-                                      color: Colors.green[600],
-                                      fontSize: 12,
+                                      color: Colors.red[600],
+                                      fontSize: 14,
                                     ),
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                        const SizedBox(height: 20),
-                      ],
-                      const SizedBox(height: 30),
-                      
-                      // Register button
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: ElevatedButton(
-                          onPressed: (_isLoading || !_otpSent || _otpController.text.isEmpty) ? null : _register,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green[600],
-                            shape: RoundedRectangleBorder(
+                        
+                        // OTP message
+                        if (_otpMessage != null)
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.green[50],
                               borderRadius: BorderRadius.circular(10),
                             ),
-                          ),
-                          child: _isLoading
-                              ? const CircularProgressIndicator(
-                                  color: Colors.white,
-                                  strokeWidth: 3,
-                                )
-                              : Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    if (!_otpSent || _otpController.text.isEmpty) ...[
-                                      Icon(Icons.lock, size: 18, color: Colors.white),
-                                      const SizedBox(width: 8),
-                                    ],
-                                    Text(
-                                      _otpSent && _otpController.text.isNotEmpty 
-                                          ? 'สมัครสมาชิก'
-                                          : 'กรุณายืนยัน OTP ก่อน',
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
-                                      ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.check_circle, color: Colors.green[600], size: 20),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _otpMessage!,
+                                    style: TextStyle(
+                                      color: Colors.green[600],
+                                      fontSize: 14,
                                     ),
-                                  ],
+                                  ),
                                 ),
+                              ],
+                            ),
+                          ),
+                        
+                        const SizedBox(height: 30),
+                        
+                        // Register button
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: ElevatedButton(
+                            onPressed: (_isLoading || !_otpSent || _otpController.text.isEmpty) ? null : _register,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green[600],
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: _isLoading
+                                ? const CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 3,
+                                  )
+                                : Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      if (!_otpSent || _otpController.text.isEmpty) ...[
+                                        Icon(Icons.lock, size: 18, color: Colors.white),
+                                        const SizedBox(width: 8),
+                                      ],
+                                      Text(
+                                        _otpSent && _otpController.text.isNotEmpty 
+                                            ? 'สมัครสมาชิก'
+                                            : 'กรุณายืนยัน OTP ก่อน',
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-                
-                const Spacer(),
-                
-                // Back to login link
-                Align(
-                  alignment: Alignment.bottomCenter,
-                  child: TextButton(
-                    onPressed: () {
-                      Navigator.of(context).pushReplacement(
-                        MaterialPageRoute(
-                          builder: (context) => const LoginPage(),
-                        ),
-                      );
-                    },
-                    child: const Text(
-                      'กลับไปหน้าเข้าสู่ระบบ',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        decoration: TextDecoration.underline,
-                      ),
+                      ],
                     ),
                   ),
-                ),
-                const SizedBox(height: 20),
-              ],
+                ],
+              ),
             ),
           ),
         ),

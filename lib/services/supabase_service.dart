@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/foundation.dart';
 
 class SupabaseService {
   static const String _supabaseUrl = 'https://otdspdcxzdygkfahyfpg.supabase.co';
@@ -15,10 +16,19 @@ class SupabaseService {
 
   // Authentication methods
   static Future<AuthResponse> signInWithEmail(String email, String password) async {
-    return await client.auth.signInWithPassword(
-      email: email,
-      password: password,
-    );
+    try {
+      return await client.auth.signInWithPassword(
+        email: email,
+        password: password,
+      );
+    } catch (e) {
+      // ถ้าเป็น email_not_confirmed ให้ลอง sign up อีกครั้งเพื่อ trigger confirmation
+      if (e.toString().contains('email_not_confirmed')) {
+        debugPrint('Email not confirmed, attempting to resend confirmation...');
+        return await signUpWithEmail(email, password);
+      }
+      rethrow;
+    }
   }
 
   static Future<AuthResponse> signUpWithEmail(String email, String password) async {

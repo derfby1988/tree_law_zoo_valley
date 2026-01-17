@@ -16,10 +16,12 @@ class OTPService {
   // Verify OTP
   static bool verifyOTP(String inputOTP) {
     if (_otpExpiryTime == null || DateTime.now().isAfter(_otpExpiryTime!)) {
+      debugPrint('OTP expired or not set');
       return false; // OTP expired
     }
     
-    return inputOTP == _generatedOTP;
+    debugPrint('Verifying OTP: input="$inputOTP" vs generated="$_generatedOTP"');
+    return inputOTP.trim() == _generatedOTP;
   }
   
   // Check if OTP is expired
