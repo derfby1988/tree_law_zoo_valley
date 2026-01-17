@@ -31,11 +31,35 @@ class SupabaseService {
     }
   }
 
+  // Login ด้วยเบอร์โทรศัพท์
+  static Future<AuthResponse> signInWithPhone(String phone, String password) async {
+    try {
+      // ใช้ phone เป็น email (เพราะ Supabase ยังไม่รองรับ phone login โดยตรง)
+      final email = '${phone}@treezoo.app';
+      return await signInWithEmail(email, password);
+    } catch (e) {
+      debugPrint('Phone login error: $e');
+      rethrow;
+    }
+  }
+
   static Future<AuthResponse> signUpWithEmail(String email, String password) async {
     return await client.auth.signUp(
       email: email,
       password: password,
     );
+  }
+
+  // สมัครด้วยเบอร์โทรศัพท์
+  static Future<AuthResponse> signUpWithPhone(String phone, String password) async {
+    try {
+      // ใช้ phone เป็น email (เพราะ Supabase ยังไม่รองรับ phone signup โดยตรง)
+      final email = '${phone}@treezoo.app';
+      return await signUpWithEmail(email, password);
+    } catch (e) {
+      debugPrint('Phone signup error: $e');
+      rethrow;
+    }
   }
 
   static Future<void> signOut() async {
@@ -52,5 +76,97 @@ class SupabaseService {
 
   static Future<void> insertUser(Map<String, dynamic> userData) async {
     await client.from('users').insert(userData);
+  }
+
+  // OTP Methods
+  static Future<bool> sendOTPToPhone(String phone) async {
+    try {
+      await client.auth.signInWithOtp(
+        phone: phone,
+      );
+      debugPrint('OTP sent to $phone');
+      return true;
+    } catch (e) {
+      debugPrint('OTP send error: $e');
+      return false;
+    }
+  }
+
+  static Future<AuthResponse> verifyOTPAndCreateAccount({
+    required String phone,
+    required String token,
+    required String username,
+    Map<String, dynamic>? additionalData,
+  }) async {
+    try {
+      // Verify OTP โดยตรง ไม่ต้องสร้าง email
+      final response = await client.auth.verifyOTP(
+        phone: phone,
+        token: token,
+        type: OtpType.sms,
+      );
+
+      // ถ้าสำเร็จ ให้อัพเดทข้อมูลผู้ใช้
+      if (response.user != null) {
+        await client.auth.updateUser(
+          UserAttributes(
+            data: {
+              'username': username,
+              'phone': phone,
+              'signup_method': 'phone_otp',
+              'phone_only': true,
+              ...?additionalData,
+            },
+          ),
+        );
+      }
+
+      return response;
+    } catch (e) {
+      debugPrint('OTP verification error: $e');
+      rethrow;
+    }
+  }
+
+  static Future<AuthResponse> signUpWithPhoneOTP({
+    required String phone,
+    required String username,
+    required String password,
+    Map<String, dynamic>? additionalData,
+  }) async {
+    try {
+      // สร้าง email จากเบอร์โทรศัพท์
+      final email = '${phone}@treezoo.app';
+      
+      final response = await client.auth.signUp(
+        email: email,
+        password: password,
+        data: {
+          'username': username,
+          'phone': phone,
+          'signup_method': 'phone_otp',
+          'phone_only': true,
+          ...?additionalData,
+        },
+      );
+
+      return response;
+    } catch (e) {
+      debugPrint('Phone OTP signup error: $e');
+      rethrow;
+    }
+  }
+
+  static Future<AuthResponse> signInWithPhoneOTP({
+    required String phone,
+    required String password,
+  }) async {
+    try {
+      final email = '${phone}@treezoo.app';
+      return await signInWithEmail(email, password);
+    } catch (e) {
+      debugPrint('Phone OTP login error: $e');
+      rethrow;
+    }
   }
 }
