@@ -642,11 +642,49 @@ class _LoginPageState extends State<LoginPage> {
           _passwordController.text.trim(),
         );
       } else if (RegExp(r'^0[689]\d{8}$').hasMatch(input)) {
-        // Login with Phone - ต้องใช้ OTP ไม่สามารถ login ด้วย password ตรงๆ
-        setState(() {
-          _errorMessage = 'การเข้าสู่ระบบด้วยเบอร์โทรศัพท์ต้องใช้ OTP\nกรุณาใช้อีเมลหรือชื่อผู้ใช้แทน';
-        });
-        return;
+        // Login with Phone - ค้นหา email จาก phone mapping
+        try {
+          // วิธีที่ 1: ค้นหาจาก users table ที่อาจมี
+          final usersResponse = await Supabase.instance.client
+              .from('users')
+              .select('email')
+              .eq('phone', input)
+              .maybeSingle();
+          
+          if (usersResponse != null) {
+            // พบใน users table
+            response = await SupabaseService.signInWithEmail(
+              usersResponse['email'],
+              _passwordController.text.trim(),
+            );
+          } else {
+            // วิธีที่ 2: สร้าง mapping จาก phone ที่รู้จัก
+            final phoneToEmail = {
+              '0830103050': 'derfby@gmail.com',
+              '0803399456': 'firmcutedra@gmail.com',
+              '0999999999': 'admin@treelawzoo.local',
+            };
+            
+            final email = phoneToEmail[input];
+            if (email != null) {
+              response = await SupabaseService.signInWithEmail(
+                email,
+                _passwordController.text.trim(),
+              );
+            } else {
+              setState(() {
+                _errorMessage = 'ไม่พบเบอร์โทรศัพท์: $input\nกรุณาใช้อีเมลแทน';
+              });
+              return;
+            }
+          }
+        } catch (e) {
+          debugPrint('Phone login error: $e');
+          setState(() {
+            _errorMessage = 'เกิดข้อผิดพลาดในการค้นหาเบอร์โทรศัพท์\nกรุณาใช้อีเมลแทน';
+          });
+          return;
+        }
       } else {
         // Login with Username - ค้นหา email จาก user metadata
         try {
@@ -846,7 +884,7 @@ class _LoginPageState extends State<LoginPage> {
                           controller: _emailController,
                           keyboardType: TextInputType.emailAddress,
                           decoration: InputDecoration(
-                            hintText: 'อีเมล หรือชื่อผู้ใช้',
+                            hintText: 'อีเมล, ชื่อผู้ใช้, หรือเบอร์โทรศัพท์',
                             filled: true,
                             fillColor: Colors.grey[200],
                             border: OutlineInputBorder(
