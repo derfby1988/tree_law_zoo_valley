@@ -43,19 +43,38 @@ class SupabaseService {
     }
   }
 
-  static Future<AuthResponse> signUpWithEmail(String email, String password) async {
-    return await client.auth.signUp(
-      email: email,
-      password: password,
-    );
+  static Future<AuthResponse> signUpWithEmail(String email, String password, {Map<String, dynamic>? data}) async {
+    try {
+      debugPrint('Signing up with email: $email');
+      debugPrint('User data: $data');
+      
+      final response = await client.auth.signUp(
+        email: email,
+        password: password,
+        data: data,
+      );
+      
+      debugPrint('Sign up response: ${response.user?.id}');
+      debugPrint('Sign up session: ${response.session?.accessToken}');
+      
+      // ถ้าสำเร็จแต่ยังไม่มี session แสดงว่าต้อง confirm email
+      if (response.user != null && response.session == null) {
+        debugPrint('User created but email confirmation required');
+      }
+      
+      return response;
+    } catch (e) {
+      debugPrint('Sign up error: $e');
+      rethrow;
+    }
   }
 
   // สมัครด้วยเบอร์โทรศัพท์
-  static Future<AuthResponse> signUpWithPhone(String phone, String password) async {
+  static Future<AuthResponse> signUpWithPhone(String phone, String password, {Map<String, dynamic>? data}) async {
     try {
       // ใช้ phone เป็น email (เพราะ Supabase ยังไม่รองรับ phone signup โดยตรง)
       final email = '${phone}@treezoo.app';
-      return await signUpWithEmail(email, password);
+      return await signUpWithEmail(email, password, data: data);
     } catch (e) {
       debugPrint('Phone signup error: $e');
       rethrow;

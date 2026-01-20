@@ -6,7 +6,6 @@ import 'widgets/forgot_password_dialog.dart';
 import 'pages/restaurant_menu_page.dart';
 import 'pages/table_booking_page.dart';
 import 'pages/room_booking_page.dart';
-import 'pages/user_profile_page.dart';
 import 'register_page_clean.dart';
 
 // Helper function to validate email or phone
@@ -248,21 +247,12 @@ class _MyHomePageState extends State<MyHomePage> {
     return Row(
       children: [
         // User avatar or guest icon
-        GestureDetector(
-          onTap: widget.isGuestMode ? null : () {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => const UserProfilePage(),
-              ),
-            );
-          },
-          child: CircleAvatar(
-            radius: 25,
-            backgroundColor: Colors.white.withOpacity(0.9),
-            child: widget.isGuestMode
-                ? Icon(Icons.person_outline, color: Colors.grey[600], size: 30)
-                : Icon(Icons.person, color: Colors.blue[600], size: 30),
-          ),
+        CircleAvatar(
+          radius: 25,
+          backgroundColor: Colors.white.withOpacity(0.9),
+          child: widget.isGuestMode
+              ? Icon(Icons.person_outline, color: Colors.grey[600], size: 30)
+              : Icon(Icons.person, color: Colors.blue[600], size: 30),
         ),
         const SizedBox(width: 15),
         

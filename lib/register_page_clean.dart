@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'services/supabase_service.dart';
+import '../main.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -14,6 +16,7 @@ class _RegisterPageState extends State<RegisterPage> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _usernameController = TextEditingController();
+  final _fullNameController = TextEditingController();
   
   bool _isLoading = false;
   String? _errorMessage;
@@ -74,6 +77,11 @@ class _RegisterPageState extends State<RegisterPage> {
         response = await SupabaseService.signUpWithEmail(
           _emailController.text.trim(),
           _passwordController.text.trim(),
+          data: {
+            'username': _usernameController.text.trim(),
+            'phone': _phoneController.text.trim().isNotEmpty ? _phoneController.text.trim() : null,
+            'full_name': _fullNameController.text.trim().isNotEmpty ? _fullNameController.text.trim() : null,
+          },
         );
       } else {
         // วิธีที่ 2: Phone + Password
@@ -121,6 +129,11 @@ class _RegisterPageState extends State<RegisterPage> {
         response = await SupabaseService.signUpWithPhone(
           _phoneController.text.trim(),
           _passwordController.text.trim(),
+          data: {
+            'username': _usernameController.text.trim(),
+            'phone': _phoneController.text.trim(),
+            'full_name': _fullNameController.text.trim().isNotEmpty ? _fullNameController.text.trim() : null,
+          },
         );
       }
 
@@ -140,7 +153,9 @@ class _RegisterPageState extends State<RegisterPage> {
         
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
-            builder: (context) => const LoginPage(),
+            builder: (context) => const LoginPage(
+              returnToMenu: true,
+            ),
           ),
         );
       }
@@ -236,17 +251,29 @@ class _RegisterPageState extends State<RegisterPage> {
                     ),
                     child: Column(
                       children: [
-                        // Email field (optional)
+                        // Username field
                         TextField(
-                          controller: _emailController,
-                          keyboardType: TextInputType.emailAddress,
+                          controller: _usernameController,
                           decoration: InputDecoration(
-                            labelText: 'อีเมล (ถ้ามี)',
+                            labelText: 'ชื่อเข้าใช้งาน *',
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
                             ),
-                            prefixIcon: const Icon(Icons.email),
-                            hintText: 'example@email.com',
+                            prefixIcon: const Icon(Icons.person),
+                          ),
+                        ),
+                        const SizedBox(height: 15),
+                        
+                        // Full Name field (optional)
+                        TextField(
+                          controller: _fullNameController,
+                          decoration: InputDecoration(
+                            labelText: 'ชื่อ-นามสกุล (ถ้ามี)',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            prefixIcon: const Icon(Icons.person_outline),
+                            hintText: 'ชื่อ และนามสกุล',
                           ),
                         ),
                         const SizedBox(height: 15),
@@ -266,15 +293,17 @@ class _RegisterPageState extends State<RegisterPage> {
                         ),
                         const SizedBox(height: 15),
                         
-                        // Username field
+                        // Email field (optional)
                         TextField(
-                          controller: _usernameController,
+                          controller: _emailController,
+                          keyboardType: TextInputType.emailAddress,
                           decoration: InputDecoration(
-                            labelText: 'ชื่อผู้ใช้ *',
+                            labelText: 'อีเมล (จำเป็น)',
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
                             ),
-                            prefixIcon: const Icon(Icons.person),
+                            prefixIcon: const Icon(Icons.email),
+                            hintText: 'example@email.com',
                           ),
                         ),
                         const SizedBox(height: 15),
@@ -443,16 +472,3 @@ String? validateConfirmPassword(String? value, String password) {
   return null;
 }
 
-// LoginPage placeholder (คุณต้อง import จาก main.dart)
-class LoginPage extends StatelessWidget {
-  const LoginPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(
-        child: Text('Login Page - นำเข้ามาจาก main.dart'),
-      ),
-    );
-  }
-}
