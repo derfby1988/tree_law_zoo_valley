@@ -302,7 +302,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 ),
               ),
               Text(
-                widget.isGuestMode ? 'กรุณาเข้าสู่ระบบ เพื่อติดตามคิว / สถานะการจอง' : 'ยินดีต้อนรับกลับมา',
+                widget.isGuestMode ? 'กรุณาเข้าสู่ระบบ เพื่อติดตามคิว / สถานะการจอง' : 'พัก กิน ดื่ม เที่ยว เสมือน "บ้าน" ของคุณ',
                 style: TextStyle(
                   fontSize: 14,
                   color: Colors.white.withOpacity(0.8),
@@ -597,10 +597,30 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
 
-    // Validate email format only for login
-    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(_emailController.text)) {
+    final input = _emailController.text.trim();
+    String? validationError;
+    
+    // ตรวจสอบว่าเป็น email, username หรือ phone
+    if (input.contains('@')) {
+      // Email validation
+      if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(input)) {
+        validationError = 'กรุณากรอกอีเมลให้ถูกต้อง';
+      }
+    } else if (RegExp(r'^0[689]\d{8}$').hasMatch(input)) {
+      // Phone number (Thai format) - ถูกต้อง
+      debugPrint('Login with phone: $input');
+    } else {
+      // Username validation
+      if (input.length < 3 || input.length > 20) {
+        validationError = 'ชื่อผู้ใช้ต้องมี 3-20 ตัวอักษร';
+      } else if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(input)) {
+        validationError = 'ชื่อผู้ใช้ต้องประกอบด้วยตัวอักษรภาษาอังกฤษ, ตัวเลข และ _ เท่านั้น';
+      }
+    }
+    
+    if (validationError != null) {
       setState(() {
-        _errorMessage = 'กรุณากรอกอีเมลให้ถูกต้อง';
+        _errorMessage = validationError;
       });
       return;
     }
@@ -611,12 +631,76 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      debugPrint('Attempting login with email: ${_emailController.text.trim()}');
+      debugPrint('Attempting login with: $input');
       
-      final response = await SupabaseService.signInWithEmail(
-        _emailController.text.trim(),
-        _passwordController.text.trim(),
-      );
+      AuthResponse response;
+      
+      if (input.contains('@')) {
+        // Login with Email
+        response = await SupabaseService.signInWithEmail(
+          input,
+          _passwordController.text.trim(),
+        );
+      } else if (RegExp(r'^0[689]\d{8}$').hasMatch(input)) {
+        // Login with Phone - ต้องใช้ OTP ไม่สามารถ login ด้วย password ตรงๆ
+        setState(() {
+          _errorMessage = 'การเข้าสู่ระบบด้วยเบอร์โทรศัพท์ต้องใช้ OTP\nกรุณาใช้อีเมลหรือชื่อผู้ใช้แทน';
+        });
+        return;
+      } else {
+        // Login with Username - ค้นหา email จาก user metadata
+        try {
+          // วิธีที่ 1: ลองค้นหาจาก users table ที่อาจมี
+          final usersResponse = await Supabase.instance.client
+              .from('users')
+              .select('email')
+              .eq('username', input)
+              .maybeSingle();
+          
+          if (usersResponse != null) {
+            // พบใน users table
+            response = await SupabaseService.signInWithEmail(
+              usersResponse['email'],
+              _passwordController.text.trim(),
+            );
+          } else {
+            // วิธีที่ 2: ลองค้นหาจาก user metadata ของผู้ใช้ที่ล็อกอินอยู่
+            final currentUser = Supabase.instance.client.auth.currentUser;
+            if (currentUser != null && currentUser.userMetadata?['username'] == input) {
+              response = await SupabaseService.signInWithEmail(
+                currentUser.email!,
+                _passwordController.text.trim(),
+              );
+            } else {
+              // วิธีที่ 3: สร้าง mapping จาก username ที่รู้จัก
+              final usernameToEmail = {
+                'derfby': 'derfby@gmail.com',
+                'firm': 'firmcutedra@gmail.com',
+                'admin': 'admin@treelawzoo.local',
+              };
+              
+              final email = usernameToEmail[input];
+              if (email != null) {
+                response = await SupabaseService.signInWithEmail(
+                  email,
+                  _passwordController.text.trim(),
+                );
+              } else {
+                setState(() {
+                  _errorMessage = 'ไม่พบชื่อผู้ใช้: $input\nกรุณาใช้อีเมลแทน';
+                });
+                return;
+              }
+            }
+          }
+        } catch (e) {
+          debugPrint('Username login error: $e');
+          setState(() {
+            _errorMessage = 'เกิดข้อผิดพลาดในการค้นหาชื่อผู้ใช้\nกรุณาใช้อีเมลแทน';
+          });
+          return;
+        }
+      }
 
       debugPrint('Login response: ${response.user != null ? 'SUCCESS' : 'FAILED'}');
       debugPrint('Response user: ${response.user?.email}');
@@ -762,7 +846,7 @@ class _LoginPageState extends State<LoginPage> {
                           controller: _emailController,
                           keyboardType: TextInputType.emailAddress,
                           decoration: InputDecoration(
-                            hintText: 'เบอร์โทรศัพท์ หรือ อีเมล',
+                            hintText: 'อีเมล หรือชื่อผู้ใช้',
                             filled: true,
                             fillColor: Colors.grey[200],
                             border: OutlineInputBorder(
@@ -772,6 +856,34 @@ class _LoginPageState extends State<LoginPage> {
                             prefixIcon: Icon(Icons.person_outline, color: Colors.grey[600]),
                           ),
                         ),
+                        const SizedBox(height: 20),
+                        
+                        // Error message display
+                        if (_errorMessage != null)
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.red[50],
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.red[200]!),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.error_outline, color: Colors.red[600], size: 20),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _errorMessage!,
+                                    style: TextStyle(
+                                      color: Colors.red[600],
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        
                         const SizedBox(height: 20),
                         
                         // Password field
@@ -786,7 +898,7 @@ class _LoginPageState extends State<LoginPage> {
                               borderRadius: BorderRadius.circular(10),
                               borderSide: BorderSide.none,
                             ),
-                            prefixIcon: Icon(Icons.person_outline, color: Colors.grey[600]),
+                            prefixIcon: Icon(Icons.lock, color: Colors.grey[600]),
                           ),
                         ),
                         const SizedBox(height: 30),
