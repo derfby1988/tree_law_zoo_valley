@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'services/supabase_service.dart';
 import '../main.dart';
@@ -20,12 +21,24 @@ class _RegisterPageState extends State<RegisterPage> {
   
   bool _isLoading = false;
   String? _errorMessage;
+  String? _phoneErrorText;
 
   Future<void> _register() async {
     setState(() {
       _errorMessage = null;
+      _phoneErrorText = null;
       _isLoading = true;
     });
+
+    // ตรวจสอบเบอร์โทรศัพท์ก่อน
+    final phoneError = _validatePhone(_phoneController.text);
+    if (phoneError != null) {
+      setState(() {
+        _phoneErrorText = phoneError;
+        _isLoading = false;
+      });
+      return;
+    }
 
     try {
       AuthResponse response;
@@ -146,17 +159,20 @@ class _RegisterPageState extends State<RegisterPage> {
         
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('สมัครสมาชิกสำเร็จ! กรุณาเข้าสู่ระบบ'),
+            content: Text('สมัครสมาชิกสำเร็จ! กำลังเข้าสู่ระบบ...'),
             backgroundColor: Colors.green,
           ),
         );
         
-        Navigator.of(context).pushReplacement(
+        // ไปที่หน้า User Mode โดยตรง
+        Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(
-            builder: (context) => const LoginPage(
-              returnToMenu: true,
+            builder: (context) => const MyHomePage(
+              title: 'TREE LAW ZOO valley',
+              isGuestMode: false,
             ),
           ),
+          (route) => false,
         );
       }
     } catch (e) {
@@ -169,6 +185,25 @@ class _RegisterPageState extends State<RegisterPage> {
         _isLoading = false;
       });
     }
+  }
+
+  // ฟังก์ชันตรวจสอบเบอร์โทรศัพท์
+  String? _validatePhone(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'กรุณากรอกเบอร์โทรศัพท์';
+    }
+    
+    // ตรวจสอบว่ามี 10 หลัก
+    if (value.length != 10) {
+      return 'เบอร์โทรศัพท์ต้องมี 10 หลัก';
+    }
+    
+    // ตรวจสอบว่าขึ้นต้นด้วย 06, 08, 09
+    if (!RegExp(r'^0[689]\d{8}$').hasMatch(value)) {
+      return 'เบอร์โทรศัพท์ต้องขึ้นต้นด้วย 06, 08, หรือ 09';
+    }
+    
+    return null;
   }
 
   @override
@@ -268,7 +303,7 @@ class _RegisterPageState extends State<RegisterPage> {
                         TextField(
                           controller: _fullNameController,
                           decoration: InputDecoration(
-                            labelText: 'ชื่อ-นามสกุล (ถ้ามี)',
+                            labelText: 'ชื่อ-นามสกุล (ไม่ต้องมีคำนำหน้า)',
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
                             ),
@@ -282,6 +317,25 @@ class _RegisterPageState extends State<RegisterPage> {
                         TextField(
                           controller: _phoneController,
                           keyboardType: TextInputType.phone,
+                          maxLength: 10,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(10),
+                          ],
+                          onChanged: (value) {
+                            // Auto-format phone number
+                            if (value.isNotEmpty && !value.startsWith('0')) {
+                              _phoneController.text = '0' + value;
+                              _phoneController.selection = TextSelection.fromPosition(
+                                TextPosition(offset: _phoneController.text.length),
+                              );
+                            }
+                            
+                            // ตรวจสอบรูปแบบเบอร์โทรศัพท์
+                            setState(() {
+                              _phoneErrorText = _validatePhone(_phoneController.text);
+                            });
+                          },
                           decoration: InputDecoration(
                             labelText: 'เบอร์โทรศัพท์ *',
                             border: OutlineInputBorder(
@@ -289,6 +343,8 @@ class _RegisterPageState extends State<RegisterPage> {
                             ),
                             prefixIcon: const Icon(Icons.phone),
                             hintText: '08xxxxxxxx',
+                            counterText: '',
+                            errorText: _phoneErrorText,
                           ),
                         ),
                         const SizedBox(height: 15),

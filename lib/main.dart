@@ -22,7 +22,7 @@ bool isValidEmailOrPhone(String input) {
 
 String? validateEmailOrPhone(String? value) {
   if (value == null || value.isEmpty) {
-    return 'กรุณากรอกอีเมลหรือเบอร์โทรศัพท์';
+    return 'กรุณากรอกอีเมล หรือ เบอร์โทรศัพท์ หรือ ชื่อเข้าใช้งาน';
   }
   
   if (!isValidEmailOrPhone(value)) {
@@ -164,7 +164,29 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  User? get currentUser => SupabaseService.currentUser;
+  final currentUser = Supabase.instance.client.auth.currentUser;
+  String? _userFullName;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    if (currentUser != null) {
+      // ใช้ข้อมูลจาก user metadata แทนการ query จากตาราง profiles
+      final userMetadata = currentUser!.userMetadata;
+      final fullName = userMetadata?['full_name'] as String?;
+      final username = userMetadata?['username'] as String?;
+      
+      if (mounted) {
+        setState(() {
+          _userFullName = fullName ?? username ?? currentUser?.email?.split('@')[0] ?? 'สมาชิก';
+        });
+      }
+    }
+  }
   bool get isLoggedIn => currentUser != null;
 
   void _login() {
@@ -272,7 +294,7 @@ class _MyHomePageState extends State<MyHomePage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                widget.isGuestMode ? 'สวัสดี, บุคคลทั่วไป' : 'สวัสดี, สมาชิก',
+                widget.isGuestMode ? 'สวัสดี คุณลูกค้า' : 'สวัสดีคุณ $_userFullName',
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
@@ -280,7 +302,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 ),
               ),
               Text(
-                widget.isGuestMode ? 'กรุณาเข้าสู่ระบบเพื่อใช้งานครบถ้วน' : 'ยินดีต้อนรับกลับมา',
+                widget.isGuestMode ? 'กรุณาเข้าสู่ระบบ เพื่อติดตามคิว / สถานะการจอง' : 'ยินดีต้อนรับกลับมา',
                 style: TextStyle(
                   fontSize: 14,
                   color: Colors.white.withOpacity(0.8),
@@ -359,8 +381,8 @@ class _MyHomePageState extends State<MyHomePage> {
     final menuItems = [
       {'icon': Icons.restaurant, 'title': 'สั่งอาหาร', 'guestAllowed': true},
       {'icon': Icons.table_restaurant, 'title': 'จองโต๊ะ', 'guestAllowed': true},
-      {'icon': Icons.bed, 'title': 'จองที่พัก', 'guestAllowed': false},
-      {'icon': Icons.history, 'title': 'ประวัติ', 'guestAllowed': false},
+      {'icon': Icons.bed, 'title': 'จองที่พัก', 'guestAllowed': true},
+      {'icon': Icons.history, 'title': 'ติดตามคิว / ข้อมูลการจอง (โต๊ะ/ที่พัก)', 'guestAllowed': false},
     ];
 
     return menuItems.map((item) {
@@ -508,18 +530,18 @@ class _MyHomePageState extends State<MyHomePage> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
-                'ติดต่อ: ',
+                'ติดต่อ ผู้กองเดร์ฟ(CEO) : ',
                 style: TextStyle(
                   color: Colors.white.withOpacity(0.8),
                   fontSize: 14,
                 ),
               ),
               Text(
-                '081-234-5678',
+                '08-3010-3050',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 14,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ],
