@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'services/supabase_service.dart';
 import 'services/otp_service.dart';
+import 'register_page_clean.dart';
+import 'user_profile_page.dart';
 import 'widgets/forgot_password_dialog.dart';
 import 'pages/restaurant_menu_page.dart';
 import 'pages/table_booking_page.dart';
 import 'pages/room_booking_page.dart';
-import 'pages/user_profile_page.dart';
-import 'register_page_clean.dart';
 
 // Helper function to validate email or phone
 bool isValidEmailOrPhone(String input) {

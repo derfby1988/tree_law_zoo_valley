@@ -2,49 +2,103 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'services/supabase_service.dart';
-import '../main.dart';
+import 'main.dart';
 
-class RegisterPage extends StatefulWidget {
-  const RegisterPage({super.key});
+class UserProfilePage extends StatefulWidget {
+  const UserProfilePage({super.key});
 
   @override
-  State<RegisterPage> createState() => _RegisterPageState();
+  State<UserProfilePage> createState() => _UserProfilePageState();
 }
 
-class _RegisterPageState extends State<RegisterPage> {
-  final _emailController = TextEditingController();
-  final _phoneController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
+class _UserProfilePageState extends State<UserProfilePage> {
   final _usernameController = TextEditingController();
+  final _phoneController = TextEditingController();
   final _fullNameController = TextEditingController();
+  final _emailController = TextEditingController();
   
   bool _isLoading = false;
+  bool _isSaving = false;
   String? _errorMessage;
   String? _phoneErrorText;
   String? _usernameErrorText;
   bool _isCheckingUsername = false;
   bool _isCheckingPhone = false;
 
-  // ฟังก์ชันตรวจสอบว่า username ซ้ำหรือไม่
-  Future<bool> _checkUsernameExists(String username) async {
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user != null) {
+      setState(() {
+        _isLoading = true;
+      });
+
+      try {
+        // โหลดข้อมูลจาก user metadata
+        final userMetadata = user.userMetadata;
+        final fullName = userMetadata?['full_name'] as String?;
+        final username = userMetadata?['username'] as String?;
+        final phone = userMetadata?['phone'] as String?;
+
+        if (mounted) {
+          setState(() {
+            _fullNameController.text = fullName ?? '';
+            _usernameController.text = username ?? '';
+            _phoneController.text = phone ?? '';
+            _emailController.text = user.email ?? '';
+            _isLoading = false;
+          });
+        }
+      } catch (e) {
+        debugPrint('Error loading user data: $e');
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      }
+    }
+  }
+
+  // ฟังก์ชันตรวจสอบว่า username ซ้ำหรือไม่ (ยกเว้นตัวเอง)
+  Future<bool> _checkUsernameExists(String username, {String? excludeUserId}) async {
     try {
+      final currentUser = Supabase.instance.client.auth.currentUser;
+      if (currentUser == null) return false;
+      
       // วิธีที่ 1: ตรวจสอบจาก users table (ถ้ามี)
       try {
         final response = await Supabase.instance.client
             .from('users')
-            .select('username')
+            .select('username, user_id')
             .eq('username', username)
             .maybeSingle();
         
         if (response != null) {
-          return true; // พบ username ซ้ำ
+          // ถ้าพบ username ซ้ำ แต่เป็นของตัวเอง ให้ผ่าน
+          return response['user_id'] != currentUser.id;
         }
       } catch (e) {
         debugPrint('Users table not found, using auth metadata: $e');
       }
       
-      // วิธีที่ 2: ตรวจสอบจาก hardcoded mapping (ชั่วคราว)
+      // วิธีที่ 2: ตรวจสอบจาก Supabase Auth user metadata
+      // ดึงข้อมูลผู้ใช้ทั้งหมด (ต้องใช้ service role แต่ชั่วคราวใช้วิธีอื่น)
+      
+      // วิธีที่ 3: ตรวจสอบจาก user metadata ของผู้ใช้ปัจจุบัน
+      final currentUsername = currentUser.userMetadata?['username'] as String?;
+      
+      // ถ้าเป็น username ของตัวเอง ให้ผ่าน
+      if (username.toLowerCase() == currentUsername?.toLowerCase()) {
+        return false;
+      }
+      
+      // วิธีที่ 4: ตรวจสอบจาก hardcoded mapping (ชั่วคราว)
       final existingUsers = {
         'derfby': 'derfby@gmail.com',
         'firm': 'firmcutedra@gmail.com',
@@ -54,29 +108,44 @@ class _RegisterPageState extends State<RegisterPage> {
       return existingUsers.containsKey(username.toLowerCase());
     } catch (e) {
       debugPrint('Error checking username: $e');
-      return false; // ถ้า error ให้ผ่านไปก่อน
+      return false;
     }
   }
 
-  // ฟังก์ชันตรวจสอบว่า phone ซ้ำหรือไม่
+  // ฟังก์ชันตรวจสอบว่า phone ซ้ำหรือไม่ (ยกเว้นตัวเอง)
   Future<bool> _checkPhoneExists(String phone) async {
     try {
+      final currentUser = Supabase.instance.client.auth.currentUser;
+      if (currentUser == null) return false;
+      
       // วิธีที่ 1: ตรวจสอบจาก users table (ถ้ามี)
       try {
         final response = await Supabase.instance.client
             .from('users')
-            .select('phone')
+            .select('phone, user_id')
             .eq('phone', phone)
             .maybeSingle();
         
         if (response != null) {
-          return true; // พบ phone ซ้ำ
+          // ถ้าพบ phone ซ้ำ แต่เป็นของตัวเอง ให้ผ่าน
+          return response['user_id'] != currentUser.id;
         }
       } catch (e) {
         debugPrint('Users table not found, using auth metadata: $e');
       }
       
-      // วิธีที่ 2: ตรวจสอบจาก hardcoded mapping (ชั่วคราว)
+      // วิธีที่ 2: ตรวจสอบจาก Supabase Auth user metadata
+      // ดึงข้อมูลผู้ใช้ทั้งหมด (ต้องใช้ service role แต่ชั่วคราวใช้วิธีอื่น)
+      
+      // วิธีที่ 3: ตรวจสอบจาก user metadata ของผู้ใช้ปัจจุบัน
+      final currentPhone = currentUser.userMetadata?['phone'] as String?;
+      
+      // ถ้าเป็น phone ของตัวเอง ให้ผ่าน
+      if (phone == currentPhone) {
+        return false;
+      }
+      
+      // วิธีที่ 4: ตรวจสอบจาก hardcoded mapping (ชั่วคราว)
       final existingPhones = {
         '0830103050': 'derfby@gmail.com',
         '0803399456': 'firmcutedra@gmail.com',
@@ -86,204 +155,14 @@ class _RegisterPageState extends State<RegisterPage> {
       return existingPhones.containsKey(phone);
     } catch (e) {
       debugPrint('Error checking phone: $e');
-      return false; // ถ้า error ให้ผ่านไปก่อน
-    }
-  }
-
-  Future<void> _register() async {
-    setState(() {
-      _errorMessage = null;
-      _phoneErrorText = null;
-      _isLoading = true;
-    });
-
-    // ตรวจสอบเบอร์โทรศัพท์ก่อน
-    final phoneError = _validatePhone(_phoneController.text);
-    if (phoneError != null) {
-      setState(() {
-        _phoneErrorText = phoneError;
-        _isLoading = false;
-      });
-      return;
-    }
-
-    // ตรวจสอบ username ซ้ำ
-    final username = _usernameController.text.trim();
-    if (username.isNotEmpty) {
-      final usernameExists = await _checkUsernameExists(username);
-      if (usernameExists) {
-        setState(() {
-          _errorMessage = 'ชื่อผู้ใช้ "$username" มีผู้ใช้แล้ว กรุณาเลือกชื่ออื่น';
-          _isLoading = false;
-        });
-        return;
-      }
-    }
-
-    // ตรวจสอบ phone ซ้ำ
-    final phone = _phoneController.text.trim();
-    if (phone.isNotEmpty) {
-      final phoneExists = await _checkPhoneExists(phone);
-      if (phoneExists) {
-        setState(() {
-          _errorMessage = 'เบอร์โทรศัพท์ "$phone" มีผู้ใช้แล้ว กรุณาใช้เบอร์อื่น';
-          _isLoading = false;
-        });
-        return;
-      }
-    }
-
-    try {
-      AuthResponse response;
-
-      // ตรวจสอบว่าใช้ email หรือ phone
-      if (_emailController.text.isNotEmpty) {
-        // วิธีที่ 1: Email + Password
-        debugPrint('Using email registration method');
-        
-        final emailError = validateEmail(_emailController.text);
-        if (emailError != null) {
-          setState(() {
-            _errorMessage = emailError;
-            _isLoading = false;
-          });
-          return;
-        }
-
-        final passwordError = validatePassword(_passwordController.text);
-        if (passwordError != null) {
-          setState(() {
-            _errorMessage = passwordError;
-            _isLoading = false;
-          });
-          return;
-        }
-
-        final confirmError = validateConfirmPassword(
-          _confirmPasswordController.text, 
-          _passwordController.text
-        );
-        if (confirmError != null) {
-          setState(() {
-            _errorMessage = confirmError;
-            _isLoading = false;
-          });
-          return;
-        }
-
-        final usernameError = validateUsername(_usernameController.text);
-        if (usernameError != null) {
-          setState(() {
-            _errorMessage = usernameError;
-            _isLoading = false;
-          });
-          return;
-        }
-
-        response = await SupabaseService.signUpWithEmail(
-          _emailController.text.trim(),
-          _passwordController.text.trim(),
-          data: {
-            'username': _usernameController.text.trim(),
-            'phone': _phoneController.text.trim().isNotEmpty ? _phoneController.text.trim() : null,
-            'full_name': _fullNameController.text.trim().isNotEmpty ? _fullNameController.text.trim() : null,
-          },
-        );
-      } else {
-        // วิธีที่ 2: Phone + Password
-        debugPrint('Using phone registration method');
-        
-        final phoneError = validatePhone(_phoneController.text);
-        if (phoneError != null) {
-          setState(() {
-            _errorMessage = phoneError;
-            _isLoading = false;
-          });
-          return;
-        }
-
-        final passwordError = validatePassword(_passwordController.text);
-        if (passwordError != null) {
-          setState(() {
-            _errorMessage = passwordError;
-            _isLoading = false;
-          });
-          return;
-        }
-
-        final confirmError = validateConfirmPassword(
-          _confirmPasswordController.text, 
-          _passwordController.text
-        );
-        if (confirmError != null) {
-          setState(() {
-            _errorMessage = confirmError;
-            _isLoading = false;
-          });
-          return;
-        }
-
-        final usernameError = validateUsername(_usernameController.text);
-        if (usernameError != null) {
-          setState(() {
-            _errorMessage = usernameError;
-            _isLoading = false;
-          });
-          return;
-        }
-
-        response = await SupabaseService.signUpWithPhone(
-          _phoneController.text.trim(),
-          _passwordController.text.trim(),
-          data: {
-            'username': _usernameController.text.trim(),
-            'phone': _phoneController.text.trim(),
-            'full_name': _fullNameController.text.trim().isNotEmpty ? _fullNameController.text.trim() : null,
-          },
-        );
-      }
-
-      debugPrint('Registration response: ${response.user != null ? 'SUCCESS' : 'FAILED'}');
-
-      if (response.user != null) {
-        setState(() {
-          _errorMessage = null;
-        });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('สมัครสมาชิกสำเร็จ! กำลังเข้าสู่ระบบ...'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        
-        // ไปที่หน้า User Mode โดยตรง
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (context) => const MyHomePage(
-              title: 'TREE LAW ZOO valley',
-              isGuestMode: false,
-            ),
-          ),
-          (route) => false,
-        );
-      }
-    } catch (e) {
-      debugPrint('Registration error: $e');
-      setState(() {
-        _errorMessage = 'เกิดข้อผิดพลาด: ${e.toString()}';
-      });
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      return false;
     }
   }
 
   // ฟังก์ชันตรวจสอบเบอร์โทรศัพท์
   String? _validatePhone(String? value) {
     if (value == null || value.isEmpty) {
-      return 'กรุณากรอกเบอร์โทรศัพท์';
+      return null; // phone เป็น optional ใน profile
     }
     
     // ตรวจสอบว่ามี 10 หลัก
@@ -299,8 +178,106 @@ class _RegisterPageState extends State<RegisterPage> {
     return null;
   }
 
+  Future<void> _saveProfile() async {
+    setState(() {
+      _errorMessage = null;
+      _isSaving = true;
+    });
+
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) {
+        setState(() {
+          _errorMessage = 'ไม่พบข้อมูลผู้ใช้';
+          _isSaving = false;
+        });
+        return;
+      }
+
+      // ตรวจสอบ username ซ้ำ
+      final username = _usernameController.text.trim();
+      if (username.isNotEmpty) {
+        final usernameExists = await _checkUsernameExists(username);
+        if (usernameExists) {
+          setState(() {
+            _errorMessage = 'ชื่อผู้ใช้ "$username" มีผู้ใช้แล้ว กรุณาเลือกชื่ออื่น';
+            _isSaving = false;
+          });
+          return;
+        }
+      }
+
+      // ตรวจสอบ phone ซ้ำ
+      final phone = _phoneController.text.trim();
+      if (phone.isNotEmpty) {
+        final phoneError = _validatePhone(phone);
+        if (phoneError != null) {
+          setState(() {
+            _errorMessage = phoneError;
+            _isSaving = false;
+          });
+          return;
+        }
+
+        final phoneExists = await _checkPhoneExists(phone);
+        if (phoneExists) {
+          setState(() {
+            _errorMessage = 'เบอร์โทรศัพท์ "$phone" มีผู้ใช้แล้ว กรุณาใช้เบอร์อื่น';
+            _isSaving = false;
+          });
+          return;
+        }
+      }
+
+      // อัปเดตข้อมูลใน Supabase
+      await Supabase.instance.client.auth.updateUser(
+        UserAttributes(
+          data: {
+            'username': username.isNotEmpty ? username : null,
+            'phone': phone.isNotEmpty ? phone : null,
+            'full_name': _fullNameController.text.trim().isNotEmpty 
+                ? _fullNameController.text.trim() 
+                : null,
+          },
+        ),
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('บันทึกข้อมูลสำเร็จ!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      debugPrint('Error saving profile: $e');
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'เกิดข้อผิดพลาด: ${e.toString()}';
+          _isSaving = false;
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
@@ -324,11 +301,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     children: [
                       IconButton(
                         onPressed: () {
-                          Navigator.of(context).pushReplacement(
-                            MaterialPageRoute(
-                              builder: (context) => const LoginPage(),
-                            ),
-                          );
+                          Navigator.of(context).pop();
                         },
                         icon: const Icon(
                           Icons.arrow_back,
@@ -339,7 +312,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       const Expanded(
                         child: Center(
                           child: Text(
-                            'สมัครสมาชิก',
+                            'โปรไฟล์ผู้ใช้',
                             style: TextStyle(
                               fontSize: 24,
                               fontWeight: FontWeight.bold,
@@ -363,7 +336,7 @@ class _RegisterPageState extends State<RegisterPage> {
                   
                   const SizedBox(height: 30),
                   
-                  // Registration form
+                  // Profile form
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
@@ -379,6 +352,22 @@ class _RegisterPageState extends State<RegisterPage> {
                     ),
                     child: Column(
                       children: [
+                        // Email field (readonly)
+                        TextField(
+                          controller: _emailController,
+                          enabled: false,
+                          decoration: InputDecoration(
+                            labelText: 'อีเมล',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            prefixIcon: const Icon(Icons.email),
+                            filled: true,
+                            fillColor: Colors.grey[200],
+                          ),
+                        ),
+                        const SizedBox(height: 15),
+                        
                         // Username field
                         TextField(
                           controller: _usernameController,
@@ -408,7 +397,7 @@ class _RegisterPageState extends State<RegisterPage> {
                             }
                           },
                           decoration: InputDecoration(
-                            labelText: 'ชื่อเข้าใช้งาน *',
+                            labelText: 'ชื่อเข้าใช้งาน',
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
                             ),
@@ -425,11 +414,11 @@ class _RegisterPageState extends State<RegisterPage> {
                         ),
                         const SizedBox(height: 15),
                         
-                        // Full Name field (optional)
+                        // Full Name field
                         TextField(
                           controller: _fullNameController,
                           decoration: InputDecoration(
-                            labelText: 'ชื่อ-นามสกุล (ไม่ต้องมีคำนำหน้า)',
+                            labelText: 'ชื่อ-นามสกุล',
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
                             ),
@@ -439,7 +428,7 @@ class _RegisterPageState extends State<RegisterPage> {
                         ),
                         const SizedBox(height: 15),
                         
-                        // Phone field (required)
+                        // Phone field
                         TextField(
                           controller: _phoneController,
                           keyboardType: TextInputType.phone,
@@ -484,7 +473,7 @@ class _RegisterPageState extends State<RegisterPage> {
                             }
                           },
                           decoration: InputDecoration(
-                            labelText: 'เบอร์โทรศัพท์ *',
+                            labelText: 'เบอร์โทรศัพท์',
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
                             ),
@@ -499,49 +488,6 @@ class _RegisterPageState extends State<RegisterPage> {
                                   )
                                 : null,
                             errorText: _phoneErrorText,
-                          ),
-                        ),
-                        const SizedBox(height: 15),
-                        
-                        // Email field (optional)
-                        TextField(
-                          controller: _emailController,
-                          keyboardType: TextInputType.emailAddress,
-                          decoration: InputDecoration(
-                            labelText: 'อีเมล (จำเป็น)',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            prefixIcon: const Icon(Icons.email),
-                            hintText: 'example@email.com',
-                          ),
-                        ),
-                        const SizedBox(height: 15),
-                        
-                        // Password field
-                        TextField(
-                          controller: _passwordController,
-                          obscureText: true,
-                          decoration: InputDecoration(
-                            labelText: 'รหัสผ่าน *',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            prefixIcon: const Icon(Icons.lock),
-                          ),
-                        ),
-                        const SizedBox(height: 15),
-                        
-                        // Confirm password field
-                        TextField(
-                          controller: _confirmPasswordController,
-                          obscureText: true,
-                          decoration: InputDecoration(
-                            labelText: 'ยืนยันรหัสผ่าน *',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            prefixIcon: const Icon(Icons.lock_outline),
                           ),
                         ),
                         const SizedBox(height: 30),
@@ -573,25 +519,24 @@ class _RegisterPageState extends State<RegisterPage> {
                             ),
                           ),
                         
-                        // Register button
+                        // Save button
                         SizedBox(
                           width: double.infinity,
                           height: 50,
                           child: ElevatedButton(
-                            onPressed: _isLoading ? null : _register,
+                            onPressed: _isSaving ? null : _saveProfile,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green[600],
+                              backgroundColor: Colors.blue[600],
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10),
                               ),
                             ),
-                            child: _isLoading
+                            child: _isSaving
                                 ? const CircularProgressIndicator(
                                     color: Colors.white,
-                                    strokeWidth: 3,
                                   )
                                 : const Text(
-                                    'สมัครสมาชิก',
+                                    'บันทึกข้อมูล',
                                     style: TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.bold,
@@ -612,73 +557,3 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 }
-
-// Validation functions
-String? validateEmail(String? value) {
-  if (value == null || value.isEmpty) {
-    return 'กรุณากรอกอีเมล';
-  }
-  
-  if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
-    return 'กรุณากรอกอีเมลให้ถูกต้อง';
-  }
-  
-  return null;
-}
-
-String? validatePhone(String? value) {
-  if (value == null || value.isEmpty) {
-    return 'กรุณากรอกเบอร์โทรศัพท์';
-  }
-  
-  if (!RegExp(r'^0[689]\d{8}$').hasMatch(value)) {
-    return 'กรุณากรอกเบอร์โทรศัพท์ให้ถูกต้อง (เช่น 0812345678)';
-  }
-  
-  return null;
-}
-
-String? validateUsername(String? value) {
-  if (value == null || value.isEmpty) {
-    return 'กรุณากรอกชื่อผู้ใช้';
-  }
-  
-  if (value.length < 3) {
-    return 'ชื่อผู้ใช้ต้องมีอย่างน้อย 3 ตัวอักษร';
-  }
-  
-  if (value.length > 20) {
-    return 'ชื่อผู้ใช้ต้องไม่เกิน 20 ตัวอักษร';
-  }
-  
-  if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(value)) {
-    return 'ชื่อผู้ใช้สามารถใช้ได้เฉพาะตัวอักษรภาษาอังกฤษ, ตัวเลข และ _';
-  }
-  
-  return null;
-}
-
-String? validatePassword(String? value) {
-  if (value == null || value.isEmpty) {
-    return 'กรุณากรอกรหัสผ่าน';
-  }
-  
-  if (value.length < 6) {
-    return 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร';
-  }
-  
-  return null;
-}
-
-String? validateConfirmPassword(String? value, String password) {
-  if (value == null || value.isEmpty) {
-    return 'กรุณายืนยันรหัสผ่าน';
-  }
-  
-  if (value != password) {
-    return 'รหัสผ่านไม่ตรงกัน';
-  }
-  
-  return null;
-}
-
