@@ -8,6 +8,8 @@ import 'widgets/forgot_password_dialog.dart';
 import 'pages/restaurant_menu_page.dart';
 import 'pages/table_booking_page.dart';
 import 'pages/room_booking_page.dart';
+import 'reset_password_page.dart';
+import 'auth_state_observer.dart';
 
 // Helper function to validate email or phone
 bool isValidEmailOrPhone(String input) {
@@ -49,9 +51,11 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: const MyHomePage(
-        title: 'TREE LAW ZOO valley',
-        isGuestMode: true, // ✅ เริ่มต้นที่ Home Page โดยตรง
+      home: const AuthStateObserver(
+        child: MyHomePage(
+          title: 'TREE LAW ZOO valley',
+          isGuestMode: true, // ✅ เริ่มต้นที่ Home Page โดยตรง
+        ),
       ),
     );
   }
@@ -1002,7 +1006,10 @@ class _LoginPageState extends State<LoginPage> {
                         // Forgot password link
                         GestureDetector(
                           onTap: () {
-                            ForgotPasswordDialog.show(context);
+                            showDialog(
+                              context: context,
+                              builder: (context) => const ForgotPasswordDialog(),
+                            );
                           },
                           child: Text(
                             'ลืมรหัสผ่าน?',

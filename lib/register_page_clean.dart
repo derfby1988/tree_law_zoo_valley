@@ -23,8 +23,10 @@ class _RegisterPageState extends State<RegisterPage> {
   String? _errorMessage;
   String? _phoneErrorText;
   String? _usernameErrorText;
+  String? _emailErrorText;
   bool _isCheckingUsername = false;
   bool _isCheckingPhone = false;
+  bool _isCheckingEmail = false;
 
   // ฟังก์ชันตรวจสอบว่า username ซ้ำหรือไม่
   Future<bool> _checkUsernameExists(String username) async {
@@ -90,6 +92,62 @@ class _RegisterPageState extends State<RegisterPage> {
     }
   }
 
+  // ฟังก์ชันตรวจสอบว่า email ซ้ำหรือไม่
+  Future<bool> _checkEmailExists(String email) async {
+    try {
+      debugPrint('Checking email: $email');
+      
+      // วิธีที่ 1: ตรวจสอบจาก users table (ถ้ามี)
+      try {
+        final response = await Supabase.instance.client
+            .from('users')
+            .select('email')
+            .eq('email', email)
+            .maybeSingle();
+
+        debugPrint('Email check response from users table: $response');
+        if (response != null) {
+          debugPrint('Email found in users table');
+          return true;
+        }
+      } catch (e) {
+        debugPrint('Error checking email from users table: $e');
+      }
+      
+      // วิธีที่ 2: ตรวจสอบจาก auth.users
+      try {
+        // ใช้ RPC หรือ admin API ถ้าจำเป็น
+        final response = await Supabase.instance.client.rpc('check_email_exists', params: {
+          'email_to_check': email,
+        });
+        
+        debugPrint('Email RPC check response: $response');
+        if (response != null && response == true) {
+          debugPrint('Email found via RPC');
+          return true;
+        }
+      } catch (e) {
+        debugPrint('Error checking email from auth: $e');
+      }
+      
+      // วิธีที่ 3: ตรวจสอบจาก hardcoded mapping (ชั่วคราว)
+      final existingEmails = {
+        'derfby@gmail.com': 'derfby',
+        'firmcutedra@gmail.com': 'firmcutedra',
+        'admin@treelawzoo.local': 'admin',
+      };
+      
+      final emailLower = email.toLowerCase();
+      final existsInMapping = existingEmails.containsKey(emailLower);
+      debugPrint('Email exists in mapping: $existsInMapping for email: $emailLower');
+      
+      return existsInMapping;
+    } catch (e) {
+      debugPrint('Error checking email: $e');
+      return false; // ถ้า error ให้ผ่านไปก่อน
+    }
+  }
+
   Future<void> _register() async {
     setState(() {
       _errorMessage = null;
@@ -106,6 +164,33 @@ class _RegisterPageState extends State<RegisterPage> {
       });
       return;
     }
+
+    // ตรวจสอบอีเมล (บังคับ)
+    final email = _emailController.text.trim();
+    if (email.isEmpty) {
+      setState(() {
+        _emailErrorText = 'กรุณากรอกอีเมล';
+        _isLoading = false;
+      });
+      return;
+    }
+    
+    // ตรวจสอบรูปแบบอีเมล
+    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email)) {
+      setState(() {
+        _emailErrorText = 'กรุณากรอกอีเมลให้ถูกต้อง';
+        _isLoading = false;
+      });
+      return;
+    }
+
+    // ล้าง error messages ก่อนตรวจสอบ
+    setState(() {
+      _errorMessage = null;
+      _phoneErrorText = null;
+      _usernameErrorText = null;
+      _emailErrorText = null;
+    });
 
     // ตรวจสอบ username ซ้ำ
     final username = _usernameController.text.trim();
@@ -503,17 +588,68 @@ class _RegisterPageState extends State<RegisterPage> {
                         ),
                         const SizedBox(height: 15),
                         
-                        // Email field (optional)
+                        // Email field (required)
                         TextField(
                           controller: _emailController,
                           keyboardType: TextInputType.emailAddress,
+                          onChanged: (value) async {
+                            // ล้าง error text เมื่อกรอกข้อมูลใหม่
+                            if (_emailErrorText != null) {
+                              setState(() {
+                                _emailErrorText = null;
+                              });
+                            }
+                            
+                            // Real-time email validation
+                            final email = value.trim();
+                            debugPrint('Email changed: $email');
+                            debugPrint('Email format valid: ${RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email)}');
+                            
+                            if (email.isNotEmpty && RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email)) {
+                              debugPrint('Starting email validation...');
+                              setState(() {
+                                _isCheckingEmail = true;
+                                _emailErrorText = null;
+                              });
+                              
+                              // เพิ่ม delay เล็กน้อยเพื่อให้เห็น loading indicator
+                              await Future.delayed(const Duration(milliseconds: 500));
+                              
+                              final emailExists = await _checkEmailExists(email);
+                              debugPrint('Email exists result: $emailExists');
+                              
+                              if (mounted) {
+                                setState(() {
+                                  _isCheckingEmail = false;
+                                  if (emailExists) {
+                                    debugPrint('Setting email error: อีเมลนี้มีผู้ใช้แล้ว');
+                                    _emailErrorText = 'อีเมลนี้มีผู้ใช้แล้ว กรุณาใช้อีเมลอื่น';
+                                  } else {
+                                    debugPrint('Email is available');
+                                  }
+                                });
+                              }
+                            }
+                          },
                           decoration: InputDecoration(
-                            labelText: 'อีเมล (จำเป็น)',
+                            labelText: 'อีเมล *',
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
                             ),
                             prefixIcon: const Icon(Icons.email),
                             hintText: 'example@email.com',
+                            errorText: _emailErrorText,
+                            suffixIcon: _isCheckingEmail 
+                                ? Container(
+                                    width: 24,
+                                    height: 24,
+                                    padding: const EdgeInsets.all(2),
+                                    child: const CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                                    ),
+                                  )
+                                : null,
                           ),
                         ),
                         const SizedBox(height: 15),
