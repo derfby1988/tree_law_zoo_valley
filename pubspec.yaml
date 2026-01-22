@@ -37,6 +37,15 @@ dependencies:
   
   # Supabase for database and authentication
   supabase_flutter: ^2.3.4
+  
+  # Image picker for cross-platform image selection
+  image_picker: ^1.0.4
+  
+  # File picker for web support
+  file_picker: ^6.1.1
+  
+  # Image compression
+  image: ^4.1.4
 
 dev_dependencies:
   flutter_test:

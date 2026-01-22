@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'services/supabase_service.dart';
+import 'services/image_upload_service.dart';
+import 'widgets/avatar_picker.dart';
 import '../main.dart';
 
 class RegisterPage extends StatefulWidget {
@@ -27,6 +29,9 @@ class _RegisterPageState extends State<RegisterPage> {
   bool _isCheckingUsername = false;
   bool _isCheckingPhone = false;
   bool _isCheckingEmail = false;
+  Uint8List? _avatarBytes; // เก็บ bytes ของรูป
+  String? _avatarFileName; // เก็บชื่อไฟล์
+  String? _avatarUrl; // เก็บ URL หลังอัปโหลด
 
   // ฟังก์ชันตรวจสอบว่า username ซ้ำหรือไม่
   Future<bool> _checkUsernameExists(String username) async {
@@ -221,6 +226,29 @@ class _RegisterPageState extends State<RegisterPage> {
     try {
       AuthResponse response;
 
+      // ถ้ามีรูปภาพ ให้อัปโหลดก่อน
+      if (_avatarBytes != null && _avatarFileName != null && _avatarUrl == null) {
+        final currentUser = Supabase.instance.client.auth.currentUser;
+        if (currentUser == null) {
+          throw Exception('ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่');
+        }
+
+        // แสดง loading สำหรับการอัปโหลดรูป
+        setState(() {
+          _errorMessage = 'กำลังอัปโหลดรูปภาพ...';
+        });
+
+        try {
+          _avatarUrl = await ImageUploadService.uploadImageToSupabase(
+            _avatarBytes!,
+            _avatarFileName!,
+            currentUser.id,
+          );
+        } catch (e) {
+          throw Exception('อัปโหลดรูปภาพไม่สำเร็จ: ${e.toString()}');
+        }
+      }
+
       // ตรวจสอบว่าใช้ email หรือ phone
       if (_emailController.text.isNotEmpty) {
         // วิธีที่ 1: Email + Password
@@ -272,6 +300,7 @@ class _RegisterPageState extends State<RegisterPage> {
             'username': _usernameController.text.trim(),
             'phone': _phoneController.text.trim().isNotEmpty ? _phoneController.text.trim() : null,
             'full_name': _fullNameController.text.trim().isNotEmpty ? _fullNameController.text.trim() : null,
+            'avatar_url': _avatarUrl, // เพิ่ม avatar URL
           },
         );
       } else {
@@ -324,6 +353,7 @@ class _RegisterPageState extends State<RegisterPage> {
             'username': _usernameController.text.trim(),
             'phone': _phoneController.text.trim(),
             'full_name': _fullNameController.text.trim().isNotEmpty ? _fullNameController.text.trim() : null,
+            'avatar_url': _avatarUrl, // เพิ่ม avatar URL
           },
         );
       }
@@ -464,6 +494,25 @@ class _RegisterPageState extends State<RegisterPage> {
                     ),
                     child: Column(
                       children: [
+                        // Avatar Picker
+                        Center(
+                          child: AvatarPicker(
+                            onImageSelected: (bytes, fileName) {
+                              setState(() {
+                                _avatarBytes = bytes;
+                                _avatarFileName = fileName;
+                                _avatarUrl = null; // รีเซ็ต URL เมื่อเลือกรูปใหม่
+                              });
+                            },
+                            onAvatarUploaded: (url) {
+                              setState(() {
+                                _avatarUrl = url;
+                              });
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        
                         // Username field
                         TextField(
                           controller: _usernameController,
