@@ -245,22 +245,30 @@ class _MyHomePageState extends State<MyHomePage> {
                 const SizedBox(height: 40),
                 
                 // ✅ App Title
-                _buildAppTitle(),
+                Center(
+                  child: _buildAppTitle(),
+                ),
                 
                 const SizedBox(height: 50),
                 
                 // ✅ Menu Buttons แยกตาม mode
                 Expanded(
-                  child: GridView.count(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 20,
-                    mainAxisSpacing: 20,
-                    children: _buildMenuButtons(),
+                  child: Center(
+                    child: GridView.count(
+                      shrinkWrap: true,
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 20,
+                      mainAxisSpacing: 20,
+                      childAspectRatio: 1.2,
+                      children: _buildMenuButtons(),
+                    ),
                   ),
                 ),
                 
                 // ✅ Footer
-                _buildFooter(),
+                Center(
+                  child: _buildFooter(),
+                ),
               ],
             ),
           ),
@@ -305,33 +313,46 @@ class _MyHomePageState extends State<MyHomePage> {
                   color: Colors.white,
                 ),
               ),
-              Text(
-                widget.isGuestMode ? 'กรุณาเข้าสู่ระบบ เพื่อติดตามคิว / สถานะการจอง' : 'พัก กิน ดื่ม เที่ยว เสมือน "บ้าน" ของคุณ',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.white.withOpacity(0.8),
+              const SizedBox(height: 4),
+              RichText(
+                text: TextSpan(
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.white.withOpacity(0.8),
+                  ),
+                  children: [
+                    TextSpan(text: widget.isGuestMode ? 'กรุณา ' : 'พัก กิน ดื่ม เที่ยว เสมือน "บ้าน" ของคุณ'),
+                    if (widget.isGuestMode)
+                      WidgetSpan(
+                        child: GestureDetector(
+                          onTap: _login,
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 4),
+                            child: Text(
+                              'เข้าสู่ระบบ',
+                              style: TextStyle(
+                                color: Colors.blue[600],
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                decoration: TextDecoration.underline,
+                                decorationColor: Colors.blue[600],
+                                decorationThickness: 2,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (widget.isGuestMode)
+                      TextSpan(text: '  เพื่อติดตามคิว / สถานะการจอง'),
+                  ],
                 ),
               ),
             ],
           ),
         ),
         
-        // Login or Logout button
-        if (widget.isGuestMode)
-          // ✅ Guest Mode - แสดงปุ่มเข้าสู่ระบบ
-          ElevatedButton(
-            onPressed: _login,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.white.withOpacity(0.9),
-              foregroundColor: Colors.blue[600],
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-            ),
-            child: const Text('เข้าสู่ระบบ'),
-          )
-        else
+        // Logout button for user mode only
+        if (!widget.isGuestMode)
           // ✅ User Mode - แสดงปุ่ม logout
           IconButton(
             onPressed: _logout,
