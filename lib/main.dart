@@ -3,13 +3,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'services/supabase_service.dart';
 import 'services/otp_service.dart';
 import 'register_page_clean.dart';
-import 'user_profile_page.dart';
+import 'pages/user_profile_page.dart';
 import 'widgets/forgot_password_dialog.dart';
 import 'pages/restaurant_menu_page.dart';
 import 'pages/table_booking_page.dart';
 import 'pages/room_booking_page.dart';
 import 'reset_password_page.dart';
 import 'auth_state_observer.dart';
+import 'widgets/home_avatar.dart';
 
 // Helper function to validate email or phone
 bool isValidEmailOrPhone(String input) {
@@ -277,11 +278,11 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-  // ✅ Header แยกตาม mode
+  // Header แยกตาม mode
   Widget _buildHeader() {
     return Row(
       children: [
-        // User avatar or guest icon
+        // User profile avatar
         GestureDetector(
           onTap: widget.isGuestMode ? null : () {
             Navigator.of(context).push(
@@ -290,12 +291,9 @@ class _MyHomePageState extends State<MyHomePage> {
               ),
             );
           },
-          child: CircleAvatar(
+          child: HomeAvatar(
             radius: 25,
-            backgroundColor: Colors.white.withOpacity(0.9),
-            child: widget.isGuestMode
-                ? Icon(Icons.person_outline, color: Colors.grey[600], size: 30)
-                : Icon(Icons.person, color: Colors.blue[600], size: 30),
+            isGuestMode: widget.isGuestMode,
           ),
         ),
         const SizedBox(width: 15),
