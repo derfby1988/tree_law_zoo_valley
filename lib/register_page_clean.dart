@@ -48,17 +48,27 @@ class _RegisterPageState extends State<RegisterPage> {
           return true; // พบ username ซ้ำ
         }
       } catch (e) {
-        debugPrint('Users table not found, using auth metadata: $e');
+        debugPrint('Users table not found, checking auth users: $e');
       }
       
-      // วิธีที่ 2: ตรวจสอบจาก hardcoded mapping (ชั่วคราว)
-      final existingUsers = {
-        'derfby': 'derfby@gmail.com',
-        'firm': 'firmcutedra@gmail.com',
+      // วิธีที่ 2: ตรวจสอบจาก auth.users metadata
+      try {
+        final response = await Supabase.instance.client
+            .rpc('check_username_exists', params: {'username_to_check': username});
+        
+        if (response != null && response == true) {
+          return true;
+        }
+      } catch (e) {
+        debugPrint('RPC function not found, skipping username check: $e');
+      }
+      
+      // วิธีที่ 3: ตรวจสอบจาก hardcoded mapping (เฉพาะ admin เท่านั้น)
+      final adminUsers = {
         'admin': 'admin@treelawzoo.local',
       };
       
-      return existingUsers.containsKey(username.toLowerCase());
+      return adminUsers.containsKey(username.toLowerCase());
     } catch (e) {
       debugPrint('Error checking username: $e');
       return false; // ถ้า error ให้ผ่านไปก่อน
@@ -80,17 +90,27 @@ class _RegisterPageState extends State<RegisterPage> {
           return true; // พบ phone ซ้ำ
         }
       } catch (e) {
-        debugPrint('Users table not found, using auth metadata: $e');
+        debugPrint('Users table not found, checking auth users: $e');
       }
       
-      // วิธีที่ 2: ตรวจสอบจาก hardcoded mapping (ชั่วคราว)
-      final existingPhones = {
-        '0830103050': 'derfby@gmail.com',
-        '0803399456': 'firmcutedra@gmail.com',
+      // วิธีที่ 2: ตรวจสอบจาก auth.users metadata
+      try {
+        final response = await Supabase.instance.client
+            .rpc('check_phone_exists', params: {'phone_to_check': phone});
+        
+        if (response != null && response == true) {
+          return true;
+        }
+      } catch (e) {
+        debugPrint('RPC function not found, skipping phone check: $e');
+      }
+      
+      // วิธีที่ 3: ตรวจสอบจาก hardcoded mapping (เฉพาะ admin เท่านั้น)
+      final adminPhones = {
         '0999999999': 'admin@treelawzoo.local',
       };
       
-      return existingPhones.containsKey(phone);
+      return adminPhones.containsKey(phone);
     } catch (e) {
       debugPrint('Error checking phone: $e');
       return false; // ถ้า error ให้ผ่านไปก่อน
@@ -135,15 +155,13 @@ class _RegisterPageState extends State<RegisterPage> {
         debugPrint('Error checking email from auth: $e');
       }
       
-      // วิธีที่ 3: ตรวจสอบจาก hardcoded mapping (ชั่วคราว)
-      final existingEmails = {
-        'derfby@gmail.com': 'derfby',
-        'firmcutedra@gmail.com': 'firmcutedra',
+      // วิธีที่ 3: ตรวจสอบจาก hardcoded mapping (เฉพาะ admin เท่านั้น)
+      final adminEmails = {
         'admin@treelawzoo.local': 'admin',
       };
       
       final emailLower = email.toLowerCase();
-      final existsInMapping = existingEmails.containsKey(emailLower);
+      final existsInMapping = adminEmails.containsKey(emailLower);
       debugPrint('Email exists in mapping: $existsInMapping for email: $emailLower');
       
       return existsInMapping;
@@ -226,29 +244,6 @@ class _RegisterPageState extends State<RegisterPage> {
     try {
       AuthResponse response;
 
-      // ถ้ามีรูปภาพ ให้อัปโหลดก่อน
-      if (_avatarBytes != null && _avatarFileName != null && _avatarUrl == null) {
-        final currentUser = Supabase.instance.client.auth.currentUser;
-        if (currentUser == null) {
-          throw Exception('ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่');
-        }
-
-        // แสดง loading สำหรับการอัปโหลดรูป
-        setState(() {
-          _errorMessage = 'กำลังอัปโหลดรูปภาพ...';
-        });
-
-        try {
-          _avatarUrl = await ImageUploadService.uploadImageToSupabase(
-            _avatarBytes!,
-            _avatarFileName!,
-            currentUser.id,
-          );
-        } catch (e) {
-          throw Exception('อัปโหลดรูปภาพไม่สำเร็จ: ${e.toString()}');
-        }
-      }
-
       // ตรวจสอบว่าใช้ email หรือ phone
       if (_emailController.text.isNotEmpty) {
         // วิธีที่ 1: Email + Password
@@ -300,7 +295,7 @@ class _RegisterPageState extends State<RegisterPage> {
             'username': _usernameController.text.trim(),
             'phone': _phoneController.text.trim().isNotEmpty ? _phoneController.text.trim() : null,
             'full_name': _fullNameController.text.trim().isNotEmpty ? _fullNameController.text.trim() : null,
-            'avatar_url': _avatarUrl, // เพิ่ม avatar URL
+            'avatar_url': 'pending', // ใช้ค่าชั่วคราว
           },
         );
       } else {
@@ -351,11 +346,57 @@ class _RegisterPageState extends State<RegisterPage> {
           _passwordController.text.trim(),
           data: {
             'username': _usernameController.text.trim(),
-            'phone': _phoneController.text.trim(),
+            'email': _emailController.text.trim().isNotEmpty ? _emailController.text.trim() : null,
             'full_name': _fullNameController.text.trim().isNotEmpty ? _fullNameController.text.trim() : null,
-            'avatar_url': _avatarUrl, // เพิ่ม avatar URL
+            'avatar_url': 'pending', // ใช้ค่าชั่วคราว
           },
         );
+      }
+
+      // อัปโหลดรูปภาพหลังสมัครสมาชิกสำเร็จ
+      if (_avatarBytes != null && _avatarFileName != null && response.user != null) {
+        try {
+          // แสดง loading สำหรับการอัปโหลดรูป
+          setState(() {
+            _errorMessage = 'กำลังอัปโหลดรูปภาพ...';
+          });
+
+          _avatarUrl = await ImageUploadService.uploadImageToSupabase(
+            _avatarBytes!,
+            _avatarFileName!,
+            response.user!.id,
+          );
+          
+          // อัปเดต user metadata ด้วย avatar URL จริง
+          await Supabase.instance.client.auth.updateUser(
+            UserAttributes(data: {
+              'avatar_url': _avatarUrl,
+            }),
+          );
+          
+          // แสดง success message
+          setState(() {
+            _errorMessage = null;
+          });
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('อัปโหลดรูปภาพสำเร็จแล้ว'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        } catch (e) {
+          debugPrint('Error uploading avatar: $e');
+          // ไม่ throw error แค่ log ไว้ เพราะสมัครสมาชิกสำเร็จแล้ว
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('อัปโหลดรูปภาพไม่สำเร็จ: ${e.toString()}'),
+              backgroundColor: Colors.orange,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
       }
 
       debugPrint('Registration response: ${response.user != null ? 'SUCCESS' : 'FAILED'}');
@@ -502,11 +543,6 @@ class _RegisterPageState extends State<RegisterPage> {
                                 _avatarBytes = bytes;
                                 _avatarFileName = fileName;
                                 _avatarUrl = null; // รีเซ็ต URL เมื่อเลือกรูปใหม่
-                              });
-                            },
-                            onAvatarUploaded: (url) {
-                              setState(() {
-                                _avatarUrl = url;
                               });
                             },
                           ),

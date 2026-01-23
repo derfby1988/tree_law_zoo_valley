@@ -10,13 +10,11 @@ class AvatarPicker extends StatefulWidget {
   final Function(Uint8List?, String?) onImageSelected;
   final double radius;
   final bool enabled;
-  final Function(String?)? onAvatarUploaded; // เพิ่ม callback สำหรับบอกว่า URL หลังอัปโหลด
 
   const AvatarPicker({
     super.key,
     this.currentAvatarUrl,
     required this.onImageSelected,
-    this.onAvatarUploaded, // เพิ่มพารามิเตอร์
     this.radius = 50,
     this.enabled = true,
   });
@@ -301,11 +299,8 @@ class _AvatarPickerState extends State<AvatarPicker> {
           _previewUrl = 'selected'; // ใช้ค่าพิเศษเพื่อบอกว่ามีการเลือกรูป
         });
 
-        // แจ้ง parent widget
+        // แจ้ง parent widget ว่าเลือกรูปแล้ว (แต่ยังไม่อัปโหลด)
         widget.onImageSelected(_selectedImageBytes, _selectedFileName);
-
-        // แจ้ง parent widget ว่าอัปโหลดเสร็จแล้ว
-        widget.onAvatarUploaded?.call(_previewUrl);
 
         // แสดง success message
         ScaffoldMessenger.of(context).showSnackBar(
@@ -365,9 +360,6 @@ class _AvatarPickerState extends State<AvatarPicker> {
         });
 
         widget.onImageSelected(_selectedImageBytes, _selectedFileName);
-
-        // แจ้ง parent widget ว่าอัปโหลดเสร็จแล้ว
-        widget.onAvatarUploaded?.call(avatarUrl);
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
