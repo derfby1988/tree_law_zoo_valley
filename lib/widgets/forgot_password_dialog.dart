@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:async';
 import '../reset_password_page.dart';
+import 'glass_dialog.dart';
 
 class ForgotPasswordDialog extends StatefulWidget {
   final String? initialEmail;
@@ -169,76 +170,87 @@ class _ForgotPasswordDialogState extends State<ForgotPasswordDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('ลืมรหัสผ่าน'),
-      content: Column(
+    return GlassDialog(
+      title: 'ลืมรหัสผ่าน',
+      child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('กรุณากรอกอีเมลของคุณเพื่อรับลิงก์รีเซ็ตรหัสผ่าน'),
-        const SizedBox(height: 8),
-        const Text(
-          'ตัวอย่าง: user@example.com',
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.grey,
-            fontStyle: FontStyle.italic,
+          // Content
+          const Text(
+            'กรุณากรอกอีเมลของคุณเพื่อรับลิงก์รีเซ็ตรหัสผ่าน',
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.white,
+            ),
+            textAlign: TextAlign.center,
           ),
-        ),
-          const SizedBox(height: 16),
-          TextField(
+          const SizedBox(height: 8),
+          const Text(
+            'ตัวอย่าง: user@example.com',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.white70,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+          const SizedBox(height: 20),
+          
+          // Email field
+          GlassTextField(
             controller: _emailController,
             keyboardType: TextInputType.emailAddress,
             enabled: !_isLoading,
-            decoration: InputDecoration(
-              hintText: widget.initialEmail != null && widget.initialEmail!.isNotEmpty 
-                  ? null 
-                  : 'อีเมล',
-              filled: true,
-              fillColor: Colors.grey[100],
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              errorText: _errorMessage,
-            ),
+            hintText: widget.initialEmail != null && widget.initialEmail!.isNotEmpty 
+                ? null 
+                : 'อีเมล',
+            errorText: _errorMessage,
           ),
+          
+          // Loading indicator
           if (_isLoading) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             const Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 SizedBox(
                   width: 20,
                   height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
                 ),
                 SizedBox(width: 12),
-                Text('กำลังส่ง...'),
+                Text(
+                  'กำลังส่ง...',
+                  style: TextStyle(color: Colors.white),
+                ),
               ],
             ),
           ],
         ],
       ),
       actions: [
-        TextButton(
-          onPressed: _isLoading ? null : () {
-            Navigator.of(context).pop();
-          },
-          child: const Text('ยกเลิก'),
-        ),
-        ElevatedButton(
-          onPressed: (_isLoading || _countdown > 0) ? null : _resetPassword,
-          child: _isLoading
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
-              : _countdown > 0
-                  ? Text('ส่งใหม่ (${_countdown} วินาท)')
-                  : const Text('ส่ง'),
+        Row(
+          children: [
+            Expanded(
+              child: GlassButton(
+                text: 'ยกเลิก',
+                onPressed: _isLoading ? null : () {
+                  Navigator.of(context).pop();
+                },
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: GlassButton(
+                text: _countdown > 0 ? 'ส่งใหม่ (${_countdown} วินาท)' : 'ส่ง',
+                onPressed: (_isLoading || _countdown > 0) ? null : _resetPassword,
+                isPrimary: true,
+                isLoading: _isLoading,
+              ),
+            ),
+          ],
         ),
       ],
     );

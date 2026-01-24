@@ -4,6 +4,7 @@ import '../services/supabase_service.dart';
 import '../main.dart';
 import '../utils/password_validator.dart';
 import '../widgets/password_strength_indicator.dart';
+import 'glass_dialog.dart';
 
 class ChangePasswordDialog extends StatefulWidget {
   final VoidCallback onPasswordChanged;
@@ -209,253 +210,124 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          gradient: const LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF4FC3F7),
-              Color(0xFF81C784),
-            ],
+    return GlassDialog(
+      title: 'เปลี่ยนรหัสผ่าน',
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Error message
+          if (_errorMessage != null)
+            Container(
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.9),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.error, color: Colors.white, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _errorMessage!,
+                      style: const TextStyle(color: Colors.white, fontSize: 14),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          // Current Password
+          GlassTextField(
+            controller: _currentPasswordController,
+            obscureText: _obscureCurrentPassword,
+            labelText: 'รหัสผ่านปัจจุบัน',
+            suffixIcon: _obscureCurrentPassword ? Icons.visibility : Icons.visibility_off,
+            suffixIconOnPressed: () {
+              setState(() {
+                _obscureCurrentPassword = !_obscureCurrentPassword;
+              });
+            },
+            prefixIcon: Icons.lock,
           ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Header
-            Row(
-              children: [
-                IconButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.arrow_back, color: Colors.white),
-                ),
-                const Expanded(
-                  child: Text(
-                    'เปลี่ยนรหัสผ่าน',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-                const SizedBox(width: 48), // Balance with back button
-              ],
-            ),
-            const SizedBox(height: 24),
+          const SizedBox(height: 16),
 
-            // Error message
-            if (_errorMessage != null)
-              Container(
-                padding: const EdgeInsets.all(12),
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.9),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.error, color: Colors.white, size: 20),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _errorMessage!,
-                        style: const TextStyle(color: Colors.white, fontSize: 14),
-                      ),
-                    ),
-                  ],
-                ),
+          // New Password
+          GlassTextField(
+            controller: _newPasswordController,
+            obscureText: _obscureNewPassword,
+            labelText: 'รหัสผ่านใหม่',
+            suffixIcon: _obscureNewPassword ? Icons.visibility : Icons.visibility_off,
+            suffixIconOnPressed: () {
+              setState(() {
+                _obscureNewPassword = !_obscureNewPassword;
+                _showNewPassword = !_obscureNewPassword;
+              });
+            },
+            prefixIcon: Icons.lock,
+          ),
+          
+          // Password strength indicator
+          PasswordStrengthIndicator(
+            password: _newPasswordController.text,
+          ),
+          
+          const SizedBox(height: 16),
+
+          // Confirm Password
+          if (!_showNewPassword)
+            GlassTextField(
+              controller: _confirmPasswordController,
+              obscureText: _obscureConfirmPassword,
+              labelText: 'ยืนยันรหัสผ่านใหม่',
+              suffixIcon: _obscureConfirmPassword ? Icons.visibility : Icons.visibility_off,
+              suffixIconOnPressed: () {
+                setState(() {
+                  _obscureConfirmPassword = !_obscureConfirmPassword;
+                });
+              },
+              prefixIcon: Icons.lock_outline,
+            )
+          else
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.white.withOpacity(0.5)),
               ),
-
-            // Current Password
-            TextField(
-              controller: _currentPasswordController,
-              obscureText: _obscureCurrentPassword,
-              decoration: InputDecoration(
-                labelText: 'รหัสผ่านปัจจุบัน',
-                labelStyle: const TextStyle(color: Colors.white),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Colors.white),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Colors.white),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Colors.white, width: 2),
-                ),
-                prefixIcon: const Icon(Icons.lock, color: Colors.white),
-                suffixIcon: IconButton(
-                  onPressed: () {
-                    setState(() {
-                      _obscureCurrentPassword = !_obscureCurrentPassword;
-                    });
-                  },
-                  icon: Icon(
-                    _obscureCurrentPassword ? Icons.visibility : Icons.visibility_off,
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.check_circle,
                     color: Colors.white,
+                    size: 20,
                   ),
-                ),
-              ),
-              style: const TextStyle(color: Colors.white),
-            ),
-            const SizedBox(height: 16),
-
-            // New Password
-            TextField(
-              controller: _newPasswordController,
-              obscureText: _obscureNewPassword,
-              decoration: InputDecoration(
-                labelText: 'รหัสผ่านใหม่',
-                labelStyle: const TextStyle(color: Colors.white),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Colors.white),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Colors.white),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Colors.white, width: 2),
-                ),
-                prefixIcon: const Icon(Icons.lock, color: Colors.white),
-                suffixIcon: IconButton(
-                  onPressed: () {
-                    setState(() {
-                      _obscureNewPassword = !_obscureNewPassword;
-                      _showNewPassword = !_obscureNewPassword;
-                    });
-                  },
-                  icon: Icon(
-                    _obscureNewPassword ? Icons.visibility : Icons.visibility_off,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-              style: const TextStyle(color: Colors.white),
-            ),
-            
-            // Password strength indicator
-            PasswordStrengthIndicator(
-              password: _newPasswordController.text,
-            ),
-            
-            const SizedBox(height: 16),
-
-            // Confirm Password
-            if (!_showNewPassword) ...[
-              TextField(
-                controller: _confirmPasswordController,
-                obscureText: _obscureConfirmPassword,
-                decoration: InputDecoration(
-                  labelText: 'ยืนยันรหัสผ่านใหม่',
-                  labelStyle: const TextStyle(color: Colors.white),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: Colors.white),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: Colors.white),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: Colors.white, width: 2),
-                  ),
-                  prefixIcon: const Icon(Icons.lock, color: Colors.white),
-                  suffixIcon: IconButton(
-                    onPressed: () {
-                      setState(() {
-                        _obscureConfirmPassword = !_obscureConfirmPassword;
-                      });
-                    },
-                    icon: Icon(
-                      _obscureConfirmPassword ? Icons.visibility : Icons.visibility_off,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-                style: const TextStyle(color: Colors.white),
-              ),
-            ] else ...[
-              // Show confirmation message when password is visible
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.white.withOpacity(0.5)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.check_circle,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'เห็นรหัสผ่านแล้ว ไม่ต้องยืนยันอีก',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                        ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'เห็นรหัสผ่านแล้ว ไม่ต้องยืนยันอีก',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
-                  ],
-                ),
-              ),
-            ],
-            const SizedBox(height: 24),
-
-            // Change Password Button
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _isLoading ? null : _changePassword,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: Colors.blue[600],
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
                   ),
-                ),
-                child: _isLoading
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
-                        ),
-                      )
-                    : const Text(
-                        'เปลี่ยนรหัสผ่าน',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                ],
               ),
             ),
-          ],
-        ),
+        ],
       ),
+      actions: [
+        GlassButton(
+          text: 'เปลี่ยนรหัสผ่าน',
+          onPressed: _isLoading ? null : _changePassword,
+          isPrimary: true,
+          isLoading: _isLoading,
+        ),
+      ],
     );
   }
 }

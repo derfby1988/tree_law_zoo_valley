@@ -378,7 +378,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                     const Expanded(
                       child: Center(
                         child: Text(
-                          'โปรไฟล์ของฉัน',
+                          'โปรไฟล์คุณลูกค้า',
                           style: TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.bold,
@@ -475,8 +475,9 @@ class _UserProfilePageState extends State<UserProfilePage> {
                                     if (!_isEditing) ...[
                                       _buildInfoRow('ชื่อผู้ใช้', _userData?['username'] ?? '-'),
                                       _buildInfoRow('ชื่อ-นามสกุล', _userData?['full_name'] ?? '-'),
-                                      _buildInfoRow('อีเมล', _userData?['email'] ?? '-'),
+                                      
                                       _buildInfoRow('เบอร์โทรศัพท์', _userData?['phone'] ?? '-'),
+                                      _buildInfoRow('อีเมล', _userData?['email'] ?? '-'),
                                       _buildInfoRow('วันที่สมัคร', 
                                         _userData?['created_at'] != null 
                                           ? _formatDate(_userData!['created_at'])
@@ -508,6 +509,21 @@ class _UserProfilePageState extends State<UserProfilePage> {
                                       const SizedBox(height: 15),
                                       
                                       TextField(
+                                        controller: _phoneController,
+                                        keyboardType: TextInputType.phone,
+                                        decoration: InputDecoration(
+                                          labelText: 'เบอร์โทรศัพท์',
+                                          border: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(10),
+                                          ),
+                                          prefixIcon: const Icon(Icons.phone),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 15),
+                                      
+
+
+                                                                            TextField(
                                         controller: _emailController,
                                         enabled: false, // Email ไม่สามารถเปลี่ยนได้
                                         decoration: InputDecoration(
@@ -517,19 +533,6 @@ class _UserProfilePageState extends State<UserProfilePage> {
                                           ),
                                           prefixIcon: const Icon(Icons.email),
                                           helperText: 'อีเมลไม่สามารถเปลี่ยนแปลงได้',
-                                        ),
-                                      ),
-                                      const SizedBox(height: 15),
-                                      
-                                      TextField(
-                                        controller: _phoneController,
-                                        keyboardType: TextInputType.phone,
-                                        decoration: InputDecoration(
-                                          labelText: 'เบอร์โทรศัพท์',
-                                          border: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(10),
-                                          ),
-                                          prefixIcon: const Icon(Icons.phone),
                                         ),
                                       ),
                                     ],
@@ -745,7 +748,16 @@ class _UserProfilePageState extends State<UserProfilePage> {
   String _formatDate(String dateString) {
     try {
       final date = DateTime.parse(dateString);
-      return '${date.day}/${date.month}/${date.year}';
+      final thaiYear = date.year + 543; // แปลงปี ค.ศ. เป็น พ.ศ.
+      
+      // ชื่อเดือนภาษาไทย
+      const thaiMonths = [
+        'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+        'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'
+      ];
+      
+      final monthName = thaiMonths[date.month - 1];
+      return '${date.day} $monthName $thaiYear';
     } catch (e) {
       return dateString;
     }
