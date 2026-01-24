@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'main.dart';
+import 'utils/password_validator.dart';
+import 'widgets/password_strength_indicator.dart';
 
 class ResetPasswordPage extends StatefulWidget {
   const ResetPasswordPage({super.key});
@@ -59,15 +61,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
 
   // ฟังก์ชันตรวจสอบรหัสผ่าน
   String? _validatePassword(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'กรุณากรอกรหัสผ่าน';
-    }
-    
-    if (value.length < 6) {
-      return 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร';
-    }
-    
-    return null;
+    return PasswordValidator.getValidationMessage(value ?? '', isReset: true);
   }
 
   // ฟังก์ชันตรวจสอบการยืนยันรหัสผ่าน
@@ -116,34 +110,21 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
       debugPrint('Current session: $session');
       
       if (session != null) {
-        // อัปเดตรหัสผ่านใหม่ (วิธีที่ถูกต้องสำหรับ password recovery)
+        // อัปเดตรหัสผ่านใหม่
         await Supabase.instance.client.auth.updateUser(
           UserAttributes(
             password: newPassword,
           ),
         );
+        
+        // Auto login ด้วยรหัสผ่านใหม่
+        await _autoLogin(newPassword);
+        
       } else {
         // ถ้าไม่มี session ให้ใช้วิธีอื่น
         throw Exception('ไม่พบ session กรุณาคลิกลิงก์ในอีเมลอีกครั้ง');
       }
       
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('เปลี่ยนรหัสผ่านสำเร็จ! กรุณาเข้าสู่ระบบใหม่'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 3),
-          ),
-        );
-        
-        // กลับไปหน้า login
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (context) => LoginPage(),
-          ),
-          (route) => false,
-        );
-      }
     } catch (e) {
       debugPrint('Reset password error: $e');
       if (mounted) {
@@ -156,6 +137,71 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
         setState(() {
           _isLoading = false;
         });
+      }
+    }
+  }
+  
+  /// Auto login หลังเปลี่ยนรหัสผ่าน
+  Future<void> _autoLogin(String newPassword) async {
+    try {
+      // ดู email จาก session ปัจจุบัน
+      final session = Supabase.instance.client.auth.currentSession;
+      final email = session?.user?.email;
+      
+      if (email == null) {
+        throw Exception('ไม่พบอีเมลผู้ใช้');
+      }
+      
+      // ออกจากระบบก่อน
+      await Supabase.instance.client.auth.signOut();
+      
+      // ล็อกอินใหม่ด้วยรหัสผ่านใหม่
+      final response = await Supabase.instance.client.auth.signInWithPassword(
+        email: email,
+        password: newPassword,
+      );
+      
+      debugPrint('Auto login successful: ${response.user?.email}');
+      
+      if (mounted) {
+        // แสดงข้อความแจ้งเตือน
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('เปลี่ยนรหัสผ่านสำเร็จ! กำลังเข้าสู่ระบบ...'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        
+        // รอ 2 วินาทีแล้วไปหน้า home
+        await Future.delayed(const Duration(seconds: 2));
+        
+        // ไปหน้า home โดยตรง
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (context) => const MyHomePage(isGuestMode: false, title: 'TREE LAW ZOO valley'),
+          ),
+          (route) => false,
+        );
+      }
+    } catch (e) {
+      debugPrint('Auto login error: $e');
+      if (mounted) {
+        // ถ้า auto login ไม่สำเร็จ ให้ไปหน้า login
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('เปลี่ยนรหัสผ่านสำเร็จ! กรุณาเข้าสู่ระบบใหม่'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 3),
+          ),
+        );
+        
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (context) => const LoginPage(),
+          ),
+          (route) => false,
+        );
       }
     }
   }
@@ -272,6 +318,12 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                             ),
                           ),
                         ),
+                        
+                        // Password strength indicator
+                        PasswordStrengthIndicator(
+                          password: _newPasswordController.text,
+                        ),
+                        
                         const SizedBox(height: 20),
                         
                         // Confirm password field

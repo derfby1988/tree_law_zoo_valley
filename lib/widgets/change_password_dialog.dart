@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
 import '../main.dart';
+import '../utils/password_validator.dart';
+import '../widgets/password_strength_indicator.dart';
 
 class ChangePasswordDialog extends StatefulWidget {
   final VoidCallback onPasswordChanged;
@@ -42,15 +44,7 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
   }
 
   String? _validateNewPassword(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'กรุณากรอกรหัสผ่านใหม่';
-    }
-    
-    if (value.length < 6) {
-      return 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร';
-    }
-    
-    return null;
+    return PasswordValidator.getValidationMessage(value ?? '');
   }
 
   String? _validateConfirmPassword(String? value) {
@@ -103,51 +97,112 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
       }
 
       // ลองล็อกอินด้วยรหัสผ่านปัจจุบันเพื่อยืนยัน
-      await SupabaseService.client.auth.signInWithPassword(
-        email: currentUser.email!,
-        password: _currentPasswordController.text,
-      );
+      try {
+        await SupabaseService.client.auth.signInWithPassword(
+          email: currentUser.email!,
+          password: _currentPasswordController.text,
+        );
+      } catch (e) {
+        // ถ้ารหัสผ่านปัจจุบันผิด ให้แสดง error ที่เหมาะสม
+        if (e.toString().contains('Invalid login credentials')) {
+          throw Exception('รหัสผ่านปัจจุบันไม่ถูกต้อง');
+        } else {
+          throw Exception('ไม่สามารถยืนยันรหัสผ่านปัจจุบันได้: ${e.toString()}');
+        }
+      }
 
       // ถ้าล็อกอินสำเร็จ ให้เปลี่ยนรหัสผ่าน
       await SupabaseService.client.auth.updateUser(
         UserAttributes(password: _newPasswordController.text),
       );
 
-      // แสดงข้อความแจ้งเตือน
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('เปลี่ยนรหัสผ่านสำเร็จแล้ว กรุณาเข้าสู่ระบบใหม่อีกครั้ง'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 3),
-        ),
-      );
+      // Auto login ด้วยรหัสผ่านใหม่
+      await _autoLogin(_newPasswordController.text);
 
-      // รอ 3 วินาทีก่อนออกจากระบบ
-      await Future.delayed(const Duration(seconds: 3));
-
-      // ออกจากระบบ
-      await SupabaseService.client.auth.signOut();
-
-      // ปิด dialog
-      Navigator.of(context).pop();
-
-      // ไปหน้าล็อกอินโดยตรง (ไม่พึ่ง auth state change)
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (context) => const LoginPage(),
-        ),
-        (route) => false,
-      );
-
-      widget.onPasswordChanged();
     } catch (e) {
       setState(() {
-        _errorMessage = 'เกิดข้อผิดพลาด: ${e.toString()}';
+        _errorMessage = e.toString().replaceAll('Exception: ', '');
       });
     } finally {
       setState(() {
         _isLoading = false;
       });
+    }
+  }
+  
+  /// Auto login หลังเปลี่ยนรหัสผ่าน
+  Future<void> _autoLogin(String newPassword) async {
+    try {
+      // ดู email จาก user ปัจจุบัน
+      final currentUser = SupabaseService.currentUser;
+      final email = currentUser?.email;
+      
+      if (email == null) {
+        throw Exception('ไม่พบอีเมลผู้ใช้');
+      }
+      
+      // ออกจากระบบก่อน
+      await SupabaseService.client.auth.signOut();
+      
+      // ล็อกอินใหม่ด้วยรหัสผ่านใหม่
+      final response = await SupabaseService.client.auth.signInWithPassword(
+        email: email,
+        password: newPassword,
+      );
+      
+      debugPrint('Auto login successful: ${response.user?.email}');
+      
+      if (mounted) {
+        // แสดงข้อความแจ้งเตือน
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('เปลี่ยนรหัสผ่านสำเร็จ! กำลังเข้าสู่ระบบ...'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        
+        // รอ 2 วินาที
+        await Future.delayed(const Duration(seconds: 2));
+        
+        // ปิด dialog
+        Navigator.of(context).pop();
+        
+        // ไปหน้า home โดยตรง
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (context) => const MyHomePage(isGuestMode: false, title: 'TREE LAW ZOO valley'),
+          ),
+          (route) => false,
+        );
+        
+        widget.onPasswordChanged();
+      }
+    } catch (e) {
+      debugPrint('Auto login error: $e');
+      if (mounted) {
+        // ถ้า auto login ไม่สำเร็จ ให้ไปหน้า login
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('เปลี่ยนรหัสผ่านสำเร็จ! กรุณาเข้าสู่ระบบใหม่'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 3),
+          ),
+        );
+        
+        // ปิด dialog
+        Navigator.of(context).pop();
+        
+        // ไปหน้า login
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (context) => const LoginPage(),
+          ),
+          (route) => false,
+        );
+        
+        widget.onPasswordChanged();
+      }
     }
   }
 
@@ -289,6 +344,12 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
               ),
               style: const TextStyle(color: Colors.white),
             ),
+            
+            // Password strength indicator
+            PasswordStrengthIndicator(
+              password: _newPasswordController.text,
+            ),
+            
             const SizedBox(height: 16),
 
             // Confirm Password
