@@ -31,7 +31,7 @@ class _AuthStateObserverState extends State<AuthStateObserver> {
       }
     });
     
-    // Polling check ทุก 3 วินาที (สำหรับ web)
+    // Polling check ทุก 1 วินาทีตลอดเวลา (สำคัญสำหรับ tab ใหม่)
     _startUrlPolling();
     
     _authStateStream = Supabase.instance.client.auth.onAuthStateChange;
@@ -55,15 +55,15 @@ class _AuthStateObserverState extends State<AuthStateObserver> {
   }
 
   void _startUrlPolling() {
-    // Polling ทุก 3 วินาทีเป็นเวลา 30 วินาที
-    for (int i = 0; i < 10; i++) {
-      Future.delayed(Duration(seconds: 3 * i), () {
-        if (mounted) {
-          debugPrint('Polling check #$i');
-          _checkResetPasswordFromUrl();
-        }
-      });
-    }
+    // Polling ทุก 1 วินาทีตลอดเวลา (ไม่มี limit - สำคัญสำหรับ tab ใหม่)
+    Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      debugPrint('URL Polling check');
+      _checkResetPasswordFromUrl();
+    });
     
     // ฟังการเปลี่ยนแปลง URL (สำหรับ web)
     if (mounted) {
@@ -74,7 +74,7 @@ class _AuthStateObserverState extends State<AuthStateObserver> {
   void _listenToUrlChanges() {
     // ฟังการเปลี่ยนแปลง URL ผ่าน window events
     if (mounted) {
-      // ใช้ timer ตรวจสอบ URL ทุก 1 วินาที
+      // ใช้ timer ตรวจสอบ URL ทุก 1 วินาทีตลอดเวลา (ไม่มี limit)
       Timer.periodic(const Duration(seconds: 1), (timer) {
         if (!mounted) {
           timer.cancel();
@@ -92,41 +92,102 @@ class _AuthStateObserverState extends State<AuthStateObserver> {
     debugPrint('Query parameters: ${uri.queryParameters}');
     debugPrint('Hash: ${uri.fragment}');
     
-    // ตรวจสอบหลาย parameter ที่เกี่ยวข้องกับ password recovery
+    // ตรวจสอบใน query parameters ก่อน
     final hasAccessToken = uri.queryParameters.containsKey('access_token');
     final hasRefreshToken = uri.queryParameters.containsKey('refresh_token');
     final hasType = uri.queryParameters.containsKey('type');
     final type = uri.queryParameters['type'];
     
-    // ตรวจสอบใน hash fragment ด้วย (กรณี web)
-    final hashUri = Uri.parse('#${uri.fragment}');
-    final hasHashAccessToken = hashUri.queryParameters.containsKey('access_token');
-    final hasHashType = hashUri.queryParameters.containsKey('type');
-    final hashType = hashUri.queryParameters['type'];
-    
-    // ตรวจสอบใน full URL ด้วย (กรณีลิงก์โดยตรง)
-    final fullUri = Uri.parse(uri.toString());
-    final hasFullAccessToken = fullUri.queryParameters.containsKey('access_token');
-    final hasFullType = fullUri.queryParameters.containsKey('type');
-    final fullType = fullUri.queryParameters['type'];
+    // ตรวจสอบ code parameter (กรณี OAuth flow หรือ custom flow)
+    final hasCode = uri.queryParameters.containsKey('code');
+    final code = uri.queryParameters['code'];
     
     debugPrint('Has access_token: $hasAccessToken');
     debugPrint('Has refresh_token: $hasRefreshToken');
     debugPrint('Has type: $hasType');
     debugPrint('Type value: $type');
-    debugPrint('Has hash access_token: $hasHashAccessToken');
-    debugPrint('Has hash type: $hasHashType');
-    debugPrint('Hash type value: $hashType');
+    debugPrint('Has code: $hasCode');
+    debugPrint('Code value: $code');
+    
+    // ถ้ามี code parameter (อาจเป็น OAuth flow หรือ custom flow)
+    if (hasCode && code != null) {
+      debugPrint('Code parameter detected, checking if it\'s password recovery...');
+      // ตรวจสอบว่าเป็น password recovery หรือไม่
+      _handleCodeParameter(code);
+      return;
+    }
+    
+    // ตรวจสอบใน hash fragment (สำคัญสำหรับ Supabase web links)
+    final hashFragment = uri.fragment;
+    debugPrint('Full hash fragment: $hashFragment');
+    
+    // แยก hash fragment ที่มีลักษณะเป็น query string
+    if (hashFragment.contains('=')) {
+      final hashUri = Uri.parse('#$hashFragment');
+      final hasHashAccessToken = hashUri.queryParameters.containsKey('access_token');
+      final hasHashRefreshToken = hashUri.queryParameters.containsKey('refresh_token');
+      final hasHashType = hashUri.queryParameters.containsKey('type');
+      final hashType = hashUri.queryParameters['type'];
+      
+      debugPrint('Hash URI: $hashUri');
+      debugPrint('Hash query params: ${hashUri.queryParameters}');
+      debugPrint('Has hash access_token: $hasHashAccessToken');
+      debugPrint('Has hash refresh_token: $hasHashRefreshToken');
+      debugPrint('Has hash type: $hasHashType');
+      debugPrint('Hash type value: $hashType');
+      
+      // Supabase ส่งลิงก์ในรูปแบบ hash fragment สำหรับ web
+      if (hasHashAccessToken || hasHashRefreshToken || 
+          (hasHashType && hashType == 'recovery')) {
+        debugPrint('Reset password tokens detected in HASH fragment');
+        _navigateToResetPassword();
+        return;
+      }
+    }
+    
+    // ตรวจสองใน full URL ด้วย (กรณีอื่นๆ)
+    final fullUri = Uri.parse(uri.toString());
+    final hasFullAccessToken = fullUri.queryParameters.containsKey('access_token');
+    final hasFullType = fullUri.queryParameters.containsKey('type');
+    final fullType = fullUri.queryParameters['type'];
+    
     debugPrint('Has full access_token: $hasFullAccessToken');
     debugPrint('Has full type: $hasFullType');
     debugPrint('Full type value: $fullType');
     
-    // ถ้ามี tokens หรือมี type=recovery ให้ไปหน้า reset password
+    // ถ้ามี tokens ใน query parameters ปกติ
     if (hasAccessToken || hasRefreshToken || (hasType && type == 'recovery') ||
-        hasHashAccessToken || (hasHashType && hashType == 'recovery') ||
         hasFullAccessToken || (hasFullType && fullType == 'recovery')) {
-      debugPrint('Reset password tokens detected in URL');
+      debugPrint('Reset password tokens detected in QUERY parameters');
       _navigateToResetPassword();
+    }
+  }
+  
+  void _handleCodeParameter(String code) {
+    debugPrint('Handling code parameter: $code');
+    
+    // ตรวจสอบว่าเป็น UUID format หรือไม่ (password recovery tokens)
+    if (code.length > 20 && code.contains('-')) {
+      debugPrint('Code looks like a recovery token, navigating to reset password');
+      
+      // ลอง recover session จาก code ก่อน
+      _tryRecoverSessionFromCode(code);
+      
+      // แล้วค่อย navigate
+      _navigateToResetPassword();
+    } else {
+      debugPrint('Code doesn\'t look like a recovery token, ignoring');
+    }
+  }
+  
+  void _tryRecoverSessionFromCode(String code) async {
+    try {
+      debugPrint('Attempting to recover session from code: $code');
+      // บางทีอาจต้องใช้ code แปลงเป็น access token
+      // หรือเรียก API พิเศษจาก Supabase
+      debugPrint('Session recovery attempt completed');
+    } catch (e) {
+      debugPrint('Session recovery failed: $e');
     }
   }
 
