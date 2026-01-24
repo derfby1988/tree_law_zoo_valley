@@ -27,6 +27,7 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
   bool _obscureCurrentPassword = true;
   bool _obscureNewPassword = true;
   bool _obscureConfirmPassword = true;
+  bool _showNewPassword = false;
 
   @override
   void dispose() {
@@ -77,7 +78,7 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
     }
 
     final confirmPasswordError = _validateConfirmPassword(_confirmPasswordController.text);
-    if (confirmPasswordError != null) {
+    if (confirmPasswordError != null && !_showNewPassword) {
       setState(() {
         _errorMessage = confirmPasswordError;
       });
@@ -334,6 +335,7 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
                   onPressed: () {
                     setState(() {
                       _obscureNewPassword = !_obscureNewPassword;
+                      _showNewPassword = !_obscureNewPassword;
                     });
                   },
                   icon: Icon(
@@ -353,39 +355,71 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
             const SizedBox(height: 16),
 
             // Confirm Password
-            TextField(
-              controller: _confirmPasswordController,
-              obscureText: _obscureConfirmPassword,
-              decoration: InputDecoration(
-                labelText: 'ยืนยันรหัสผ่านใหม่',
-                labelStyle: const TextStyle(color: Colors.white),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Colors.white),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Colors.white),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Colors.white, width: 2),
-                ),
-                prefixIcon: const Icon(Icons.lock, color: Colors.white),
-                suffixIcon: IconButton(
-                  onPressed: () {
-                    setState(() {
-                      _obscureConfirmPassword = !_obscureConfirmPassword;
-                    });
-                  },
-                  icon: Icon(
-                    _obscureConfirmPassword ? Icons.visibility : Icons.visibility_off,
-                    color: Colors.white,
+            if (!_showNewPassword) ...[
+              TextField(
+                controller: _confirmPasswordController,
+                obscureText: _obscureConfirmPassword,
+                decoration: InputDecoration(
+                  labelText: 'ยืนยันรหัสผ่านใหม่',
+                  labelStyle: const TextStyle(color: Colors.white),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: const BorderSide(color: Colors.white),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: const BorderSide(color: Colors.white),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: const BorderSide(color: Colors.white, width: 2),
+                  ),
+                  prefixIcon: const Icon(Icons.lock, color: Colors.white),
+                  suffixIcon: IconButton(
+                    onPressed: () {
+                      setState(() {
+                        _obscureConfirmPassword = !_obscureConfirmPassword;
+                      });
+                    },
+                    icon: Icon(
+                      _obscureConfirmPassword ? Icons.visibility : Icons.visibility_off,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
+                style: const TextStyle(color: Colors.white),
               ),
-              style: const TextStyle(color: Colors.white),
-            ),
+            ] else ...[
+              // Show confirmation message when password is visible
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.white.withOpacity(0.5)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.check_circle,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'เห็นรหัสผ่านแล้ว ไม่ต้องยืนยันอีก',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 24),
 
             // Change Password Button

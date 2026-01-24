@@ -132,7 +132,7 @@ class _AvatarPickerState extends State<AvatarPicker> {
 
         // Instructions
         Text(
-          widget.enabled ? 'แตะเพื่อเลือกรูปโปรไฟล์ (ไม่จำเป็น)' : 'รูปโปรไฟล์',
+          widget.enabled ? 'แตะเพื่อเลือกรูปโปรไฟล์ (ไม่บังคับ)' : 'รูปโปรไฟล์',
           style: TextStyle(
             fontSize: 12,
             color: Colors.grey[600],

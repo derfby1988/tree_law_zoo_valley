@@ -25,11 +25,11 @@ bool isValidEmailOrPhone(String input) {
 
 String? validateEmailOrPhone(String? value) {
   if (value == null || value.isEmpty) {
-    return 'กรุณากรอกอีเมล หรือ เบอร์โทรศัพท์ หรือ ชื่อเข้าใช้งาน';
+    return 'กรุณากรอก เบอร์โทรศัพท์ หรือ ชื่อเข้าใช้งาน หรือ อีเมล';
   }
   
   if (!isValidEmailOrPhone(value)) {
-    return 'กรุณากรอกอีเมลหรือเบอร์โทรศัพท์ให้ถูกต้อง';
+    return 'กรุณากรอกเบอร์โทรศัพท์ หรือ ชื่อเข้าใช้งาน หรือ อีเมล ให้ถูกต้อง';
   }
   
   return null;
@@ -341,7 +341,7 @@ class _MyHomePageState extends State<MyHomePage> {
                         ),
                       ),
                     if (widget.isGuestMode)
-                      TextSpan(text: '  เพื่อติดตามคิว / สถานะการจอง'),
+                      TextSpan(text: '  เพื่อติดตามคิว / สถานะการจอง / รับสิทธิพิเศษ'),
                   ],
                 ),
               ),
@@ -553,14 +553,14 @@ class _MyHomePageState extends State<MyHomePage> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
-                'ติดต่อ ผู้กองเดร์ฟ(CEO) : ',
+                'ติดต่อ CEO : ',
                 style: TextStyle(
                   color: Colors.white.withOpacity(0.8),
                   fontSize: 14,
                 ),
               ),
               Text(
-                '08-3010-3050',
+                'treelawzoo@gmail.com',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 14,
@@ -907,7 +907,7 @@ class _LoginPageState extends State<LoginPage> {
                           controller: _emailController,
                           keyboardType: TextInputType.emailAddress,
                           decoration: InputDecoration(
-                            hintText: 'อีเมล, ชื่อผู้ใช้, หรือเบอร์โทรศัพท์',
+                            hintText: 'เบอร์โทรศัพท์ | อีเมล | ชื่อผู้ใช้',
                             filled: true,
                             fillColor: Colors.grey[200],
                             border: OutlineInputBorder(
@@ -998,7 +998,7 @@ class _LoginPageState extends State<LoginPage> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             const Text(
-                              'ยังไม่มีบัญชี? ',
+                              'หากยังไม่เคยลงทะเบียน กรุณา  ',
                               style: TextStyle(color: Colors.grey),
                             ),
                             GestureDetector(
@@ -1012,7 +1012,7 @@ class _LoginPageState extends State<LoginPage> {
                               child: Text(
                                 'สมัครสมาชิก',
                                 style: TextStyle(
-                                  color: Colors.blue[600],
+                                  color: Colors.green[600],
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
@@ -1027,11 +1027,11 @@ class _LoginPageState extends State<LoginPage> {
                           onTap: () {
                             showDialog(
                               context: context,
-                              builder: (context) => const ForgotPasswordDialog(),
+                              builder: (context) => ForgotPasswordDialog(initialEmail: _emailController.text),
                             );
                           },
                           child: Text(
-                            'ลืมรหัสผ่าน?',
+                            'ลืมรหัสผ่าน !',
                             style: TextStyle(
                               color: Colors.blue[600],
                               fontWeight: FontWeight.bold,
