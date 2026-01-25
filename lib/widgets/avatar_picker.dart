@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../services/image_upload_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -29,11 +30,26 @@ class _AvatarPickerState extends State<AvatarPicker> {
   String? _previewUrl;
   bool _isUploading = false;
   double _uploadProgress = 0.0;
+  bool _isLoadingImage = false;
 
   @override
   void initState() {
     super.initState();
     _previewUrl = widget.currentAvatarUrl;
+    // ถ้ามี current avatar URL ให้โหลดรูป
+    if (_previewUrl != null && _previewUrl!.startsWith('http')) {
+      setState(() {
+        _isLoadingImage = true;
+      });
+      // จำลองการโหลดเพื่อแสดง progress
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          setState(() {
+            _isLoadingImage = false;
+          });
+        }
+      });
+    }
   }
 
   @override
@@ -46,22 +62,107 @@ class _AvatarPickerState extends State<AvatarPicker> {
           child: Stack(
             children: [
               // Avatar Circle
-              CircleAvatar(
-                radius: widget.radius,
-                backgroundColor: Colors.grey[300],
-                backgroundImage: _previewUrl != null
-                    ? _previewUrl!.startsWith('http')
-                        ? NetworkImage(_previewUrl!)
-                        : MemoryImage(_selectedImageBytes!)
-                    : null,
-                child: _previewUrl == null
-                    ? Icon(
+              if (_isLoadingImage || _isUploading)
+                // Loading state
+                Container(
+                  width: widget.radius * 2,
+                  height: widget.radius * 2,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    shape: BoxShape.circle,
+                  ),
+                  child: Stack(
+                    children: [
+                      CircleAvatar(
+                        radius: widget.radius,
+                        backgroundColor: Colors.grey[300],
+                        child: Icon(
+                          Icons.person,
+                          size: widget.radius * 0.8,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                      if (_isUploading)
+                        Positioned.fill(
+                          child: CircularProgressIndicator(
+                            value: _uploadProgress,
+                            backgroundColor: Colors.white.withOpacity(0.3),
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                            strokeWidth: 3,
+                          ),
+                        )
+                      else
+                        Positioned.fill(
+                          child: CircularProgressIndicator(
+                            strokeWidth: 3,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                          ),
+                        ),
+                    ],
+                  ),
+                )
+              else if (_previewUrl != null && _previewUrl!.startsWith('http'))
+                // Network image with progress
+                ClipOval(
+                  child: CachedNetworkImage(
+                    imageUrl: _previewUrl!,
+                    width: widget.radius * 2,
+                    height: widget.radius * 2,
+                    fit: BoxFit.cover,
+                    placeholder: (context, url) => Container(
+                      width: widget.radius * 2,
+                      height: widget.radius * 2,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        shape: BoxShape.circle,
+                      ),
+                      child: Stack(
+                        children: [
+                          CircleAvatar(
+                            radius: widget.radius,
+                            backgroundColor: Colors.grey[300],
+                            child: Icon(
+                              Icons.person,
+                              size: widget.radius * 0.8,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                          Positioned.fill(
+                            child: CircularProgressIndicator(
+                              strokeWidth: 3,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    errorWidget: (context, url, error) => CircleAvatar(
+                      radius: widget.radius,
+                      backgroundColor: Colors.grey[300],
+                      child: Icon(
                         Icons.person,
                         size: widget.radius * 0.8,
                         color: Colors.grey[600],
-                      )
-                    : null,
-              ),
+                      ),
+                    ),
+                  ),
+                )
+              else
+                // Default or memory image
+                CircleAvatar(
+                  radius: widget.radius,
+                  backgroundColor: Colors.grey[300],
+                  backgroundImage: _selectedImageBytes != null
+                      ? MemoryImage(_selectedImageBytes!)
+                      : null,
+                  child: _previewUrl == null && _selectedImageBytes == null
+                      ? Icon(
+                          Icons.person,
+                          size: widget.radius * 0.8,
+                          color: Colors.grey[600],
+                        )
+                      : null,
+                ),
 
               // Upload Progress Overlay
               if (_isUploading)

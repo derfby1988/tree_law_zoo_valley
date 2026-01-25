@@ -14,24 +14,30 @@ class AuthStateObserver extends StatefulWidget {
 
 class _AuthStateObserverState extends State<AuthStateObserver> {
   late final Stream<AuthState> _authStateStream;
+  Timer? _urlCheckTimer;
+  bool _hasCheckedUrl = false;
 
   @override
   void initState() {
     super.initState();
     
-    // ตรวจสอบ URL parameters ตอนเริ่มต้น
+    // ตรวจสอบ URL parameters ตอนเริ่มต้น (ครั้งเดียว)
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkResetPasswordFromUrl();
-    });
-    
-    // ตรวจสอบซ้ำหลัง 2 วินาที (กรณี URL โหลดช้า)
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) {
+      if (!_hasCheckedUrl) {
         _checkResetPasswordFromUrl();
+        _hasCheckedUrl = true;
       }
     });
     
-    // Polling check ทุก 3 วินาที (สำหรับ web)
+    // ตรวจสอบซ้ำเพียงครั้งเดียว (กรณี URL โหลดช้า)
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted && !_hasCheckedUrl) {
+        _checkResetPasswordFromUrl();
+        _hasCheckedUrl = true;
+      }
+    });
+    
+    // ลด polling ให้น้อยลง
     _startUrlPolling();
     
     _authStateStream = Supabase.instance.client.auth.onAuthStateChange;
@@ -49,40 +55,54 @@ class _AuthStateObserverState extends State<AuthStateObserver> {
       // ตรวจสอบ signedIn พร้อม session (กรณี recovery ทำงาน)
       if (authState.event == AuthChangeEvent.signedIn && authState.session != null) {
         debugPrint('SignedIn event detected, checking for recovery...');
-        _checkResetPasswordFromUrl();
+        if (!_hasCheckedUrl) {
+          _checkResetPasswordFromUrl();
+          _hasCheckedUrl = true;
+        }
       }
     });
   }
 
+  @override
+  void dispose() {
+    _urlCheckTimer?.cancel();
+    super.dispose();
+  }
+
   void _startUrlPolling() {
-    // Polling ทุก 3 วินาทีเป็นเวลา 30 วินาที
-    for (int i = 0; i < 10; i++) {
+    // Polling เพียง 3 ครั้ง (ทุก 3 วินาที) และหยุด
+    for (int i = 0; i < 3; i++) {
       Future.delayed(Duration(seconds: 3 * i), () {
-        if (mounted) {
+        if (mounted && !_hasCheckedUrl) {
           debugPrint('Polling check #$i');
           _checkResetPasswordFromUrl();
+          if (i == 2) {
+            _hasCheckedUrl = true; // หยุดหลังจากครั้งที่ 3
+          }
         }
       });
     }
     
-    // ฟังการเปลี่ยนแปลง URL (สำหรับ web)
+    // ฟังการเปลี่ยนแปลง URL (สำหรับ web) - ใช้ timer น้อยลง
     if (mounted) {
       _listenToUrlChanges();
     }
   }
 
   void _listenToUrlChanges() {
-    // ฟังการเปลี่ยนแปลง URL ผ่าน window events
-    if (mounted) {
-      // ใช้ timer ตรวจสอบ URL ทุก 1 วินาที
-      Timer.periodic(const Duration(seconds: 1), (timer) {
-        if (!mounted) {
-          timer.cancel();
-          return;
-        }
+    // ฟังการเปลี่ยนแปลง URL ผ่าน window events - ใช้ timer น้อยลง
+    _urlCheckTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      // ตรวจสอบเฉพาะถ้ายังไม่ได้ตรวจสอบ
+      if (!_hasCheckedUrl) {
         _checkResetPasswordFromUrl();
-      });
-    }
+        _hasCheckedUrl = true;
+        timer.cancel(); // หยุดหลังจากตรวจสอบครั้งแรก
+      }
+    });
   }
 
   void _checkResetPasswordFromUrl() {

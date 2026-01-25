@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/foundation.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/supabase_service.dart';
 import 'dart:async';
@@ -23,6 +24,7 @@ class HomeAvatar extends StatefulWidget {
 
 class _HomeAvatarState extends State<HomeAvatar> {
   String? _avatarUrl;
+  bool _isLoading = false;
   StreamSubscription<AuthState>? _authSubscription;
 
   @override
@@ -65,6 +67,10 @@ class _HomeAvatarState extends State<HomeAvatar> {
   Future<void> _loadUserAvatar() async {
     if (widget.isGuestMode) return;
 
+    setState(() {
+      _isLoading = true;
+    });
+
     try {
       final currentUser = SupabaseService.currentUser;
       if (currentUser?.userMetadata != null) {
@@ -88,7 +94,11 @@ class _HomeAvatarState extends State<HomeAvatar> {
         }
       }
     } catch (e) {
-      debugPrint('Error loading user avatar: $e');
+      debugPrint('HomeAvatar: Error loading avatar: $e');
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -132,36 +142,72 @@ class _HomeAvatarState extends State<HomeAvatar> {
   }
 
   Widget _buildAvatarContent() {
-    // ถ้ามี avatar URL ให้ใช้ NetworkImage แทน CachedNetworkImage ชั่วคราว
+    // ถ้ากำลังโหลดให้แสดง progress
+    if (_isLoading) {
+      return Stack(
+        children: [
+          CircleAvatar(
+            radius: widget.radius,
+            backgroundColor: Colors.white.withOpacity(0.9),
+            child: Icon(
+              Icons.person,
+              color: Colors.blue[600],
+              size: widget.radius,
+            ),
+          ),
+          Positioned.fill(
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.blue[600]!),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // ถ้ามี avatar URL ให้ใช้ CachedNetworkImage
     if (_shouldUseCachedNetworkImage()) {
       final imageUrl = _getOptimizedAvatarUrl(_avatarUrl!);
       debugPrint('HomeAvatar: Loading image from: $imageUrl');
       
       return ClipOval(
-        child: Image.network(
-          imageUrl,
+        child: CachedNetworkImage(
+          imageUrl: imageUrl,
           width: widget.radius * 2,
           height: widget.radius * 2,
           fit: BoxFit.cover,
-          // ไม่ใช้ cache เพื่อให้โหลดรูปใหม่ทุกครั้ง
-          cacheWidth: null,
-          cacheHeight: null,
-          loadingBuilder: (context, child, loadingProgress) {
-            if (loadingProgress == null) return child;
-            return Icon(
+          placeholder: (context, url) => Container(
+            width: widget.radius * 2,
+            height: widget.radius * 2,
+            child: Stack(
+              children: [
+                CircleAvatar(
+                  radius: widget.radius,
+                  backgroundColor: Colors.white.withOpacity(0.9),
+                  child: Icon(
+                    Icons.person,
+                    color: Colors.blue[600],
+                    size: widget.radius,
+                  ),
+                ),
+                Positioned.fill(
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.blue[600]!),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          errorWidget: (context, url, error) => CircleAvatar(
+            radius: widget.radius,
+            backgroundColor: Colors.white.withOpacity(0.9),
+            child: Icon(
               Icons.person,
               color: Colors.blue[600],
               size: widget.radius,
-            );
-          },
-          errorBuilder: (context, error, stackTrace) {
-            debugPrint('HomeAvatar NetworkImage error: $error');
-            return Icon(
-              Icons.person,
-              color: Colors.blue[600],
-              size: widget.radius,
-            );
-          },
+            ),
+          ),
         ),
       );
     }

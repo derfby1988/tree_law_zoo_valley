@@ -74,12 +74,20 @@ google-services.json
 GoogleService-Info.plist
 
 # Database files (มีข้อมูลจริง)
-# *.sql - REMOVED to allow SQL files in git
+*.sql
 
-# Media files - allow specific folders
-# assets/images/ - uncomment if you want to ignore assets folder
-# temp/
-# uploads/
+# Media files (รูปภาพและวิดีโอ)
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.svg
+*.webp
+*.mp4
+*.avi
+*.mov
+*.mp3
+*.wav
 
 # Temporary files
 *.tmp
@@ -88,4 +96,4 @@ GoogleService-Info.plist
 *.backup
 
 # Lock files (บางคนชอบ ignore บางคนไม่)
-pubspec.lock
+# pubspec.lock

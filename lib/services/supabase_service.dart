@@ -1,22 +1,11 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class SupabaseService {
-  static String get _supabaseUrl => dotenv.env['SUPABASE_URL'] ?? 'https://otdspdcxzdygkfahyfpg.supabase.co';
-  static String get _supabaseAnonKey => dotenv.env['SUPABASE_ANON_KEY'] ?? 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im90ZHNwZGN4emR5Z2tmYWh5ZnBnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgzNzE1MjgsImV4cCI6MjA4Mzk0NzUyOH0.z9wUxKYHHgmAEqHKRbxwV_FLWYx9330WzyH875H91r0';
+  static const String _supabaseUrl = 'https://otdspdcxzdygkfahyfpg.supabase.co';
+  static const String _supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im90ZHNwZGN4emR5Z2tmYWh5ZnBnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgzNzE1MjgsImV4cCI6MjA4Mzk0NzUyOH0.z9wUxKYHHgmAEqHKRbxwV_FLWYx9330WzyH875H91r0';
 
   static Future<void> initialize() async {
-    // Load environment variables
-    try {
-      await dotenv.load(fileName: 'config.env');
-      debugPrint('Environment loaded successfully');
-      debugPrint('Supabase URL: ${_supabaseUrl.substring(0, 20)}...');
-    } catch (e) {
-      debugPrint('Error loading environment: $e');
-      debugPrint('Using fallback values');
-    }
-
     await Supabase.initialize(
       url: _supabaseUrl,
       anonKey: _supabaseAnonKey,

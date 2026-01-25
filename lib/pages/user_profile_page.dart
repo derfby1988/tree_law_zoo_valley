@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/foundation.dart';
 import '../services/supabase_service.dart';
 import '../widgets/change_password_dialog.dart';
 import '../widgets/avatar_picker.dart';
+import '../widgets/glass_dialog.dart';
 import 'dart:typed_data';
 import 'package:image_picker/image_picker.dart';
-import 'package:flutter/foundation.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 class UserProfilePage extends StatefulWidget {
@@ -28,6 +29,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
   Map<String, dynamic>? _userData;
   
   // Avatar related
+  bool _isAvatarLoading = false;
   Uint8List? _avatarBytes;
   String? _avatarFileName;
   String? _avatarUrl;
@@ -38,9 +40,9 @@ class _UserProfilePageState extends State<UserProfilePage> {
     _loadUserData();
   }
 
-  /// ตรวจสอบว่าควรแสดง default icon หรือไม่
-  bool _shouldShowDefaultIcon() {
-    return _avatarUrl == null && _avatarBytes == null;
+  /// ตรวจสอบว่ากำลังโหลดรูปจาก Supabase หรือไม่
+  bool _shouldShowAvatarLoading() {
+    return _isAvatarLoading;
   }
 
   /// ดูรูปภาพ Avatar ที่เหมาะสม (พร้อม caching)
@@ -71,6 +73,16 @@ class _UserProfilePageState extends State<UserProfilePage> {
     
     // 3. ไม่มีรูป
     return null;
+  }
+
+  /// ตรวจสอบว่ามีรูป avatar หรือไม่
+  bool _hasAvatar() {
+    return _avatarUrl != null || _avatarBytes != null;
+  }
+
+  /// ตรวจสอบว่าควรแสดง default icon หรือไม่
+  bool _shouldShowDefaultIcon() {
+    return _avatarUrl == null && _avatarBytes == null;
   }
 
   /// ตรวจสอบว่าควรใช้ CachedNetworkImage หรือไม่
@@ -146,6 +158,10 @@ class _UserProfilePageState extends State<UserProfilePage> {
 
       // 1. ลองโหลดจาก auth.users metadata ก่อน (มี avatar_url ล่าสุด)
       try {
+        // เริ่ม loading สำหรับ avatar
+        setState(() {
+          _isAvatarLoading = true;
+        });
         // ใช้ currentUser.userMetadata แทน admin API
         final metadata = currentUser.userMetadata ?? {};
         debugPrint('Found auth metadata: $metadata');
@@ -174,10 +190,20 @@ class _UserProfilePageState extends State<UserProfilePage> {
         }
       } catch (e) {
         debugPrint('Error loading auth metadata: $e');
+      } finally {
+        // หยุด loading สำหรับ avatar
+        setState(() {
+          _isAvatarLoading = false;
+        });
       }
 
       // 2. ถ้าไม่มีใน auth หรือ avatar_url เป็น pending ให้ลองจาก public.users
       debugPrint('Trying to load from public.users...');
+      
+      // เริ่ม loading สำหรับ avatar (กรณีโหลดจาก public.users)
+      setState(() {
+        _isAvatarLoading = true;
+      });
       final response = await SupabaseService.client
           .from('users')
           .select()
@@ -225,6 +251,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
     } finally {
       setState(() {
         _isLoading = false;
+        _isAvatarLoading = false; // หยุด avatar loading ในทุกกรณี
       });
     }
   }
@@ -425,18 +452,106 @@ class _UserProfilePageState extends State<UserProfilePage> {
                                       onTap: _isEditing ? _pickAvatar : null,
                                       child: Stack(
                                         children: [
-                                          CircleAvatar(
-                                            radius: 50,
-                                            backgroundColor: Colors.blue[100],
-                                            backgroundImage: _getAvatarImage(),
-                                            child: _shouldShowDefaultIcon()
-                                                ? Icon(
-                                                    Icons.person,
-                                                    size: 50,
-                                                    color: Colors.blue[600],
-                                                  )
-                                                : null,
-                                          ),
+                                          // Avatar หรือ Progress
+                                          if (_shouldShowAvatarLoading())
+                                            // Progress indicator ระหว่างโหลดจาก Supabase
+                                            Container(
+                                              width: 100,
+                                              height: 100,
+                                              decoration: BoxDecoration(
+                                                color: Colors.blue[100],
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: Stack(
+                                                children: [
+                                                  CircleAvatar(
+                                                    radius: 50,
+                                                    backgroundColor: Colors.blue[100],
+                                                    child: _shouldShowDefaultIcon()
+                                                        ? Icon(
+                                                            Icons.person,
+                                                            size: 50,
+                                                            color: Colors.blue[600],
+                                                          )
+                                                        : null,
+                                                  ),
+                                                  Positioned.fill(
+                                                    child: CircularProgressIndicator(
+                                                      strokeWidth: 3,
+                                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.blue[600]!),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            )
+                                          else if (_shouldUseCachedNetworkImage())
+                                            // ใช้ CachedNetworkImage สำหรับโหลดจาก Supabase Storage
+                                            Container(
+                                              width: 100,
+                                              height: 100,
+                                              child: Stack(
+                                                children: [
+                                                  CircleAvatar(
+                                                    radius: 50,
+                                                    backgroundColor: Colors.blue[100],
+                                                  ),
+                                                  ClipOval(
+                                                    child: CachedNetworkImage(
+                                                      imageUrl: _getCachedImageUrl()!,
+                                                      width: 100,
+                                                      height: 100,
+                                                      fit: BoxFit.cover,
+                                                      placeholder: (context, url) => Container(
+                                                        width: 100,
+                                                        height: 100,
+                                                        child: Stack(
+                                                          children: [
+                                                            CircleAvatar(
+                                                              radius: 50,
+                                                              backgroundColor: Colors.blue[100],
+                                                              child: Icon(
+                                                                Icons.person,
+                                                                size: 50,
+                                                                color: Colors.blue[600],
+                                                              ),
+                                                            ),
+                                                            Positioned.fill(
+                                                              child: CircularProgressIndicator(
+                                                                strokeWidth: 3,
+                                                                valueColor: AlwaysStoppedAnimation<Color>(Colors.blue[600]!),
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                      errorWidget: (context, url, error) => CircleAvatar(
+                                                        radius: 50,
+                                                        backgroundColor: Colors.blue[100],
+                                                        child: Icon(
+                                                          Icons.person,
+                                                          size: 50,
+                                                          color: Colors.blue[600],
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            )
+                                          else
+                                            // Avatar ปกติ (MemoryImage หรือ default)
+                                            CircleAvatar(
+                                              radius: 50,
+                                              backgroundColor: Colors.blue[100],
+                                              backgroundImage: _getAvatarImage(),
+                                              child: _shouldShowDefaultIcon()
+                                                  ? Icon(
+                                                      Icons.person,
+                                                      size: 50,
+                                                      color: Colors.blue[600],
+                                                    )
+                                                  : null,
+                                            ),
                                           if (_isEditing)
                                             Positioned(
                                               bottom: 0,
@@ -766,6 +881,10 @@ class _UserProfilePageState extends State<UserProfilePage> {
   /// เลือกรูปภาพสำหรับ Avatar
   Future<void> _pickAvatar() async {
     try {
+      // เริ่ม loading state
+      setState(() {
+        _isAvatarLoading = true;
+      });
       final result = await showDialog<Map<String, dynamic>>(
         context: context,
         builder: (context) => Dialog(
@@ -920,6 +1039,11 @@ class _UserProfilePageState extends State<UserProfilePage> {
     } catch (e) {
       setState(() {
         _errorMessage = 'เลือกรูปภาพไม่สำเร็จ: ${e.toString()}';
+      });
+    } finally {
+      // หยุด loading state
+      setState(() {
+        _isAvatarLoading = false;
       });
     }
   }
