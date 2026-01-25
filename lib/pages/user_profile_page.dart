@@ -887,145 +887,146 @@ class _UserProfilePageState extends State<UserProfilePage> {
       });
       final result = await showDialog<Map<String, dynamic>>(
         context: context,
-        builder: (context) => Dialog(
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'เลือกรูปภาพ',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                
-                // Web: แสดงแค่ File Picker
-                // Mobile: แสดงทั้ง Camera และ Gallery
-                if (kIsWeb) ...[
-                  // Web - File Picker เท่านั้น
-                  ElevatedButton.icon(
-                    onPressed: () async {
-                      try {
-                        // ใช้ ImagePicker สำหรับ Web
-                        final ImagePicker picker = ImagePicker();
-                        final XFile? image = await picker.pickImage(
-                          source: ImageSource.gallery,
-                          maxWidth: 800,
-                          maxHeight: 800,
-                          imageQuality: 85,
-                        );
-                        
-                        if (image != null) {
-                          final bytes = await image.readAsBytes();
-                          Navigator.of(context).pop({
-                            'bytes': bytes,
-                            'fileName': image.name,
-                          });
-                        }
-                      } catch (e) {
-                        Navigator.of(context).pop();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('เลือกรูปภาพไม่สำเร็จ: ${e.toString()}'),
-                            backgroundColor: Colors.red,
-                          ),
-                        );
+        builder: (context) => GlassDialog(
+          title: 'เลือกรูปภาพ',
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Web: แสดงแค่ File Picker
+              // Mobile: แสดงทั้ง Camera และ Gallery
+              if (kIsWeb) ...[
+                // Web - File Picker เท่านั้น
+                GlassButton(
+                  text: 'เลือกไฟล์รูปภาพ',
+                  onPressed: () async {
+                    try {
+                      // ใช้ ImagePicker สำหรับ Web
+                      final ImagePicker picker = ImagePicker();
+                      final XFile? image = await picker.pickImage(
+                        source: ImageSource.gallery,
+                        maxWidth: 800,
+                        maxHeight: 800,
+                        imageQuality: 85,
+                      );
+                      
+                      if (image != null) {
+                        final bytes = await image.readAsBytes();
+                        Navigator.of(context).pop({
+                          'bytes': bytes,
+                          'fileName': image.name,
+                        });
                       }
-                    },
-                    icon: const Icon(Icons.file_upload),
-                    label: const Text('เลือกไฟล์รูปภาพ'),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  const Text(
-                    'รองรับไฟล์: JPG, PNG, GIF, WebP (สูงสุด 50MB)',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ] else ...[
-                  // Mobile - Camera และ Gallery
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    } catch (e) {
+                      Navigator.of(context).pop();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('เลือกรูปภาพไม่สำเร็จ: ${e.toString()}'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  },
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      ElevatedButton.icon(
-                        onPressed: () async {
-                          try {
-                            final ImagePicker picker = ImagePicker();
-                            final XFile? image = await picker.pickImage(
-                              source: ImageSource.gallery,
-                              maxWidth: 800,
-                              maxHeight: 800,
-                              imageQuality: 85,
-                            );
-                            if (image != null) {
-                              final bytes = await image.readAsBytes();
-                              Navigator.of(context).pop({
-                                'bytes': bytes,
-                                'fileName': image.name,
-                              });
-                            }
-                          } catch (e) {
-                            Navigator.of(context).pop();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('เลือกรูปภาพไม่สำเร็จ: ${e.toString()}'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                          }
-                        },
-                        icon: const Icon(Icons.photo_library),
-                        label: const Text('แกลเลอรี่'),
-                      ),
-                      ElevatedButton.icon(
-                        onPressed: () async {
-                          try {
-                            final ImagePicker picker = ImagePicker();
-                            final XFile? image = await picker.pickImage(
-                              source: ImageSource.camera,
-                              maxWidth: 800,
-                              maxHeight: 800,
-                              imageQuality: 85,
-                            );
-                            if (image != null) {
-                              final bytes = await image.readAsBytes();
-                              Navigator.of(context).pop({
-                                'bytes': bytes,
-                                'fileName': image.name,
-                              });
-                            }
-                          } catch (e) {
-                            Navigator.of(context).pop();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('ถ่ายรูปไม่สำเร็จ: ${e.toString()}'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                          }
-                        },
-                        icon: const Icon(Icons.camera_alt),
-                        label: const Text('กล้อง'),
-                      ),
+                      Icon(Icons.file_upload, size: 18),
+                      SizedBox(width: 8),
+                      Text('เลือกไฟล์รูปภาพ'),
                     ],
                   ),
-                ],
-                
-                const SizedBox(height: 20),
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('ยกเลิก'),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'รองรับไฟล์: JPG, PNG, GIF, WebP (สูงสุด 50MB)',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.white70,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ] else ...[
+                // Mobile - Camera และ Gallery
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    GlassButton(
+                      text: 'แกลเลอรี่',
+                      onPressed: () async {
+                        try {
+                          final ImagePicker picker = ImagePicker();
+                          final XFile? image = await picker.pickImage(
+                            source: ImageSource.gallery,
+                            maxWidth: 800,
+                            maxHeight: 800,
+                            imageQuality: 85,
+                          );
+                          if (image != null) {
+                            final bytes = await image.readAsBytes();
+                            Navigator.of(context).pop({
+                              'bytes': bytes,
+                              'fileName': image.name,
+                            });
+                          }
+                        } catch (e) {
+                          Navigator.of(context).pop();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('เลือกรูปภาพไม่สำเร็จ: ${e.toString()}'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      },
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.photo_library, size: 18),
+                          SizedBox(width: 8),
+                          Text('แกลเลอรี่'),
+                        ],
+                      ),
+                    ),
+                    GlassButton(
+                      text: 'กล้อง',
+                      onPressed: () async {
+                        try {
+                          final ImagePicker picker = ImagePicker();
+                          final XFile? image = await picker.pickImage(
+                            source: ImageSource.camera,
+                            maxWidth: 800,
+                            maxHeight: 800,
+                            imageQuality: 85,
+                          );
+                          if (image != null) {
+                            final bytes = await image.readAsBytes();
+                            Navigator.of(context).pop({
+                              'bytes': bytes,
+                              'fileName': image.name,
+                            });
+                          }
+                        } catch (e) {
+                          Navigator.of(context).pop();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('ถ่ายรูปไม่สำเร็จ: ${e.toString()}'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      },
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.camera_alt, size: 18),
+                          SizedBox(width: 8),
+                          Text('กล้อง'),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ],
-            ),
+            ],
           ),
         ),
       );
