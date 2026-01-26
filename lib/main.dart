@@ -9,6 +9,7 @@ import 'pages/restaurant_menu_page.dart';
 import 'pages/table_booking_page.dart';
 import 'pages/room_booking_page.dart';
 import 'pages/database_test_page.dart';
+import 'widgets/glass_drawer_components.dart';
 import 'reset_password_page.dart';
 import 'auth_state_observer.dart';
 import 'widgets/home_avatar.dart';
@@ -170,6 +171,7 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final currentUser = Supabase.instance.client.auth.currentUser;
   String? _userFullName;
 
@@ -222,56 +224,153 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF81D4FA),
-              Color(0xFF80CBC4),
-              Color(0xFF81C784),
-            ],
-          ),
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ✅ Header แยกตาม mode
-                _buildHeader(),
-                
-                const SizedBox(height: 40),
-                
-                // ✅ App Title
-                Center(
-                  child: _buildAppTitle(),
-                ),
-                
-                const SizedBox(height: 50),
-                
-                // ✅ Menu Buttons แยกตาม mode
-                Expanded(
-                  child: Center(
-                    child: GridView.count(
-                      shrinkWrap: true,
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 20,
-                      mainAxisSpacing: 20,
-                      childAspectRatio: 1.2,
-                      children: _buildMenuButtons(),
+    print('MyHomePage: Building with currentUser: ${currentUser?.email}, isGuestMode: ${widget.isGuestMode}');
+    
+    // สร้าง GestureDetector สำหรับ swipe gestures
+    return GestureDetector(
+      onPanEnd: (details) {
+        // ตรวจสอบว่า user ได้ login แล้วหรือไม่
+        if (!widget.isGuestMode && currentUser != null) {
+          print('Swipe detected: velocity.dx = ${details.velocity.pixelsPerSecond.dx}');
+          // ตรวจสอบทิศทางการ swipe
+          if (details.velocity.pixelsPerSecond.dx > 500) {
+            // Swipe ขวา (dx > 0) เพื่อเปิด drawer
+            print('Opening drawer with right swipe');
+            _scaffoldKey.currentState?.openEndDrawer();
+          } else if (details.velocity.pixelsPerSecond.dx < -500) {
+            // Swipe ซ้าย (dx < 0) เพื่อปิด drawer
+            print('Closing drawer with left swipe');
+            _scaffoldKey.currentState?.closeEndDrawer();
+          }
+        } else {
+          print('Swipe ignored: user not logged in or in guest mode');
+        }
+      },
+      child: Scaffold(
+        key: _scaffoldKey,
+        // Add EndDrawer only for logged-in users
+        endDrawer: !widget.isGuestMode && currentUser != null 
+          ? Container(
+              width: 300,
+              color: Colors.blue.withOpacity(0.3),
+              child: ListView(
+                padding: EdgeInsets.zero,
+                children: [
+                  DrawerHeader(
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.5),
+                    ),
+                    child: Text(
+                      'Dashboard',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                      ),
                     ),
                   ),
-                ),
-                
-                // ✅ Footer
-                Center(
-                  child: _buildFooter(),
-                ),
+                  ListTile(
+                    title: Text('ขาย/POS', style: TextStyle(color: Colors.white)),
+                    leading: Icon(Icons.point_of_sale, color: Colors.white),
+                    onTap: () {
+                      Navigator.pop(context);
+                    },
+                  ),
+                  ListTile(
+                    title: Text('เปิดโต๊ะ', style: TextStyle(color: Colors.white)),
+                    leading: Icon(Icons.table_restaurant, color: Colors.white),
+                    onTap: () {
+                      Navigator.pop(context);
+                    },
+                  ),
+                  ListTile(
+                    title: Text('คลังสินค้า', style: TextStyle(color: Colors.white)),
+                    leading: Icon(Icons.inventory, color: Colors.white),
+                    onTap: () {
+                      Navigator.pop(context);
+                    },
+                  ),
+                  ListTile(
+                    title: Text('ลูกค้า', style: TextStyle(color: Colors.white)),
+                    leading: Icon(Icons.people, color: Colors.white),
+                    onTap: () {
+                      Navigator.pop(context);
+                    },
+                  ),
+                  ListTile(
+                    title: Text('เจ้าหนี้/พาร์ทเนอร์', style: TextStyle(color: Colors.white)),
+                    leading: Icon(Icons.handshake, color: Colors.white),
+                    onTap: () {
+                      Navigator.pop(context);
+                    },
+                  ),
+                  ListTile(
+                    title: Text('ข้อมูลพนักงาน', style: TextStyle(color: Colors.white)),
+                    leading: Icon(Icons.person, color: Colors.white),
+                    onTap: () {
+                      Navigator.pop(context);
+                    },
+                  ),
+                  ListTile(
+                    title: Text('รายงาน', style: TextStyle(color: Colors.white)),
+                    leading: Icon(Icons.assessment, color: Colors.white),
+                    onTap: () {
+                      Navigator.pop(context);
+                    },
+                  ),
+                ],
+              ),
+            )
+          : null,
+        body: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFF81D4FA),
+                Color(0xFF80CBC4),
+                Color(0xFF81C784),
               ],
+            ),
+          ),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ✅ Header แยกตาม mode
+                  _buildHeader(),
+                  
+                  const SizedBox(height: 40),
+                  
+                  // ✅ App Title
+                  Center(
+                    child: _buildAppTitle(),
+                  ),
+                  
+                  const SizedBox(height: 50),
+                  
+                  // ✅ Menu Buttons แยกตาม mode
+                  Expanded(
+                    child: Center(
+                      child: GridView.count(
+                        shrinkWrap: true,
+                        crossAxisCount: 2,
+                        crossAxisSpacing: 20,
+                        mainAxisSpacing: 20,
+                        childAspectRatio: 1.2,
+                        children: _buildMenuButtons(),
+                      ),
+                    ),
+                  ),
+                  
+                  // ✅ Footer
+                  Center(
+                    child: _buildFooter(),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -335,25 +434,34 @@ class _MyHomePageState extends State<MyHomePage> {
                     if (widget.isGuestMode)
                       WidgetSpan(
                         child: GestureDetector(
-                          onTap: _login,
-                          child: Padding(
-                            padding: const EdgeInsets.only(left: 4),
-                            child: Text(
+                          onTap: () {
+                            // Navigate to login
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => const LoginPage(),
+                              ),
+                            );
+                          },
+                          child: Container(
+                            margin: const EdgeInsets.only(left: 5),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Text(
                               'เข้าสู่ระบบ',
                               style: TextStyle(
-                                color: Colors.blue[600],
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                decoration: TextDecoration.underline,
-                                decorationColor: Colors.blue[600],
-                                decorationThickness: 2,
+                                fontSize: 11,
+                                color: Colors.white,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                           ),
                         ),
                       ),
                     if (widget.isGuestMode)
-                      TextSpan(text: '  เพื่อติดตามคิว / สถานะการจอง / รับสิทธิพิเศษ'),
+                      TextSpan(text: ' เพื่อติดตามคิว / สถานะการจอง / รับสิทธิพิเศษ'),
                   ],
                 ),
               ),
@@ -361,9 +469,21 @@ class _MyHomePageState extends State<MyHomePage> {
           ),
         ),
         
-        // Logout button for user mode only
-        if (!widget.isGuestMode)
-          // ✅ User Mode - แสดงปุ่ม logout
+        // Menu buttons for user mode
+        if (!widget.isGuestMode) ...[
+          // Menu button to open drawer
+          IconButton(
+            onPressed: () {
+              print('Menu button pressed, opening drawer');
+              _scaffoldKey.currentState?.openEndDrawer();
+            },
+            icon: const Icon(
+              Icons.more_vert,
+              color: Colors.white,
+              size: 24,
+            ),
+          ),
+          // Logout button
           IconButton(
             onPressed: _logout,
             icon: const Icon(
@@ -372,6 +492,7 @@ class _MyHomePageState extends State<MyHomePage> {
               size: 24,
             ),
           ),
+        ],
       ],
     );
   }
