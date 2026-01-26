@@ -226,6 +226,14 @@ class _MyHomePageState extends State<MyHomePage> {
   Widget build(BuildContext context) {
     print('MyHomePage: Building with currentUser: ${currentUser?.email}, isGuestMode: ${widget.isGuestMode}');
     
+    // ตรวจสอบการหมุนหน้าจอและกำหนดขนาด drawer
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isPortrait = screenHeight > screenWidth;
+    final drawerWidth = isPortrait ? screenWidth * 0.75 : screenWidth * 0.20;
+    
+    print('Screen: ${screenWidth}x${screenHeight}, isPortrait: $isPortrait, drawerWidth: $drawerWidth');
+    
     // สร้าง GestureDetector สำหรับ swipe gestures
     return GestureDetector(
       onPanEnd: (details) {
@@ -249,12 +257,22 @@ class _MyHomePageState extends State<MyHomePage> {
       child: Scaffold(
         key: _scaffoldKey,
         // Add Drawer (left side) - available for all users (guest and logged-in)
-        drawer: Container(
-          width: 300,
-          color: Colors.green.withOpacity(0.3),
-          child: ListView(
-            padding: EdgeInsets.zero,
-            children: [
+        drawer: GestureDetector(
+          onPanEnd: (details) {
+            print('Drawer swipe detected: velocity.dx = ${details.velocity.pixelsPerSecond.dx}');
+            // Swipe จากขวาไปซ้าย (dx < 0) เพื่อปิด drawer
+            if (details.velocity.pixelsPerSecond.dx < -500) {
+              print('Closing left drawer with left swipe');
+              Navigator.pop(context);
+            }
+          },
+          child: Container(
+            width: drawerWidth,
+            color: Colors.green.withOpacity(0.3),
+            child: ListView(
+              padding: EdgeInsets.zero,
+              physics: const ClampingScrollPhysics(), // จำกัดการ scroll ไม่ให้ขัด gesture
+              children: [
               DrawerHeader(
                 decoration: BoxDecoration(
                   color: Colors.green.withOpacity(0.5),
@@ -333,14 +351,25 @@ class _MyHomePageState extends State<MyHomePage> {
             ],
           ),
         ),
+          ),
         // Add EndDrawer only for logged-in users
         endDrawer: !widget.isGuestMode && currentUser != null 
-          ? Container(
-              width: 300,
-              color: Colors.blue.withOpacity(0.3),
-              child: ListView(
-                padding: EdgeInsets.zero,
-                children: [
+          ? GestureDetector(
+              onPanEnd: (details) {
+                print('EndDrawer swipe detected: velocity.dx = ${details.velocity.pixelsPerSecond.dx}');
+                // Swipe จากซ้ายไปขวา (dx > 0) เพื่อปิด end drawer
+                if (details.velocity.pixelsPerSecond.dx > 500) {
+                  print('Closing right drawer with right swipe');
+                  Navigator.pop(context);
+                }
+              },
+              child: Container(
+                width: drawerWidth,
+                color: Colors.blue.withOpacity(0.3),
+                child: ListView(
+                  padding: EdgeInsets.zero,
+                  physics: const ClampingScrollPhysics(), // จำกัดการ scroll ไม่ให้ขัด gesture
+                  children: [
                   DrawerHeader(
                     decoration: BoxDecoration(
                       color: Colors.blue.withOpacity(0.5),
@@ -418,7 +447,8 @@ class _MyHomePageState extends State<MyHomePage> {
                   ),
                 ],
               ),
-            )
+            ),
+          )
           : null,
         body: Container(
           decoration: const BoxDecoration(
