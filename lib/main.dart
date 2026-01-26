@@ -8,6 +8,7 @@ import 'widgets/forgot_password_dialog.dart';
 import 'pages/restaurant_menu_page.dart';
 import 'pages/table_booking_page.dart';
 import 'pages/room_booking_page.dart';
+import 'pages/database_test_page.dart';
 import 'reset_password_page.dart';
 import 'auth_state_observer.dart';
 import 'widgets/home_avatar.dart';
@@ -417,6 +418,7 @@ class _MyHomePageState extends State<MyHomePage> {
       {'icon': Icons.table_restaurant, 'title': 'จองโต๊ะ', 'guestAllowed': true},
       {'icon': Icons.bed, 'title': 'จองที่พัก', 'guestAllowed': true},
       {'icon': Icons.history, 'title': 'ติดตามคิว / ข้อมูลการจอง (โต๊ะ/ที่พัก)', 'guestAllowed': false},
+      {'icon': Icons.storage, 'title': 'Database Test', 'guestAllowed': false},
     ];
 
     return menuItems.map((item) {
@@ -534,8 +536,17 @@ class _MyHomePageState extends State<MyHomePage> {
         );
         break;
       case 'ประวัติ':
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('กำลังพัฒนา...')),
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const DatabaseTestPage(),
+          ),
+        );
+        break;
+      case 'Database Test':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const DatabaseTestPage(),
+          ),
         );
         break;
     }
