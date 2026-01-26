@@ -229,25 +229,68 @@ class _MyHomePageState extends State<MyHomePage> {
     // สร้าง GestureDetector สำหรับ swipe gestures
     return GestureDetector(
       onPanEnd: (details) {
-        // ตรวจสอบว่า user ได้ login แล้วหรือไม่
-        if (!widget.isGuestMode && currentUser != null) {
-          print('Swipe detected: velocity.dx = ${details.velocity.pixelsPerSecond.dx}');
-          // ตรวจสอบทิศทางการ swipe
-          if (details.velocity.pixelsPerSecond.dx > 500) {
-            // Swipe ขวา (dx > 0) เพื่อเปิด drawer
-            print('Opening drawer with right swipe');
+        print('Swipe detected: velocity.dx = ${details.velocity.pixelsPerSecond.dx}');
+        
+        // ตรวจสอบทิศทางการ swipe
+        if (details.velocity.pixelsPerSecond.dx > 500) {
+          // Swipe ขวา (dx > 0) เพื่อเปิด drawer ด้านซ้าย (ทำงานได้เสมอ)
+          print('Opening left drawer with right swipe');
+          _scaffoldKey.currentState?.openDrawer();
+        } else if (details.velocity.pixelsPerSecond.dx < -500) {
+          // Swipe ซ้าย (dx < 0) เพื่อเปิด end drawer ด้านขวา (ต้อง login)
+          if (!widget.isGuestMode && currentUser != null) {
+            print('Opening right drawer with left swipe');
             _scaffoldKey.currentState?.openEndDrawer();
-          } else if (details.velocity.pixelsPerSecond.dx < -500) {
-            // Swipe ซ้าย (dx < 0) เพื่อปิด drawer
-            print('Closing drawer with left swipe');
-            _scaffoldKey.currentState?.closeEndDrawer();
+          } else {
+            print('Right drawer requires login - swipe ignored');
           }
-        } else {
-          print('Swipe ignored: user not logged in or in guest mode');
         }
       },
       child: Scaffold(
         key: _scaffoldKey,
+        // Add Drawer (left side) - available for all users (guest and logged-in)
+        drawer: Container(
+          width: 300,
+          color: Colors.green.withOpacity(0.3),
+          child: ListView(
+            padding: EdgeInsets.zero,
+            children: [
+              DrawerHeader(
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.5),
+                ),
+                child: Text(
+                  'Main Menu',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                  ),
+                ),
+              ),
+              ListTile(
+                title: Text('หน้าแรก', style: TextStyle(color: Colors.white)),
+                leading: Icon(Icons.home, color: Colors.white),
+                onTap: () {
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                title: Text('การตั้งค่า', style: TextStyle(color: Colors.white)),
+                leading: Icon(Icons.settings, color: Colors.white),
+                onTap: () {
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                title: Text('ช่วยเหลือ', style: TextStyle(color: Colors.white)),
+                leading: Icon(Icons.help, color: Colors.white),
+                onTap: () {
+                  Navigator.pop(context);
+                },
+              ),
+            ],
+          ),
+        ),
         // Add EndDrawer only for logged-in users
         endDrawer: !widget.isGuestMode && currentUser != null 
           ? Container(

@@ -457,6 +457,13 @@ class _DashboardDrawerContentState extends State<DashboardDrawerContent> {
                     Navigator.pop(context);
                   },
                 ),
+                                GlassDrawerItem(
+                  icon: Icons.inventory,
+                  title: 'คูปอง/โปรโมชั่น',
+                  onTap: () {
+                    Navigator.pop(context);
+                  },
+                ),
                 GlassDrawerItem(
                   icon: Icons.people,
                   title: 'ลูกค้า',
@@ -467,6 +474,23 @@ class _DashboardDrawerContentState extends State<DashboardDrawerContent> {
                 GlassDrawerItem(
                   icon: Icons.handshake,
                   title: 'เจ้าหนี้/Partner',
+                  onTap: () {
+                    Navigator.pop(context);
+                  },
+                ),
+                const GlassDrawerDivider(),
+                                GlassDrawerItem(
+                  icon: Icons.person,
+                  title: 'โฮมสตย์',
+                  onTap: () {
+                    Navigator.pop(context);
+                  },
+                ),
+                const GlassDrawerDivider(),
+                                const GlassDrawerDivider(),
+                                GlassDrawerItem(
+                  icon: Icons.person,
+                  title: 'ที่จอดรถ',
                   onTap: () {
                     Navigator.pop(context);
                   },
