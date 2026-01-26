@@ -260,7 +260,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   color: Colors.green.withOpacity(0.5),
                 ),
                 child: Text(
-                  'Main Menu',
+                  'รายการ',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 24,
@@ -274,15 +274,57 @@ class _MyHomePageState extends State<MyHomePage> {
                   Navigator.pop(context);
                 },
               ),
+                            ListTile(
+                title: Text('สั่งอาหาร', style: TextStyle(color: Colors.white)),
+                leading: Icon(Icons.home, color: Colors.white),
+                onTap: () {
+                  Navigator.pop(context);
+                },
+              ),
+                            ListTile(
+                title: Text('จองโต๊ะ/ที่นั่ง', style: TextStyle(color: Colors.white)),
+                leading: Icon(Icons.home, color: Colors.white),
+                onTap: () {
+                  Navigator.pop(context);
+                },
+              ),
+                            ListTile(
+                title: Text('จองที่พัก', style: TextStyle(color: Colors.white)),
+                leading: Icon(Icons.home, color: Colors.white),
+                onTap: () {
+                  Navigator.pop(context);
+                },
+              ),
+                            ListTile(
+                title: Text('คูปอง', style: TextStyle(color: Colors.white)),
+                leading: Icon(Icons.home, color: Colors.white),
+                onTap: () {
+                  Navigator.pop(context);
+                },
+              ),
+                            ListTile(
+                title: Text('เรีบกพนักงาน', style: TextStyle(color: Colors.white)),
+                leading: Icon(Icons.home, color: Colors.white),
+                onTap: () {
+                  Navigator.pop(context);
+                },
+              ),
               ListTile(
-                title: Text('การตั้งค่า', style: TextStyle(color: Colors.white)),
+                title: Text('ข้อมูลส่วนตัว', style: TextStyle(color: Colors.white)),
                 leading: Icon(Icons.settings, color: Colors.white),
                 onTap: () {
                   Navigator.pop(context);
                 },
               ),
               ListTile(
-                title: Text('ช่วยเหลือ', style: TextStyle(color: Colors.white)),
+                title: Text('ร่วมงานกับเรา', style: TextStyle(color: Colors.white)),
+                leading: Icon(Icons.help, color: Colors.white),
+                onTap: () {
+                  Navigator.pop(context);
+                },
+              ),
+                            ListTile(
+                title: Text('รีวิว/ติดต่อสอบถาม', style: TextStyle(color: Colors.white)),
                 leading: Icon(Icons.help, color: Colors.white),
                 onTap: () {
                   Navigator.pop(context);
@@ -332,6 +374,13 @@ class _MyHomePageState extends State<MyHomePage> {
                       Navigator.pop(context);
                     },
                   ),
+                                    ListTile(
+                    title: Text('คูปอง/โปรโมชั่น', style: TextStyle(color: Colors.white)),
+                    leading: Icon(Icons.inventory, color: Colors.white),
+                    onTap: () {
+                      Navigator.pop(context);
+                    },
+                  ),
                   ListTile(
                     title: Text('ลูกค้า', style: TextStyle(color: Colors.white)),
                     leading: Icon(Icons.people, color: Colors.white),
@@ -341,6 +390,13 @@ class _MyHomePageState extends State<MyHomePage> {
                   ),
                   ListTile(
                     title: Text('เจ้าหนี้/พาร์ทเนอร์', style: TextStyle(color: Colors.white)),
+                    leading: Icon(Icons.handshake, color: Colors.white),
+                    onTap: () {
+                      Navigator.pop(context);
+                    },
+                  ),
+                                    ListTile(
+                    title: Text('ที่จอดรถ', style: TextStyle(color: Colors.white)),
                     leading: Icon(Icons.handshake, color: Colors.white),
                     onTap: () {
                       Navigator.pop(context);
@@ -495,9 +551,9 @@ class _MyHomePageState extends State<MyHomePage> {
                             child: const Text(
                               'เข้าสู่ระบบ',
                               style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.white,
-                                fontWeight: FontWeight.w500,
+                                fontSize: 12,
+                                color: Colors.blue,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
