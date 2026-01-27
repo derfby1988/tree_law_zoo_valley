@@ -268,24 +268,30 @@ class _MyHomePageState extends State<MyHomePage> {
           },
           child: Container(
             width: drawerWidth,
-            color: Colors.green.withOpacity(0.3),
+            color: Color(0xFF79FFB6).withOpacity(0.3),
             child: ListView(
+                shrinkWrap: true,
               padding: EdgeInsets.zero,
               physics: const ClampingScrollPhysics(), // จำกัดการ scroll ไม่ให้ขัด gesture
               children: [
-              DrawerHeader(
+              Container(
+                padding: EdgeInsets.all(16.0),
+                height: 80,
                 decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.5),
+                  color: Color(0xFF79FFB6).withOpacity(0.5),
                 ),
                 child: Text(
                   'รายการ',
                   style: TextStyle(
                     color: Colors.white,
-                    fontSize: 24,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
               ListTile(
+                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                dense: true,
                 title: Text('หน้าแรก', style: TextStyle(color: Colors.white)),
                 leading: Icon(Icons.home, color: Colors.white),
                 onTap: () {
@@ -365,14 +371,14 @@ class _MyHomePageState extends State<MyHomePage> {
               },
               child: Container(
                 width: drawerWidth,
-                color: Colors.blue.withOpacity(0.3),
+                color: Color(0xFF005EBE).withOpacity(0.3),
                 child: ListView(
                   padding: EdgeInsets.zero,
                   physics: const ClampingScrollPhysics(), // จำกัดการ scroll ไม่ให้ขัด gesture
                   children: [
                   DrawerHeader(
                     decoration: BoxDecoration(
-                      color: Colors.blue.withOpacity(0.5),
+                      color: Color(0xFF005EBE).withOpacity(0.5),
                     ),
                     child: Text(
                       'Dashboard',
