@@ -230,7 +230,7 @@ class _MyHomePageState extends State<MyHomePage> {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
     final isPortrait = screenHeight > screenWidth;
-    final drawerWidth = isPortrait ? screenWidth * 0.75 : screenWidth * 0.20;
+    final drawerWidth = isPortrait ? screenWidth * 0.75 : screenWidth * 0.25;
     
     print('Screen: ${screenWidth}x${screenHeight}, isPortrait: $isPortrait, drawerWidth: $drawerWidth');
     
@@ -465,9 +465,10 @@ class _MyHomePageState extends State<MyHomePage> {
           child: SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(20.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                   // ✅ Header แยกตาม mode
                   _buildHeader(),
                   
@@ -480,16 +481,56 @@ class _MyHomePageState extends State<MyHomePage> {
                   
                   const SizedBox(height: 50),
                   
-                  // ✅ Menu Buttons แยกตาม mode
-                  Expanded(
+                  // ✅ Menu Buttons แยกตาม mode - Responsive Grid
+                  SizedBox(
+                    height: MediaQuery.of(context).size.height * 0.6,
                     child: Center(
-                      child: GridView.count(
-                        shrinkWrap: true,
-                        crossAxisCount: 2,
-                        crossAxisSpacing: 20,
-                        mainAxisSpacing: 20,
-                        childAspectRatio: 1.2,
-                        children: _buildMenuButtons(),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          // 📱 ใช้ MediaQuery แทน constraints เพื่อขนาดจริงของหน้าจอ
+                          final screenWidth = MediaQuery.of(context).size.width - 40; // ลบ padding
+                          int crossAxisCount;
+                          double spacing;
+                          double aspectRatio;
+                          
+                          if (screenWidth < 600) {
+                            // 📱 มือถือเล็ก: 1 คอลัมน์
+                            crossAxisCount = 1;
+                            spacing = 15;
+                            aspectRatio = 1.5;
+                          } else if (screenWidth < 800) {
+                            // 📱 มือถือใหญ่/แท็บเล็ตเล็ก: 2 คอลัมน์
+                            crossAxisCount = 2;
+                            spacing = 20;
+                            aspectRatio = 1.2;
+                          } else if (screenWidth < 1200) {
+                            // 💻 แท็บเล็ตใหญ่: 3 คอลัมน์
+                            crossAxisCount = 3;
+                            spacing = 25;
+                            aspectRatio = 1.1;
+                          } else {
+                            // 🖥️ เดสก์ท็อป: 4 คอลัมน์
+                            crossAxisCount = 4;
+                            spacing = 30;
+                            aspectRatio = 1.0;
+                          }
+                          
+                          print('🔥 Responsive Grid: screenWidth=$screenWidth, columns=$crossAxisCount, spacing=$spacing');
+                          
+                          final menuItems = _buildMenuButtons();
+                          return GridView.builder(
+                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: crossAxisCount,
+                              crossAxisSpacing: spacing,
+                              mainAxisSpacing: spacing,
+                              childAspectRatio: aspectRatio,
+                            ),
+                            itemCount: menuItems.length,
+                            itemBuilder: (context, index) {
+                              return menuItems[index];
+                            },
+                          );
+                        },
                       ),
                     ),
                   ),
@@ -504,7 +545,7 @@ class _MyHomePageState extends State<MyHomePage> {
           ),
         ),
       ),
-    );
+    ),);
   }
 
   // Header แยกตาม mode
@@ -637,7 +678,7 @@ class _MyHomePageState extends State<MyHomePage> {
             color: Colors.white,
           ),
         ),
-        const SizedBox(height: 5),
+        const SizedBox(height: 10),
         const Text(
           'TREE LAW ZOO valley',
           style: TextStyle(
@@ -646,7 +687,7 @@ class _MyHomePageState extends State<MyHomePage> {
             fontWeight: FontWeight.w400,
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 5),
         Container(
           height: 3,
           width: 100,
