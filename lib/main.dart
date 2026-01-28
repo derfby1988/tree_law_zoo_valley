@@ -471,27 +471,36 @@ class _MyHomePageState extends State<MyHomePage> {
           child: SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(20.0),
-              child: SingleChildScrollView(
-                child: Column(
+              child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                  // ✅ Header แยกตาม mode
+                  // ✅ Header แยกตาม mode (ไม่ scroll)
                   _buildHeader(),
                   
-                  const SizedBox(height: 40),
+                  const SizedBox(height: 20),
                   
-                  // ✅ App Title
+                  // ✅ App Title (ไม่ scroll)
                   Center(
                     child: _buildAppTitle(),
                   ),
                   
-                  const SizedBox(height: 50),
+                  const SizedBox(height: 20),
                   
-                  // ✅ Menu Buttons แยกตาม mode - Responsive Grid
-                  SizedBox(
-                    height: MediaQuery.of(context).size.height * 0.6,
-                    child: Center(
-                      child: LayoutBuilder(
+                  // ✅ Menu Buttons - Scroll เฉพาะส่วนนี้
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: GestureDetector(
+                        onPanEnd: (details) {
+                          // Swipe gesture สำหรับเปิด drawer
+                          if (details.velocity.pixelsPerSecond.dx > 200) {
+                            _scaffoldKey.currentState?.openDrawer();
+                          } else if (details.velocity.pixelsPerSecond.dx < -200) {
+                            if (!widget.isGuestMode && currentUser != null) {
+                              _scaffoldKey.currentState?.openEndDrawer();
+                            }
+                          }
+                        },
+                        child: LayoutBuilder(
                         builder: (context, constraints) {
                           // 📱 ใช้ MediaQuery แทน constraints เพื่อขนาดจริงของหน้าจอ
                           final screenWidth = MediaQuery.of(context).size.width - 40; // ลบ padding
@@ -524,30 +533,32 @@ class _MyHomePageState extends State<MyHomePage> {
                           print('🔥 Responsive Grid: screenWidth=$screenWidth, columns=$crossAxisCount, spacing=$spacing');
                           
                           final menuItems = _buildMenuButtons();
-                          return GridView.builder(
-                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: crossAxisCount,
-                              crossAxisSpacing: spacing,
-                              mainAxisSpacing: spacing,
-                              childAspectRatio: aspectRatio,
-                            ),
-                            itemCount: menuItems.length,
-                            itemBuilder: (context, index) {
-                              return menuItems[index];
-                            },
+                          return Wrap(
+                            spacing: spacing,
+                            runSpacing: spacing,
+                            alignment: WrapAlignment.center,
+                            children: menuItems.map((item) => SizedBox(
+                              width: (screenWidth - (spacing * (crossAxisCount - 1))) / crossAxisCount,
+                              child: AspectRatio(
+                                aspectRatio: aspectRatio,
+                                child: item,
+                              ),
+                            )).toList(),
                           );
                         },
                       ),
                     ),
                   ),
+                ),
                   
-                  // ✅ Footer
+                  const SizedBox(height: 20),
+                  
+                  // ✅ Footer (ไม่ scroll)
                   Center(
                     child: _buildFooter(),
                   ),
                 ],
               ),
-            ),
           ),
         ),
       ),
