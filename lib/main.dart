@@ -469,104 +469,233 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
           ),
           child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                  // ✅ Header แยกตาม mode (ไม่ scroll)
-                  _buildHeader(),
-                  
-                  const SizedBox(height: 20),
-                  
-                  // ✅ App Title (ไม่ scroll)
-                  Center(
-                    child: _buildAppTitle(),
+            child: Builder(
+              builder: (context) {
+                final media = MediaQuery.of(context).size;
+                final isLandscape = media.width > media.height;
+                final isSmallScreen = media.width < 400;
+                final needsCompactLayout = isLandscape && isSmallScreen;
+                final bool compactTitle = isLandscape;
+                final bool compactFooter = isLandscape;
+
+                final double headerHeight = needsCompactLayout ? 40 : 80;
+                final double sectionSpacing = needsCompactLayout
+                    ? 5
+                    : (isLandscape ? 10 : 20);
+                final double outerPadding = needsCompactLayout ? 10 : 20;
+                final bool showFooter = !needsCompactLayout;
+
+                return Padding(
+                  padding: EdgeInsets.only(
+                    left: outerPadding,
+                    right: outerPadding,
+                    top: outerPadding,
+                    bottom: needsCompactLayout ? 0 : outerPadding,
                   ),
-                  
-                  const SizedBox(height: 20),
-                  
-                  // ✅ Menu Buttons - Scroll เฉพาะส่วนนี้
-                  Expanded(
-                    child: SingleChildScrollView(
-                      child: GestureDetector(
-                        onPanEnd: (details) {
-                          // Swipe gesture สำหรับเปิด drawer
-                          if (details.velocity.pixelsPerSecond.dx > 200) {
-                            _scaffoldKey.currentState?.openDrawer();
-                          } else if (details.velocity.pixelsPerSecond.dx < -200) {
-                            if (!widget.isGuestMode && currentUser != null) {
-                              _scaffoldKey.currentState?.openEndDrawer();
-                            }
-                          }
-                        },
-                        child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          // 📱 ใช้ MediaQuery แทน constraints เพื่อขนาดจริงของหน้าจอ
-                          final screenWidth = MediaQuery.of(context).size.width - 40; // ลบ padding
-                          int crossAxisCount;
-                          double spacing;
-                          double aspectRatio;
-                          
-                          if (screenWidth < 600) {
-                            // 📱 มือถือเล็ก: 1 คอลัมน์
-                            crossAxisCount = 1;
-                            spacing = 15;
-                            aspectRatio = 1.5;
-                          } else if (screenWidth < 800) {
-                            // 📱 มือถือใหญ่/แท็บเล็ตเล็ก: 2 คอลัมน์
-                            crossAxisCount = 2;
-                            spacing = 20;
-                            aspectRatio = 1.2;
-                          } else if (screenWidth < 1200) {
-                            // 💻 แท็บเล็ตใหญ่: 3 คอลัมน์
-                            crossAxisCount = 3;
-                            spacing = 25;
-                            aspectRatio = 1.1;
-                          } else {
-                            // 🖥️ เดสก์ท็อป: 4 คอลัมน์
-                            crossAxisCount = 4;
-                            spacing = 30;
-                            aspectRatio = 1.0;
-                          }
-                          
-                          print('🔥 Responsive Grid: screenWidth=$screenWidth, columns=$crossAxisCount, spacing=$spacing');
-                          
-                          final menuItems = _buildMenuButtons();
-                          return Wrap(
-                            spacing: spacing,
-                            runSpacing: spacing,
-                            alignment: WrapAlignment.center,
-                            children: menuItems.map((item) => SizedBox(
-                              width: (screenWidth - (spacing * (crossAxisCount - 1))) / crossAxisCount,
-                              child: AspectRatio(
-                                aspectRatio: aspectRatio,
-                                child: item,
+                  child: needsCompactLayout
+                    ? Column(
+                        children: [
+                          // ✅ Header แยกตาม mode (ไม่ scroll)
+                          SizedBox(
+                            height: headerHeight,
+                            child: ClipRect(
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: _buildHeader(compact: needsCompactLayout),
                               ),
-                            )).toList(),
-                          );
-                        },
+                            ),
+                          ),
+
+                          SizedBox(height: sectionSpacing),
+
+                          // ✅ App Title (ไม่ scroll)
+                          Center(
+                            child: _buildAppTitle(compact: compactTitle),
+                          ),
+
+                          SizedBox(height: sectionSpacing),
+
+                          // ✅ Menu Buttons - Scroll เฉพาะส่วนนี้
+                          Expanded(
+                            child: Center(
+                              child: SingleChildScrollView(
+                                child: GestureDetector(
+                                  onPanEnd: (details) {
+                                    // Swipe gesture สำหรับเปิด drawer
+                                    if (details.velocity.pixelsPerSecond.dx > 200) {
+                                      _scaffoldKey.currentState?.openDrawer();
+                                    } else if (details.velocity.pixelsPerSecond.dx < -200) {
+                                      if (!widget.isGuestMode && currentUser != null) {
+                                        _scaffoldKey.currentState?.openEndDrawer();
+                                      }
+                                    }
+                                  },
+                                  child: LayoutBuilder(
+                                    builder: (context, constraints) {
+                                      // 📱 ใช้ MediaQuery แทน constraints เพื่อขนาดจริงของหน้าจอ
+                                      final screenWidth = MediaQuery.of(context).size.width - (outerPadding * 2);
+                                      int crossAxisCount;
+                                      double spacing;
+                                      double aspectRatio;
+
+                                      if (screenWidth < 600) {
+                                        // 📱 มือถือเล็ก: 1 คอลัมน์
+                                        crossAxisCount = 1;
+                                        spacing = 15;
+                                        aspectRatio = 1.5;
+                                      } else if (screenWidth < 800) {
+                                        // 📱 มือถือใหญ่/แท็บเล็ตเล็ก: 2 คอลัมน์
+                                        crossAxisCount = 2;
+                                        spacing = 20;
+                                        aspectRatio = 1.2;
+                                      } else if (screenWidth < 1200) {
+                                        // 💻 แท็บเล็ตใหญ่: 3 คอลัมน์
+                                        crossAxisCount = 3;
+                                        spacing = 25;
+                                        aspectRatio = 1.1;
+                                      } else {
+                                        // 🖥️ เดสก์ท็อป: 4 คอลัมน์
+                                        crossAxisCount = 4;
+                                        spacing = 30;
+                                        aspectRatio = 1.0;
+                                      }
+
+                                      print('🔥 Responsive Grid: screenWidth=$screenWidth, columns=$crossAxisCount, spacing=$spacing');
+
+                                      final menuItems = _buildMenuButtons();
+                                      return Wrap(
+                                        spacing: spacing,
+                                        runSpacing: spacing,
+                                        alignment: WrapAlignment.center,
+                                        children: menuItems.map((item) => SizedBox(
+                                          width: (screenWidth - (spacing * (crossAxisCount - 1))) / crossAxisCount,
+                                          child: AspectRatio(
+                                            aspectRatio: aspectRatio,
+                                            child: item,
+                                          ),
+                                        )).toList(),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          // ✅ Footer (ไม่ scroll) - ชิดขอบล่างใน compact mode
+                          if (showFooter)
+                            _buildFooter(compact: compactFooter),
+                        ],
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // ✅ Header แยกตาม mode (ไม่ scroll)
+                          SizedBox(
+                            height: headerHeight,
+                            child: ClipRect(
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: _buildHeader(compact: needsCompactLayout),
+                              ),
+                            ),
+                          ),
+
+                          SizedBox(height: sectionSpacing),
+
+                          // ✅ App Title (ไม่ scroll)
+                          Center(
+                            child: _buildAppTitle(compact: compactTitle),
+                          ),
+
+                          SizedBox(height: sectionSpacing),
+
+                          // ✅ Menu Buttons - Scroll เฉพาะส่วนนี้
+                          Expanded(
+                            child: Center(
+                              child: SingleChildScrollView(
+                                child: GestureDetector(
+                                  onPanEnd: (details) {
+                                    // Swipe gesture สำหรับเปิด drawer
+                                    if (details.velocity.pixelsPerSecond.dx > 200) {
+                                      _scaffoldKey.currentState?.openDrawer();
+                                    } else if (details.velocity.pixelsPerSecond.dx < -200) {
+                                      if (!widget.isGuestMode && currentUser != null) {
+                                        _scaffoldKey.currentState?.openEndDrawer();
+                                      }
+                                    }
+                                  },
+                                  child: LayoutBuilder(
+                                    builder: (context, constraints) {
+                                      // 📱 ใช้ MediaQuery แทน constraints เพื่อขนาดจริงของหน้าจอ
+                                      final screenWidth = MediaQuery.of(context).size.width - (outerPadding * 2);
+                                      int crossAxisCount;
+                                      double spacing;
+                                      double aspectRatio;
+
+                                      if (screenWidth < 600) {
+                                        // 📱 มือถือเล็ก: 1 คอลัมน์
+                                        crossAxisCount = 1;
+                                        spacing = 15;
+                                        aspectRatio = 1.5;
+                                      } else if (screenWidth < 800) {
+                                        // 📱 มือถือใหญ่/แท็บเล็ตเล็ก: 2 คอลัมน์
+                                        crossAxisCount = 2;
+                                        spacing = 20;
+                                        aspectRatio = 1.2;
+                                      } else if (screenWidth < 1200) {
+                                        // 💻 แท็บเล็ตใหญ่: 3 คอลัมน์
+                                        crossAxisCount = 3;
+                                        spacing = 25;
+                                        aspectRatio = 1.1;
+                                      } else {
+                                        // 🖥️ เดสก์ท็อป: 4 คอลัมน์
+                                        crossAxisCount = 4;
+                                        spacing = 30;
+                                        aspectRatio = 1.0;
+                                      }
+
+                                      print('🔥 Responsive Grid: screenWidth=$screenWidth, columns=$crossAxisCount, spacing=$spacing');
+
+                                      final menuItems = _buildMenuButtons();
+                                      return Wrap(
+                                        spacing: spacing,
+                                        runSpacing: spacing,
+                                        alignment: WrapAlignment.center,
+                                        children: menuItems.map((item) => SizedBox(
+                                          width: (screenWidth - (spacing * (crossAxisCount - 1))) / crossAxisCount,
+                                          child: AspectRatio(
+                                            aspectRatio: aspectRatio,
+                                            child: item,
+                                          ),
+                                        )).toList(),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          SizedBox(height: sectionSpacing),
+
+                          // ✅ Footer (ไม่ scroll)
+                          if (showFooter)
+                            Center(
+                              child: _buildFooter(compact: compactFooter),
+                            ),
+                        ],
                       ),
-                    ),
-                  ),
-                ),
-                  
-                  const SizedBox(height: 20),
-                  
-                  // ✅ Footer (ไม่ scroll)
-                  Center(
-                    child: _buildFooter(),
-                  ),
-                ],
-              ),
-          ),
+                );
+              },
+            ),
         ),
       ),
     ),);
   }
 
   // Header แยกตาม mode
-  Widget _buildHeader() {
+  Widget _buildHeader({bool compact = false}) {
     return Row(
       children: [
         // User profile avatar
@@ -579,16 +708,18 @@ class _MyHomePageState extends State<MyHomePage> {
             );
           },
           child: HomeAvatar(
-            radius: 25,
+            radius: compact ? 16 : 25,
             isGuestMode: widget.isGuestMode,
           ),
         ),
-        const SizedBox(width: 15),
+        SizedBox(width: compact ? 8 : 15),
         
         // Welcome text
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
             children: [
               GestureDetector(
                 onTap: () {
@@ -605,60 +736,62 @@ class _MyHomePageState extends State<MyHomePage> {
                   child: Text(
                     widget.isGuestMode ? 'สวัสดี คุณลูกค้า' : 'สวัสดีคุณ $_userFullName',
                     maxLines: 1,
-                    style: const TextStyle(
-                      fontSize: 18,
+                    style: TextStyle(
+                      fontSize: compact ? 12 : 18,
                       fontWeight: FontWeight.w600,
                       color: Colors.white,
+                      height: 1.0,
                     ),
                   ),
                 ),
               ),
-              const SizedBox(height: 4),
-              FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: RichText(
-                    text: TextSpan(
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.white.withOpacity(0.8),
-                      ),
-                      children: [
-                        TextSpan(text: widget.isGuestMode ? 'กรุณา ' : 'พัก กิน ดื่ม เที่ยว เสมือน "บ้าน" ของคุณ'),
-                    if (widget.isGuestMode)
-                      WidgetSpan(
-                        child: GestureDetector(
-                          onTap: () {
-                            // Navigate to login
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (context) => const LoginPage(),
+              SizedBox(height: compact ? 0 : 4),
+              if (!compact)
+                FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: RichText(
+                      text: TextSpan(
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.white.withOpacity(0.8),
+                        ),
+                        children: [
+                          TextSpan(text: widget.isGuestMode ? 'กรุณา ' : 'พัก กิน ดื่ม เที่ยว เสมือน "บ้าน" ของคุณ'),
+                      if (widget.isGuestMode)
+                        WidgetSpan(
+                          child: GestureDetector(
+                            onTap: () {
+                              // Navigate to login
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) => const LoginPage(),
+                                ),
+                              );
+                            },
+                            child: Container(
+                              margin: const EdgeInsets.only(left: 5),
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(10),
                               ),
-                            );
-                          },
-                          child: Container(
-                            margin: const EdgeInsets.only(left: 5),
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Text(
-                              'เข้าสู่ระบบ',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.blue,
-                                fontWeight: FontWeight.w600,
+                              child: const Text(
+                                'เข้าสู่ระบบ',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.blue,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                    if (widget.isGuestMode)
-                      TextSpan(text: ' เพื่อติดตามคิว / สถานะการจอง / รับสิทธิพิเศษ'),
-                  ],
-                ),
+                      if (widget.isGuestMode)
+                        TextSpan(text: ' เพื่อติดตามคิว / สถานะการจอง / รับสิทธิพิเศษ'),
+                    ],
                   ),
-              ),
+                    ),
+                ),
             ],
           ),
         ),
@@ -671,19 +804,29 @@ class _MyHomePageState extends State<MyHomePage> {
               print('Menu button pressed, opening drawer');
               _scaffoldKey.currentState?.openEndDrawer();
             },
-            icon: const Icon(
+            padding: EdgeInsets.zero,
+            constraints: BoxConstraints.tightFor(
+              width: compact ? 32 : 48,
+              height: compact ? 32 : 48,
+            ),
+            icon: Icon(
               Icons.more_vert,
               color: Colors.white,
-              size: 24,
+              size: compact ? 20 : 24,
             ),
           ),
           // Logout button
           IconButton(
             onPressed: _logout,
-            icon: const Icon(
+            padding: EdgeInsets.zero,
+            constraints: BoxConstraints.tightFor(
+              width: compact ? 32 : 48,
+              height: compact ? 32 : 48,
+            ),
+            icon: Icon(
               Icons.logout,
               color: Colors.white,
-              size: 24,
+              size: compact ? 20 : 24,
             ),
           ),
         ],
@@ -691,30 +834,30 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-  Widget _buildAppTitle() {
+  Widget _buildAppTitle({bool compact = false}) {
     return Column(
       children: [
-        const Text(
+        Text(
           'ช่องทางธรรมชาติ',
           style: TextStyle(
-            fontSize: 28,
+            fontSize: compact ? 22 : 28,
             fontWeight: FontWeight.bold,
             color: Colors.white,
           ),
         ),
-        const SizedBox(height: 10),
-        const Text(
+        SizedBox(height: compact ? 4 : 10),
+        Text(
           'TREE LAW ZOO valley',
           style: TextStyle(
-            fontSize: 16,
+            fontSize: compact ? 12 : 16,
             color: Colors.white70,
             fontWeight: FontWeight.w400,
           ),
         ),
-        const SizedBox(height: 5),
+        SizedBox(height: compact ? 3 : 5),
         Container(
-          height: 3,
-          width: 100,
+          height: compact ? 2 : 3,
+          width: compact ? 70 : 100,
           decoration: BoxDecoration(
             gradient: const LinearGradient(
               colors: [Colors.white, Colors.transparent],
@@ -871,9 +1014,9 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  Widget _buildFooter() {
+  Widget _buildFooter({bool compact = false}) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(compact ? 10 : 20),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.1),
         borderRadius: BorderRadius.circular(15),
@@ -883,13 +1026,13 @@ class _MyHomePageState extends State<MyHomePage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _buildSocialIcon(Icons.phone, Colors.green),
-              _buildSocialIcon(Icons.message, Colors.blue),
-              _buildSocialIcon(Icons.location_on, Colors.red),
-              _buildSocialIcon(Icons.info, Colors.orange),
+              _buildSocialIcon(Icons.phone, Colors.green, compact: compact),
+              _buildSocialIcon(Icons.message, Colors.blue, compact: compact),
+              _buildSocialIcon(Icons.location_on, Colors.red, compact: compact),
+              _buildSocialIcon(Icons.info, Colors.orange, compact: compact),
             ],
           ),
-          const SizedBox(height: 15),
+          SizedBox(height: compact ? 8 : 15),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -897,14 +1040,14 @@ class _MyHomePageState extends State<MyHomePage> {
                 'ติดต่อ CEO : ',
                 style: TextStyle(
                   color: Colors.white.withOpacity(0.8),
-                  fontSize: 14,
+                  fontSize: compact ? 12 : 14,
                 ),
               ),
               Text(
                 'treelawzoo@gmail.com',
-                style: const TextStyle(
+                style: TextStyle(
                   color: Colors.white,
-                  fontSize: 14,
+                  fontSize: compact ? 12 : 14,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -915,9 +1058,9 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-  Widget _buildSocialIcon(IconData icon, Color color) {
+  Widget _buildSocialIcon(IconData icon, Color color, {bool compact = false}) {
     return Container(
-      padding: const EdgeInsets.all(8),
+      padding: EdgeInsets.all(compact ? 5 : 8),
       decoration: BoxDecoration(
         color: color.withOpacity(0.2),
         borderRadius: BorderRadius.circular(10),
@@ -925,7 +1068,7 @@ class _MyHomePageState extends State<MyHomePage> {
       child: Icon(
         icon,
         color: color,
-        size: 20,
+        size: compact ? 16 : 20,
       ),
     );
   }
