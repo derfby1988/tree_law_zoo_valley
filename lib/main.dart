@@ -14,6 +14,7 @@ import 'reset_password_page.dart';
 import 'auth_state_observer.dart';
 import 'widgets/home_avatar.dart';
 import 'widgets/drawer_clippers.dart';
+import 'pages/inventory_page.dart';
 
 // Helper function to validate email or phone
 bool isValidEmailOrPhone(String input) {
@@ -528,6 +529,10 @@ class _MyHomePageState extends State<MyHomePage> {
                     leading: Icon(Icons.inventory, color: Colors.white),
                     onTap: () {
                       Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const InventoryPage()),
+                      );
                     },
                   ),
                   ListTile(
