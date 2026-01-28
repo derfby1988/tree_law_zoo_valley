@@ -13,6 +13,7 @@ import 'widgets/glass_drawer_components.dart';
 import 'reset_password_page.dart';
 import 'auth_state_observer.dart';
 import 'widgets/home_avatar.dart';
+import 'widgets/drawer_clippers.dart';
 
 // Helper function to validate email or phone
 bool isValidEmailOrPhone(String input) {
@@ -266,90 +267,209 @@ class _MyHomePageState extends State<MyHomePage> {
               Navigator.pop(context);
             }
           },
-          child: Container(
-            width: drawerWidth,
-            color: Color(0xFF79FFB6).withOpacity(0.3),
-            child: ListView(
-                shrinkWrap: true,
-              padding: EdgeInsets.zero,
-              physics: const ClampingScrollPhysics(), // จำกัดการ scroll ไม่ให้ขัด gesture
-              children: [
-              Container(
-                padding: EdgeInsets.all(16.0),
-                height: 80,
-                decoration: BoxDecoration(
-                  color: Color(0xFF79FFB6).withOpacity(0.5),
-                ),
-                child: Text(
-                  'รายการ',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
+          child: ClipPath(
+            clipper: WaveClipper(),
+            child: Container(
+              width: drawerWidth,
+              color: Color(0xFF79FFB6).withOpacity(0.1),
+              child: ListView(
+                  shrinkWrap: true,
+                padding: EdgeInsets.zero,
+                physics: const ClampingScrollPhysics(), // จำกัดการ scroll ไม่ให้ขัด gesture
+                children: [
+                Container(
+                  padding: EdgeInsets.all(16.0),
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: Color(0xFF79FFB6).withOpacity(0.5),
+                  ),
+                  child: Text(
+                    'รายการ',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
-              ),
               ListTile(
                 contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 dense: true,
-                title: Text('หน้าแรก', style: TextStyle(color: Colors.white)),
-                leading: Icon(Icons.home, color: Colors.white),
-                onTap: () {
-                  Navigator.pop(context);
-                },
-              ),
-                            ListTile(
-                title: Text('สั่งอาหาร', style: TextStyle(color: Colors.white)),
-                leading: Icon(Icons.home, color: Colors.white),
-                onTap: () {
-                  Navigator.pop(context);
-                },
-              ),
-                            ListTile(
-                title: Text('จองโต๊ะ/ที่นั่ง', style: TextStyle(color: Colors.white)),
-                leading: Icon(Icons.home, color: Colors.white),
-                onTap: () {
-                  Navigator.pop(context);
-                },
-              ),
-                            ListTile(
-                title: Text('จองที่พัก', style: TextStyle(color: Colors.white)),
-                leading: Icon(Icons.home, color: Colors.white),
-                onTap: () {
-                  Navigator.pop(context);
-                },
-              ),
-                            ListTile(
-                title: Text('คูปอง', style: TextStyle(color: Colors.white)),
-                leading: Icon(Icons.home, color: Colors.white),
-                onTap: () {
-                  Navigator.pop(context);
-                },
-              ),
-                            ListTile(
-                title: Text('เรีบกพนักงาน', style: TextStyle(color: Colors.white)),
-                leading: Icon(Icons.home, color: Colors.white),
+                title: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'หน้าแรก', 
+                        style: TextStyle(color: Colors.white),
+                        softWrap: true,
+                        maxLines: 2,
+                        overflow: TextOverflow.visible,
+                      ),
+                    ),
+                    Icon(Icons.home, color: Colors.white),
+                  ],
+                ),
                 onTap: () {
                   Navigator.pop(context);
                 },
               ),
               ListTile(
-                title: Text('ข้อมูลส่วนตัว', style: TextStyle(color: Colors.white)),
-                leading: Icon(Icons.settings, color: Colors.white),
+                title: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'สั่งอาหาร', 
+                        style: TextStyle(color: Colors.white),
+                        softWrap: true,
+                        maxLines: 2,
+                        overflow: TextOverflow.visible,
+                      ),
+                    ),
+                    Icon(Icons.restaurant, color: Colors.white),
+                  ],
+                ),
                 onTap: () {
                   Navigator.pop(context);
                 },
               ),
               ListTile(
-                title: Text('ร่วมงานกับเรา', style: TextStyle(color: Colors.white)),
-                leading: Icon(Icons.help, color: Colors.white),
+                title: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'จองโต๊ะ/ที่นั่ง', 
+                        style: TextStyle(color: Colors.white),
+                        softWrap: true,
+                        maxLines: 2,
+                        overflow: TextOverflow.visible,
+                      ),
+                    ),
+                    Icon(Icons.table_restaurant, color: Colors.white),
+                  ],
+                ),
                 onTap: () {
                   Navigator.pop(context);
                 },
               ),
-                            ListTile(
-                title: Text('รีวิว/ติดต่อสอบถาม', style: TextStyle(color: Colors.white)),
-                leading: Icon(Icons.help, color: Colors.white),
+              ListTile(
+                title: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'จองที่พัก', 
+                        style: TextStyle(color: Colors.white),
+                        softWrap: true,
+                        maxLines: 2,
+                        overflow: TextOverflow.visible,
+                      ),
+                    ),
+                    Icon(Icons.bed, color: Colors.white),
+                  ],
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                title: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'คูปอง', 
+                        style: TextStyle(color: Colors.white),
+                        softWrap: true,
+                        maxLines: 2,
+                        overflow: TextOverflow.visible,
+                      ),
+                    ),
+                    Icon(Icons.local_offer, color: Colors.white),
+                  ],
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                title: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'เรียกพนักงาน / ให้ทิป', 
+                        style: TextStyle(color: Colors.white),
+                        softWrap: true,
+                        maxLines: 2,
+                        overflow: TextOverflow.visible,
+                      ),
+                    ),
+                    Icon(Icons.people, color: Colors.white),
+                  ],
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                title: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'ข้อมูลส่วนตัว', 
+                        style: TextStyle(color: Colors.white),
+                        softWrap: true,
+                        maxLines: 2,
+                        overflow: TextOverflow.visible,
+                      ),
+                    ),
+                    Icon(Icons.person, color: Colors.white),
+                  ],
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                title: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'ร่วมงานกับเรา', 
+                        style: TextStyle(color: Colors.white),
+                        softWrap: true,
+                        maxLines: 2,
+                        overflow: TextOverflow.visible,
+                      ),
+                    ),
+                    Icon(Icons.work, color: Colors.white),
+                  ],
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                title: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'รีวิว/ติดต่อสอบถาม', 
+                        style: TextStyle(color: Colors.white),
+                        softWrap: true,
+                        maxLines: 2,
+                        overflow: TextOverflow.visible,
+                      ),
+                    ),
+                    Icon(Icons.contact_support, color: Colors.white),
+                  ],
+                ),
                 onTap: () {
                   Navigator.pop(context);
                 },
@@ -358,6 +478,7 @@ class _MyHomePageState extends State<MyHomePage> {
           ),
         ),
           ),
+        ),
         // Add EndDrawer only for logged-in users
         endDrawer: !widget.isGuestMode && currentUser != null 
           ? GestureDetector(
@@ -409,7 +530,7 @@ class _MyHomePageState extends State<MyHomePage> {
                       Navigator.pop(context);
                     },
                   ),
-                                    ListTile(
+                  ListTile(
                     title: Text('คูปอง/โปรโมชั่น', style: TextStyle(color: Colors.white)),
                     leading: Icon(Icons.inventory, color: Colors.white),
                     onTap: () {
@@ -430,7 +551,7 @@ class _MyHomePageState extends State<MyHomePage> {
                       Navigator.pop(context);
                     },
                   ),
-                                    ListTile(
+                  ListTile(
                     title: Text('ที่จอดรถ', style: TextStyle(color: Colors.white)),
                     leading: Icon(Icons.handshake, color: Colors.white),
                     onTap: () {
@@ -447,6 +568,27 @@ class _MyHomePageState extends State<MyHomePage> {
                   ListTile(
                     title: Text('รายงาน', style: TextStyle(color: Colors.white)),
                     leading: Icon(Icons.assessment, color: Colors.white),
+                    onTap: () {
+                      Navigator.pop(context);
+                    },
+                  ),
+                  ListTile(
+                    title: Text('จองที่พัก', style: TextStyle(color: Colors.white)),
+                    leading: Icon(Icons.bed, color: Colors.white),
+                    onTap: () {
+                      Navigator.pop(context);
+                    },
+                  ),
+                  ListTile(
+                    title: Text('ประวัติ', style: TextStyle(color: Colors.white)),
+                    leading: Icon(Icons.history, color: Colors.white),
+                    onTap: () {
+                      Navigator.pop(context);
+                    },
+                  ),
+                  ListTile(
+                    title: Text('Database Test', style: TextStyle(color: Colors.white)),
+                    leading: Icon(Icons.storage, color: Colors.white),
                     onTap: () {
                       Navigator.pop(context);
                     },
