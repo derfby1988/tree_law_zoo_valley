@@ -600,24 +600,30 @@ class _MyHomePageState extends State<MyHomePage> {
                     );
                   }
                 },
-                child: Text(
-                  widget.isGuestMode ? 'สวัสดี คุณลูกค้า' : 'สวัสดีคุณ $_userFullName',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    widget.isGuestMode ? 'สวัสดี คุณลูกค้า' : 'สวัสดีคุณ $_userFullName',
+                    maxLines: 1,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ),
               const SizedBox(height: 4),
-              RichText(
-                text: TextSpan(
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.white.withOpacity(0.8),
-                  ),
-                  children: [
-                    TextSpan(text: widget.isGuestMode ? 'กรุณา ' : 'พัก กิน ดื่ม เที่ยว เสมือน "บ้าน" ของคุณ'),
+              FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: RichText(
+                    text: TextSpan(
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.white.withOpacity(0.8),
+                      ),
+                      children: [
+                        TextSpan(text: widget.isGuestMode ? 'กรุณา ' : 'พัก กิน ดื่ม เที่ยว เสมือน "บ้าน" ของคุณ'),
                     if (widget.isGuestMode)
                       WidgetSpan(
                         child: GestureDetector(
@@ -651,6 +657,7 @@ class _MyHomePageState extends State<MyHomePage> {
                       TextSpan(text: ' เพื่อติดตามคิว / สถานะการจอง / รับสิทธิพิเศษ'),
                   ],
                 ),
+                  ),
               ),
             ],
           ),
@@ -782,17 +789,21 @@ class _MyHomePageState extends State<MyHomePage> {
                       : Colors.grey,
                 ),
                 const SizedBox(height: 10),
-                Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: isAllowed 
-                        ? (widget.isGuestMode && !guestAllowed 
-                            ? Colors.grey 
-                            : Colors.black87)
-                        : Colors.grey,
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: isAllowed 
+                          ? (widget.isGuestMode && !guestAllowed 
+                              ? Colors.grey 
+                              : Colors.black87)
+                          : Colors.grey,
+                    ),
                   ),
                 ),
                 if (widget.isGuestMode && !guestAllowed)
