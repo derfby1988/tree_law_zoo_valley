@@ -44,9 +44,9 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white70,
           tabs: [
-            Tab(icon: Icon(Icons.dashboard), text: 'ภาพรวม'),
-            Tab(icon: Icon(Icons.inventory), text: 'สินค้า'),
-            Tab(icon: Icon(Icons.build), text: 'ปรับปรุง'),
+            Tab(icon: Icon(Icons.dashboard), text: 'สถิติ / รายงาน'),
+            Tab(icon: Icon(Icons.inventory), text: 'จัดการสินค้า'),
+            Tab(icon: Icon(Icons.build), text: 'ปรับปรุงคลัง'),
           ],
         ),
       ),
