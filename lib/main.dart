@@ -268,31 +268,29 @@ class _MyHomePageState extends State<MyHomePage> {
               Navigator.pop(context);
             }
           },
-          child: ClipPath(
-            clipper: WaveClipper(),
-            child: Container(
-              width: drawerWidth,
-              color: Color(0xFF79FFB6).withOpacity(0.1),
-              child: ListView(
-                  shrinkWrap: true,
-                padding: EdgeInsets.zero,
-                physics: const ClampingScrollPhysics(), // จำกัดการ scroll ไม่ให้ขัด gesture
-                children: [
-                Container(
-                  padding: EdgeInsets.all(16.0),
-                  height: 80,
-                  decoration: BoxDecoration(
-                    color: Color(0xFF79FFB6).withOpacity(0.5),
-                  ),
-                  child: Text(
-                    'รายการ',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
+          child: Container(
+            width: drawerWidth,
+            color: Color(0xFF79FFB6).withOpacity(0.1),
+            child: ListView(
+                shrinkWrap: true,
+              padding: EdgeInsets.zero,
+              physics: const ClampingScrollPhysics(), // จำกัดการ scroll ไม่ให้ขัด gesture
+              children: [
+              Container(
+                padding: EdgeInsets.all(16.0),
+                height: 80,
+                decoration: BoxDecoration(
+                  color: Color(0xFF79FFB6).withOpacity(0.5),
+                ),
+                child: Text(
+                  'รายการ',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
+              ),
               ListTile(
                 contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 dense: true,
@@ -478,7 +476,6 @@ class _MyHomePageState extends State<MyHomePage> {
             ],
           ),
         ),
-          ),
         ),
         // Add EndDrawer only for logged-in users
         endDrawer: !widget.isGuestMode && currentUser != null 
@@ -511,7 +508,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     ),
                   ),
                   ListTile(
-                    title: Text('ขาย/POS', style: TextStyle(color: Colors.white)),
+                    title: Text('ขาย/ POS', style: TextStyle(color: Colors.white)),
                     leading: Icon(Icons.point_of_sale, color: Colors.white),
                     onTap: () {
                       Navigator.pop(context);
@@ -542,7 +539,22 @@ class _MyHomePageState extends State<MyHomePage> {
                       Navigator.pop(context);
                     },
                   ),
-                  ListTile(
+
+                                    ListTile(
+                    title: Text('โฮมสเตย์', style: TextStyle(color: Colors.white)),
+                    leading: Icon(Icons.bed, color: Colors.white),
+                    onTap: () {
+                      Navigator.pop(context);
+                    },
+                  ),
+                                    ListTile(
+                    title: Text('ปล่อยเช่า / ยืม / คืน', style: TextStyle(color: Colors.white)),
+                    leading: Icon(Icons.bed, color: Colors.white),
+                    onTap: () {
+                      Navigator.pop(context);
+                    },
+                  ),
+                                    ListTile(
                     title: Text('ลูกค้า', style: TextStyle(color: Colors.white)),
                     leading: Icon(Icons.people, color: Colors.white),
                     onTap: () {
@@ -550,7 +562,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     },
                   ),
                   ListTile(
-                    title: Text('เจ้าหนี้/พาร์ทเนอร์', style: TextStyle(color: Colors.white)),
+                    title: Text('เจ้าหนี้ / พาร์ทเนอร์', style: TextStyle(color: Colors.white)),
                     leading: Icon(Icons.handshake, color: Colors.white),
                     onTap: () {
                       Navigator.pop(context);
@@ -563,7 +575,24 @@ class _MyHomePageState extends State<MyHomePage> {
                       Navigator.pop(context);
                     },
                   ),
-                  ListTile(
+
+
+
+                                    ListTile(
+                    title: Text('รายงานยอด', style: TextStyle(color: Colors.white)),
+                    leading: Icon(Icons.assessment, color: Colors.white),
+                    onTap: () {
+                      Navigator.pop(context);
+                    },
+                  ),
+                                    ListTile(
+                    title: Text('เอกสาร / ผลการทำงาน', style: TextStyle(color: Colors.white)),
+                    leading: Icon(Icons.assessment, color: Colors.white),
+                    onTap: () {
+                      Navigator.pop(context);
+                    },
+                  ),
+                                    ListTile(
                     title: Text('ข้อมูลพนักงาน', style: TextStyle(color: Colors.white)),
                     leading: Icon(Icons.person, color: Colors.white),
                     onTap: () {
@@ -571,21 +600,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     },
                   ),
                   ListTile(
-                    title: Text('รายงาน', style: TextStyle(color: Colors.white)),
-                    leading: Icon(Icons.assessment, color: Colors.white),
-                    onTap: () {
-                      Navigator.pop(context);
-                    },
-                  ),
-                  ListTile(
-                    title: Text('จองที่พัก', style: TextStyle(color: Colors.white)),
-                    leading: Icon(Icons.bed, color: Colors.white),
-                    onTap: () {
-                      Navigator.pop(context);
-                    },
-                  ),
-                  ListTile(
-                    title: Text('ประวัติ', style: TextStyle(color: Colors.white)),
+                    title: Text('ประวัติการเข้าระบบ', style: TextStyle(color: Colors.white)),
                     leading: Icon(Icons.history, color: Colors.white),
                     onTap: () {
                       Navigator.pop(context);
@@ -838,7 +853,8 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
         ),
       ),
-    ),);
+    ),
+  );
   }
 
   // Header แยกตาม mode
