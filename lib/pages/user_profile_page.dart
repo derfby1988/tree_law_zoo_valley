@@ -896,7 +896,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
               // Mobile: แสดงทั้ง Camera และ Gallery
               if (kIsWeb) ...[
                 // Web - File Picker เท่านั้น
-                GlassButton(
+                GlassDialogButton(
                   text: 'เลือกไฟล์รูปภาพ',
                   onPressed: () async {
                     try {
@@ -949,7 +949,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    GlassButton(
+                    GlassDialogButton(
                       text: 'แกลเลอรี่',
                       onPressed: () async {
                         try {
@@ -986,7 +986,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                         ],
                       ),
                     ),
-                    GlassButton(
+                    GlassDialogButton(
                       text: 'กล้อง',
                       onPressed: () async {
                         try {

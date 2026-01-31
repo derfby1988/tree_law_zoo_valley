@@ -321,7 +321,7 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
         ],
       ),
       actions: [
-        GlassButton(
+        GlassDialogButton(
           text: 'เปลี่ยนรหัสผ่าน',
           onPressed: _isLoading ? null : _changePassword,
           isPrimary: true,

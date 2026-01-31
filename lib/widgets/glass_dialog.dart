@@ -176,15 +176,15 @@ class GlassTextField extends StatelessWidget {
   }
 }
 
-/// Glass Button - สำหรับปุ่มใน glass dialog
-class GlassButton extends StatelessWidget {
+/// Glass Dialog Button - สำหรับปุ่มใน glass dialog
+class GlassDialogButton extends StatelessWidget {
   final String text;
   final VoidCallback? onPressed;
   final bool isPrimary;
   final bool isLoading;
   final Widget? child;
 
-  const GlassButton({
+  const GlassDialogButton({
     super.key,
     required this.text,
     this.onPressed,

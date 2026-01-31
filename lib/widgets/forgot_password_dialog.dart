@@ -234,7 +234,7 @@ class _ForgotPasswordDialogState extends State<ForgotPasswordDialog> {
         Row(
           children: [
             Expanded(
-              child: GlassButton(
+              child: GlassDialogButton(
                 text: 'ยกเลิก',
                 onPressed: _isLoading ? null : () {
                   Navigator.of(context).pop();
@@ -243,7 +243,7 @@ class _ForgotPasswordDialogState extends State<ForgotPasswordDialog> {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: GlassButton(
+              child: GlassDialogButton(
                 text: _countdown > 0 ? 'ส่งใหม่ (${_countdown} วินาท)' : 'ส่ง',
                 onPressed: (_isLoading || _countdown > 0) ? null : _resetPassword,
                 isPrimary: true,
