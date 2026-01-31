@@ -19,11 +19,24 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
   List<Map<String, dynamic>> _permissions = [];
   Map<String, dynamic>? _selectedUser;
   Map<String, dynamic>? _selectedGroup;
+  
+  // Search controllers
+  final TextEditingController _userSearchController = TextEditingController();
+  final TextEditingController _groupSearchController = TextEditingController();
+  String _userSearchQuery = '';
+  String _groupSearchQuery = '';
 
   @override
   void initState() {
     super.initState();
     _loadData();
+  }
+  
+  @override
+  void dispose() {
+    _userSearchController.dispose();
+    _groupSearchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -50,8 +63,7 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
       // โหลดข้อมูล permissions
       final permissionsResponse = await SupabaseService.client
           .from('user_permissions')
-          .select('*')
-          .order('created_at', ascending: false);
+          .select('*');
 
       setState(() {
         _users = List<Map<String, dynamic>>.from(usersResponse);
@@ -104,6 +116,56 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
         ),
       );
     }
+  }
+
+  Future<void> _clearAllUserPermissions(String userId) async {
+    try {
+      await SupabaseService.client
+          .from('user_permissions')
+          .delete()
+          .eq('user_id', userId);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('ลบสิทธิ์ทั้งหมดสำเร็จ'),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      _loadData();
+    } catch (e) {
+      print('❌ Error clearing permissions: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('ไม่สามารถลบสิทธิ์: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _showClearPermissionsConfirmation(Map<String, dynamic> user) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('ยืนยันการลบสิทธิ์'),
+        content: Text('คุณต้องการลบสิทธิ์ทั้งหมดของ ${user['full_name'] ?? 'ผู้ใช้นี้'} ใช่หรือไม่?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text('ยกเลิก'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _clearAllUserPermissions(user['id']);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: Text('ลบสิทธิ์', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showUserPermissionDialog(Map<String, dynamic> user) {
@@ -650,70 +712,218 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
   }
 
   Widget _buildUsersTab() {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 20),
-      child: _users.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.person_off,
-                    size: 64,
-                    color: Colors.grey[400],
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'ยังไม่มีผู้ใช้ในระบบ',
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ],
+    // Filter users based on search query
+    final filteredUsers = _users.where((user) {
+      final searchLower = _userSearchQuery.toLowerCase();
+      final fullName = (user['full_name'] ?? '').toLowerCase();
+      final email = (user['email'] ?? '').toLowerCase();
+      return fullName.contains(searchLower) || email.contains(searchLower);
+    }).toList();
+
+    return Column(
+      children: [
+        // Search Bar
+        Container(
+          padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          child: TextField(
+            controller: _userSearchController,
+            onChanged: (value) {
+              setState(() {
+                _userSearchQuery = value;
+              });
+            },
+            decoration: InputDecoration(
+              hintText: 'ค้นหาผู้ใช้...',
+              prefixIcon: Icon(Icons.search, color: Colors.grey),
+              suffixIcon: _userSearchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: Icon(Icons.clear, color: Colors.grey),
+                      onPressed: () {
+                        _userSearchController.clear();
+                        setState(() {
+                          _userSearchQuery = '';
+                        });
+                      },
+                    )
+                  : null,
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
               ),
-            )
-          : ListView.builder(
-              itemCount: _users.length,
-              itemBuilder: (context, index) {
-                final user = _users[index];
-                return _buildUserCard(user);
-              },
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Color(0xFF2E7D32), width: 2),
+              ),
+              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             ),
+          ),
+        ),
+        // Results count
+        if (filteredUsers.isNotEmpty)
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              children: [
+                Text(
+                  'พบ ${filteredUsers.length} ผู้ใช้',
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        const SizedBox(height: 8),
+        // User List
+        Expanded(
+          child: filteredUsers.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        _userSearchQuery.isEmpty ? Icons.person_off : Icons.search_off,
+                        size: 64,
+                        color: Colors.grey[400],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        _userSearchQuery.isEmpty
+                            ? 'ยังไม่มีผู้ใช้ในระบบ'
+                            : 'ไม่พบผู้ใช้ที่ค้นหา',
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  padding: EdgeInsets.symmetric(horizontal: 20),
+                  itemCount: filteredUsers.length,
+                  itemBuilder: (context, index) {
+                    final user = filteredUsers[index];
+                    return _buildUserCard(user);
+                  },
+                ),
+        ),
+      ],
     );
   }
 
   Widget _buildGroupsTab() {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 20),
-      child: _userGroups.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.group_off,
-                    size: 64,
-                    color: Colors.grey[400],
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'ยังไม่มีกลุ่มผู้ใช้',
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ],
+    // Filter groups based on search query
+    final filteredGroups = _userGroups.where((group) {
+      final searchLower = _groupSearchQuery.toLowerCase();
+      final groupName = (group['group_name'] ?? '').toLowerCase();
+      final description = (group['group_description'] ?? '').toLowerCase();
+      return groupName.contains(searchLower) || description.contains(searchLower);
+    }).toList();
+
+    return Column(
+      children: [
+        // Search Bar
+        Container(
+          padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          child: TextField(
+            controller: _groupSearchController,
+            onChanged: (value) {
+              setState(() {
+                _groupSearchQuery = value;
+              });
+            },
+            decoration: InputDecoration(
+              hintText: 'ค้นหากลุ่ม...',
+              prefixIcon: Icon(Icons.search, color: Colors.grey),
+              suffixIcon: _groupSearchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: Icon(Icons.clear, color: Colors.grey),
+                      onPressed: () {
+                        _groupSearchController.clear();
+                        setState(() {
+                          _groupSearchQuery = '';
+                        });
+                      },
+                    )
+                  : null,
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
               ),
-            )
-          : ListView.builder(
-              itemCount: _userGroups.length,
-              itemBuilder: (context, index) {
-                final group = _userGroups[index];
-                return _buildGroupCard(group);
-              },
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Color(0xFF2E7D32), width: 2),
+              ),
+              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             ),
+          ),
+        ),
+        // Results count
+        if (filteredGroups.isNotEmpty)
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              children: [
+                Text(
+                  'พบ ${filteredGroups.length} กลุ่ม',
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        const SizedBox(height: 8),
+        // Group List
+        Expanded(
+          child: filteredGroups.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        _groupSearchQuery.isEmpty ? Icons.group_off : Icons.search_off,
+                        size: 64,
+                        color: Colors.grey[400],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        _groupSearchQuery.isEmpty
+                            ? 'ยังไม่มีกลุ่มผู้ใช้'
+                            : 'ไม่พบกลุ่มที่ค้นหา',
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  padding: EdgeInsets.symmetric(horizontal: 20),
+                  itemCount: filteredGroups.length,
+                  itemBuilder: (context, index) {
+                    final group = filteredGroups[index];
+                    return _buildGroupCard(group);
+                  },
+                ),
+        ),
+      ],
     );
   }
 
@@ -783,7 +993,7 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
                 spacing: 4,
                 runSpacing: 4,
                 children: groupNames
-                    .take(3) // แสดงสูงสุด 3 กลุ่ม
+                    .take(3)
                     .map((groupName) => Container(
                           padding: EdgeInsets.symmetric(
                             horizontal: 8,
@@ -827,6 +1037,8 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
           onSelected: (value) {
             if (value == 'permissions') {
               _showUserPermissionDialog(user);
+            } else if (value == 'clear') {
+              _showClearPermissionsConfirmation(user);
             }
           },
           itemBuilder: (context) => [
@@ -834,12 +1046,23 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
               value: 'permissions',
               child: Row(
                 children: [
-                  Icon(Icons.security, size: 18),
+                  Icon(Icons.security, size: 18, color: Color(0xFF2E7D32)),
                   SizedBox(width: 8),
                   Text('จัดการสิทธิ์'),
                 ],
               ),
             ),
+            if (groupNames.isNotEmpty)
+              PopupMenuItem(
+                value: 'clear',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete_sweep, size: 18, color: Colors.red),
+                    SizedBox(width: 8),
+                    Text('ลบสิทธิ์ทั้งหมด', style: TextStyle(color: Colors.red)),
+                  ],
+                ),
+              ),
           ],
         ),
         onTap: () => _showUserPermissionDialog(user),

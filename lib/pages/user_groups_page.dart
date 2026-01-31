@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
 import '../widgets/glass_dialog.dart';
 import '../widgets/glass_button.dart';
+import 'user_permissions_page.dart';
 
 class UserGroupsPage extends StatefulWidget {
   const UserGroupsPage({super.key});
@@ -149,8 +150,8 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
             TextField(
               controller: _groupNameController,
               decoration: InputDecoration(
-                labelText: 'ชื่อกลุ่ม',
-                hintText: 'เช่น แอดมิน, พนักงาน, ผู้จัดการ',
+                labelText: 'ชื่อกลุ่มผู้ใช้งาน',
+                hintText: 'เช่น แอดมิน, พนักงาน, ผู้จัดการ, ลูกค้า, Partner',
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -162,8 +163,8 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
             TextField(
               controller: _groupDescriptionController,
               decoration: InputDecoration(
-                labelText: 'รายละเอียดกลุ่ม',
-                hintText: 'อธิบายหน้าที่และความรับผิดชอบ',
+                labelText: 'รายละเอียด',
+                hintText: 'อธิบายหน้าที่ / ความรับผิดชอบ',
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -319,7 +320,7 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
             TextField(
               controller: _groupDescriptionController,
               decoration: InputDecoration(
-                labelText: 'รายละเอียดกลุ่ม',
+                labelText: 'รายละเอียด',
                 hintText: 'อธิบายหน้าที่และความรับผิดชอบ',
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -634,46 +635,65 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
             ),
           ],
         ),
-        trailing: PopupMenuButton<String>(
-          onSelected: (value) {
-            if (value == 'view') {
-              _showGroupDetails(group);
-            } else if (value == 'edit') {
-              _showEditGroupDialog(group);
-            } else if (value == 'delete') {
-              _deleteUserGroup(group['id']);
-            }
-          },
-          itemBuilder: (context) => [
-            PopupMenuItem(
-              value: 'view',
-              child: Row(
-                children: [
-                  Icon(Icons.visibility, size: 18),
-                  SizedBox(width: 8),
-                  Text('ดูรายละเอียด'),
-                ],
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => UserPermissionsPage(),
+                  ),
+                );
+              },
+              child: const Text(
+                'สิทธิ์',
+                style: TextStyle(color: Colors.blue),
               ),
             ),
-            PopupMenuItem(
-              value: 'edit',
-              child: Row(
-                children: [
-                  Icon(Icons.edit, size: 18),
-                  SizedBox(width: 8),
-                  Text('แก้ไข'),
-                ],
-              ),
-            ),
-            PopupMenuItem(
-              value: 'delete',
-              child: Row(
-                children: [
-                  Icon(Icons.delete, size: 18, color: Colors.red),
-                  SizedBox(width: 8),
-                  Text('ลบ', style: TextStyle(color: Colors.red)),
-                ],
-              ),
+            PopupMenuButton<String>(
+              onSelected: (value) {
+                if (value == 'view') {
+                  _showGroupDetails(group);
+                } else if (value == 'edit') {
+                  _showEditGroupDialog(group);
+                } else if (value == 'delete') {
+                  _deleteUserGroup(group['id']);
+                }
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 'view',
+                  child: Row(
+                    children: [
+                      Icon(Icons.visibility, size: 18),
+                      SizedBox(width: 8),
+                      Text('ดูรายละเอียด'),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'edit',
+                  child: Row(
+                    children: [
+                      Icon(Icons.edit, size: 18),
+                      SizedBox(width: 8),
+                      Text('แก้ไข'),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete, size: 18, color: Colors.red),
+                      SizedBox(width: 8),
+                      Text('ลบ', style: TextStyle(color: Colors.red)),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ],
         ),
