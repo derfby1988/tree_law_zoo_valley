@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'services/supabase_service.dart';
+import 'services/user_group_service.dart';
 import 'services/image_upload_service.dart';
 import 'widgets/avatar_picker.dart';
 import '../main.dart';
@@ -241,6 +242,16 @@ class _RegisterPageState extends State<RegisterPage> {
       }
     }
 
+    // ดึง default group จาก database
+    final defaultGroup = await UserGroupService.getDefaultGroup();
+    final defaultGroupId = defaultGroup?.id;
+    
+    if (defaultGroupId == null) {
+      debugPrint('Warning: No default group found in database');
+    } else {
+      debugPrint('Using default group: ${defaultGroup!.groupName} (ID: $defaultGroupId)');
+    }
+
     try {
       AuthResponse response;
 
@@ -295,7 +306,8 @@ class _RegisterPageState extends State<RegisterPage> {
             'username': _usernameController.text.trim(),
             'phone': _phoneController.text.trim().isNotEmpty ? _phoneController.text.trim() : null,
             'full_name': _fullNameController.text.trim().isNotEmpty ? _fullNameController.text.trim() : null,
-            'avatar_url': 'pending', // ใช้ค่าชั่วคราว
+            'avatar_url': 'pending',
+            'user_group_id': defaultGroupId,
           },
         );
       } else {
@@ -348,7 +360,8 @@ class _RegisterPageState extends State<RegisterPage> {
             'username': _usernameController.text.trim(),
             'email': _emailController.text.trim().isNotEmpty ? _emailController.text.trim() : null,
             'full_name': _fullNameController.text.trim().isNotEmpty ? _fullNameController.text.trim() : null,
-            'avatar_url': 'pending', // ใช้ค่าชั่วคราว
+            'avatar_url': 'pending',
+            'user_group_id': defaultGroupId,
           },
         );
       }

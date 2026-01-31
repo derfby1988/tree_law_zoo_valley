@@ -16,12 +16,62 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
   final _groupNameController = TextEditingController();
   final _groupDescriptionController = TextEditingController();
   
+  // สีที่เลือกสำหรับกลุ่ม (default สีเขียว)
+  Color _selectedColor = Color(0xFF4CAF50);
+  
   bool _isLoading = false;
   bool _isCreating = false;
   String? _errorMessage;
   String? _successMessage;
   List<Map<String, dynamic>> _userGroups = [];
   Map<String, dynamic>? _selectedGroup;
+
+  // รายการสีที่แนะนำ
+  final List<Color> _presetColors = [
+    Color(0xFF4CAF50), // เขียว
+    Color(0xFF2196F3), // ฟ้า
+    Color(0xFFFF9800), // ส้ม
+    Color(0xFFE91E63), // ชมพู
+    Color(0xFF9C27B0), // ม่วง
+    Color(0xFF00BCD4), // ฟ้าอมเขียว
+    Color(0xFFFF5722), // ส้มแดง
+    Color(0xFF795548), // น้ำตาล
+    Color(0xFF607D8B), // น้ำเงินเทา
+    Color(0xFFFFEB3B), // เหลือง
+  ];
+
+  /// แปลง Color เป็น HEX string
+  String _colorToHex(Color color) {
+    return '#${color.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
+  }
+
+  /// แปลง HEX string เป็น Color
+  Color _hexToColor(String hex) {
+    try {
+      hex = hex.replaceAll('#', '');
+      if (hex.length == 6) {
+        hex = 'FF$hex';
+      }
+      return Color(int.parse(hex, radix: 16));
+    } catch (e) {
+      return Color(0xFF4CAF50);
+    }
+  }
+
+  /// ตรวจสอบว่าสีซ้ำหรือไม่
+  bool _isColorDuplicate(String colorHex, {String? excludeGroupId}) {
+    for (final group in _userGroups) {
+      if (excludeGroupId != null && group['id'] == excludeGroupId) continue;
+      
+      final existingColor = group['color'];
+      if (existingColor != null) {
+        final normalizedExisting = existingColor.toString().toUpperCase().replaceAll('#', '');
+        final normalizedNew = colorHex.toUpperCase().replaceAll('#', '');
+        if (normalizedExisting == normalizedNew) return true;
+      }
+    }
+    return false;
+  }
 
   @override
   void initState() {
@@ -67,6 +117,16 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
       return;
     }
 
+    // ตรวจสอบว่าสีซ้ำหรือไม่
+    final colorHex = _colorToHex(_selectedColor);
+    final isDuplicate = _isColorDuplicate(colorHex);
+    if (isDuplicate) {
+      setState(() {
+        _errorMessage = 'สีนี้ถูกใช้งานโดยกลุ่มอื่นแล้ว กรุณาเลือกสีอื่น';
+      });
+      return;
+    }
+
     setState(() {
       _isCreating = true;
       _errorMessage = null;
@@ -76,9 +136,12 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
       final currentUser = Supabase.instance.client.auth.currentUser;
       if (currentUser == null) throw Exception('ไม่พบข้อมูลผู้ใช้');
 
+      final groupName = _groupNameController.text.trim();
+
       await SupabaseService.client.from('user_groups').insert({
-        'group_name': _groupNameController.text.trim(),
+        'group_name': groupName,
         'group_description': _groupDescriptionController.text.trim(),
+        'color': colorHex,
         'created_by': currentUser.id,
         'created_at': DateTime.now().toIso8601String(),
         'is_active': true,
@@ -86,10 +149,12 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
 
       _groupNameController.clear();
       _groupDescriptionController.clear();
+      _selectedColor = Color(0xFF4CAF50); // reset to default
       Navigator.of(context).pop();
       
       setState(() {
         _successMessage = 'สร้างกลุ่มผู้ใช้สำเร็จ';
+        _isCreating = false;
       });
       
       _loadUserGroups();
@@ -97,7 +162,7 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
       // แสดง success message
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('สร้างกลุ่ม "${_groupNameController.text}" สำเร็จ'),
+          content: Text('สร้างกลุ่ม "${groupName}" สำเร็จ'),
           backgroundColor: Colors.green,
         ),
       );
@@ -138,67 +203,153 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
   void _showCreateGroupDialog() {
     setState(() {
       _errorMessage = null;
+      _selectedColor = Color(0xFF4CAF50); // default color
     });
 
     showDialog(
       context: context,
-      builder: (context) => GlassDialog(
-        title: 'สร้างกลุ่มผู้ใช้ใหม่',
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _groupNameController,
-              decoration: InputDecoration(
-                labelText: 'ชื่อกลุ่มผู้ใช้งาน',
-                hintText: 'เช่น แอดมิน, พนักงาน, ผู้จัดการ, ลูกค้า, Partner',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                filled: true,
-                fillColor: Colors.white.withOpacity(0.9),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _groupDescriptionController,
-              decoration: InputDecoration(
-                labelText: 'รายละเอียด',
-                hintText: 'อธิบายหน้าที่ / ความรับผิดชอบ',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                filled: true,
-                fillColor: Colors.white.withOpacity(0.9),
-              ),
-              maxLines: 3,
-            ),
-            const SizedBox(height: 24),
-            if (_errorMessage != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Text(
-                  _errorMessage!,
-                  style: TextStyle(color: Colors.red, fontSize: 14),
-                ),
-              ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => GlassDialog(
+          title: 'สร้างกลุ่มผู้ใช้ใหม่',
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: Text('ยกเลิก'),
+                TextField(
+                  controller: _groupNameController,
+                  decoration: InputDecoration(
+                    labelText: 'ชื่อกลุ่มผู้ใช้งาน',
+                    hintText: 'เช่น แอดมิน, พนักงาน, ผู้จัดการ, ลูกค้า, Partner',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    filled: true,
+                    fillColor: Colors.white.withOpacity(0.9),
+                  ),
                 ),
-                const SizedBox(width: 12),
-                GlassButton(
-                  text: 'สร้างกลุ่ม',
-                  onPressed: _isCreating ? null : _createUserGroup,
-                  backgroundColor: Color(0xFF2E7D32),
-                  icon: Icons.group_add,
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _groupDescriptionController,
+                  decoration: InputDecoration(
+                    labelText: 'รายละเอียด',
+                    hintText: 'อธิบายหน้าที่ / ความรับผิดชอบ',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    filled: true,
+                    fillColor: Colors.white.withOpacity(0.9),
+                  ),
+                  maxLines: 3,
+                ),
+                const SizedBox(height: 20),
+                // Color Picker Section
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.9),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey[300]!),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'เลือกสีประจำกลุ่ม',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: _presetColors.map((color) {
+                          final isSelected = _selectedColor == color;
+                          return GestureDetector(
+                            onTap: () {
+                              setDialogState(() {
+                                _selectedColor = color;
+                              });
+                            },
+                            child: Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: color,
+                                shape: BoxShape.circle,
+                                border: isSelected
+                                    ? Border.all(color: Colors.white, width: 3)
+                                    : null,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.2),
+                                    blurRadius: 4,
+                                    offset: Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: isSelected
+                                  ? Icon(Icons.check, color: Colors.white, size: 24)
+                                  : null,
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 12),
+                      // แสดงสีที่เลือก
+                      Row(
+                        children: [
+                          Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: _selectedColor,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'สีที่เลือก: ${_colorToHex(_selectedColor)}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                if (_errorMessage != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Text(
+                      _errorMessage!,
+                      style: TextStyle(color: Colors.red, fontSize: 14),
+                    ),
+                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: Text('ยกเลิก'),
+                    ),
+                    const SizedBox(width: 12),
+                    GlassButton(
+                      text: 'สร้างกลุ่ม',
+                      onPressed: _isCreating ? null : _createUserGroup,
+                      backgroundColor: Color(0xFF2E7D32),
+                      icon: Icons.group_add,
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -209,6 +360,8 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
       _selectedGroup = group;
     });
 
+    final groupColor = _hexToColor(group['color'] ?? '#4CAF50');
+
     showDialog(
       context: context,
       builder: (context) => GlassDialog(
@@ -217,6 +370,61 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Color indicator at top
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: groupColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: groupColor, width: 2),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: groupColor,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: groupColor.withOpacity(0.3),
+                          blurRadius: 8,
+                          offset: Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Icon(Icons.group, color: Colors.white, size: 24),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          group['group_name'] ?? '',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: groupColor,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'สีประจำกลุ่ม: ${group['color'] ?? '#4CAF50'}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
             _buildDetailRow('ชื่อกลุ่ม', group['group_name'] ?? ''),
             _buildDetailRow('รายละเอียด', group['group_description'] ?? '-'),
             _buildDetailRow('สถานะ', group['is_active'] == true ? 'ใช้งาน' : 'ไม่ใช้งาน'),
@@ -260,17 +468,29 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
       return;
     }
 
+    // ตรวจสอบว่าสีซ้ำหรือไม่
+    final colorHex = _colorToHex(_selectedColor);
+    final isDuplicate = _isColorDuplicate(colorHex, excludeGroupId: groupId);
+    if (isDuplicate) {
+      setState(() {
+        _errorMessage = 'สีนี้ถูกใช้งานโดยกลุ่มอื่นแล้ว กรุณาเลือกสีอื่น';
+      });
+      return;
+    }
+
     try {
       await SupabaseService.client
           .from('user_groups')
           .update({
             'group_name': _groupNameController.text.trim(),
             'group_description': _groupDescriptionController.text.trim(),
+            'color': colorHex,
           })
           .eq('id', groupId);
 
       _groupNameController.clear();
       _groupDescriptionController.clear();
+      _selectedColor = Color(0xFF4CAF50);
       Navigator.of(context).pop();
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -292,6 +512,7 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
   void _showEditGroupDialog(Map<String, dynamic> group) {
     _groupNameController.text = group['group_name'] ?? '';
     _groupDescriptionController.text = group['group_description'] ?? '';
+    _selectedColor = _hexToColor(group['color'] ?? '#4CAF50');
     
     setState(() {
       _errorMessage = null;
@@ -299,63 +520,147 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
 
     showDialog(
       context: context,
-      builder: (context) => GlassDialog(
-        title: 'แก้ไขกลุ่มผู้ใช้',
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _groupNameController,
-              decoration: InputDecoration(
-                labelText: 'ชื่อกลุ่ม',
-                hintText: 'เช่น แอดมิน, พนักงาน, ผู้จัดการ',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                filled: true,
-                fillColor: Colors.white.withOpacity(0.9),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _groupDescriptionController,
-              decoration: InputDecoration(
-                labelText: 'รายละเอียด',
-                hintText: 'อธิบายหน้าที่และความรับผิดชอบ',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                filled: true,
-                fillColor: Colors.white.withOpacity(0.9),
-              ),
-              maxLines: 3,
-            ),
-            const SizedBox(height: 24),
-            if (_errorMessage != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Text(
-                  _errorMessage!,
-                  style: TextStyle(color: Colors.red, fontSize: 14),
-                ),
-              ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => GlassDialog(
+          title: 'แก้ไขกลุ่มผู้ใช้',
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: Text('ยกเลิก'),
+                TextField(
+                  controller: _groupNameController,
+                  decoration: InputDecoration(
+                    labelText: 'ชื่อกลุ่ม',
+                    hintText: 'เช่น แอดมิน, พนักงาน, ผู้จัดการ',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    filled: true,
+                    fillColor: Colors.white.withOpacity(0.9),
+                  ),
                 ),
-                const SizedBox(width: 12),
-                GlassButton(
-                  text: 'บันทึก',
-                  onPressed: () => _updateUserGroup(group['id']),
-                  backgroundColor: Color(0xFF2E7D32),
-                  icon: Icons.save,
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _groupDescriptionController,
+                  decoration: InputDecoration(
+                    labelText: 'รายละเอียด',
+                    hintText: 'อธิบายหน้าที่และความรับผิดชอบ',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    filled: true,
+                    fillColor: Colors.white.withOpacity(0.9),
+                  ),
+                  maxLines: 3,
+                ),
+                const SizedBox(height: 20),
+                // Color Picker Section
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.9),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey[300]!),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'เลือกสีประจำกลุ่ม',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: _presetColors.map((color) {
+                          final isSelected = _selectedColor == color;
+                          return GestureDetector(
+                            onTap: () {
+                              setDialogState(() {
+                                _selectedColor = color;
+                              });
+                            },
+                            child: Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: color,
+                                shape: BoxShape.circle,
+                                border: isSelected
+                                    ? Border.all(color: Colors.white, width: 3)
+                                    : null,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.2),
+                                    blurRadius: 4,
+                                    offset: Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: isSelected
+                                  ? Icon(Icons.check, color: Colors.white, size: 24)
+                                  : null,
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: _selectedColor,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'สีที่เลือก: ${_colorToHex(_selectedColor)}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                if (_errorMessage != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Text(
+                      _errorMessage!,
+                      style: TextStyle(color: Colors.red, fontSize: 14),
+                    ),
+                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: Text('ยกเลิก'),
+                    ),
+                    const SizedBox(width: 12),
+                    GlassButton(
+                      text: 'บันทึก',
+                      onPressed: () => _updateUserGroup(group['id']),
+                      backgroundColor: Color(0xFF2E7D32),
+                      icon: Icons.save,
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -572,6 +877,8 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
   }
 
   Widget _buildGroupCard(Map<String, dynamic> group) {
+    final groupColor = _hexToColor(group['color'] ?? '#4CAF50');
+    
     return Container(
       margin: EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -587,19 +894,48 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
       ),
       child: ListTile(
         contentPadding: EdgeInsets.all(16),
-        leading: CircleAvatar(
-          backgroundColor: Color(0xFF2E7D32).withOpacity(0.1),
+        leading: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: groupColor.withOpacity(0.15),
+            shape: BoxShape.circle,
+            border: Border.all(color: groupColor, width: 2),
+          ),
           child: Icon(
             Icons.group,
-            color: Color(0xFF2E7D32),
+            color: groupColor,
+            size: 24,
           ),
         ),
-        title: Text(
-          group['group_name'] ?? '',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-          ),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                group['group_name'] ?? '',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+            // Color dot indicator
+            Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                color: groupColor,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: groupColor.withOpacity(0.4),
+                    blurRadius: 4,
+                    offset: Offset(0, 1),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

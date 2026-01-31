@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
+import '../models/user_group_model.dart';
 import '../services/supabase_service.dart';
+import '../services/user_group_service.dart';
 import '../widgets/change_password_dialog.dart';
 import '../widgets/avatar_picker.dart';
 import '../widgets/glass_dialog.dart';
@@ -27,6 +29,8 @@ class _UserProfilePageState extends State<UserProfilePage> {
   String? _errorMessage;
   String? _successMessage;
   Map<String, dynamic>? _userData;
+  UserGroup? _userGroup;
+  bool _isGroupLoading = false;
   
   // Avatar related
   bool _isAvatarLoading = false;
@@ -176,6 +180,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
               'full_name': metadata['full_name'] ?? '',
               'phone': metadata['phone'] ?? '',
               'avatar_url': metadata['avatar_url'],
+              'user_group_id': metadata['user_group_id'],
               'created_at': currentUser.createdAt ?? DateTime.now().toIso8601String(),
             };
             _usernameController.text = metadata['username'] ?? '';
@@ -234,6 +239,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
             'full_name': '',
             'phone': '',
             'avatar_url': null,
+            'user_group_id': null,
             'created_at': currentUser.createdAt ?? DateTime.now().toIso8601String(),
           };
           _usernameController.text = '';
@@ -243,6 +249,10 @@ class _UserProfilePageState extends State<UserProfilePage> {
           _avatarUrl = null;
         });
       }
+      
+      // โหลดข้อมูลกลุ่มผู้ใช้จาก database
+      await _loadUserGroup();
+      
     } catch (e) {
       debugPrint('Error loading user data: $e');
       setState(() {
@@ -253,6 +263,22 @@ class _UserProfilePageState extends State<UserProfilePage> {
         _isLoading = false;
         _isAvatarLoading = false; // หยุด avatar loading ในทุกกรณี
       });
+    }
+  }
+
+  Future<void> _loadUserGroup() async {
+    try {
+      final groupId = await UserGroupService.getCurrentUserGroupId();
+      if (groupId != null) {
+        final group = await UserGroupService.getGroupById(groupId);
+        if (mounted) {
+          setState(() {
+            _userGroup = group;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading user group: $e');
     }
   }
 
@@ -590,13 +616,15 @@ class _UserProfilePageState extends State<UserProfilePage> {
                                     if (!_isEditing) ...[
                                       _buildInfoRow('ชื่อผู้ใช้', _userData?['username'] ?? '-'),
                                       _buildInfoRow('ชื่อ-นามสกุล', _userData?['full_name'] ?? '-'),
-                                      
                                       _buildInfoRow('เบอร์โทรศัพท์', _userData?['phone'] ?? '-'),
                                       _buildInfoRow('อีเมล', _userData?['email'] ?? '-'),
                                       _buildInfoRow('วันที่สมัคร', 
                                         _userData?['created_at'] != null 
                                           ? _formatDate(_userData!['created_at'])
                                           : '-'),
+                                      const Divider(height: 24),
+                                      // User Group Section
+                                      _buildUserGroupSection(),
                                     ] else ...[
                                       // Edit form
                                       TextField(
@@ -1045,6 +1073,243 @@ class _UserProfilePageState extends State<UserProfilePage> {
       // หยุด loading state
       setState(() {
         _isAvatarLoading = false;
+      });
+    }
+  }
+
+  /// สร้าง UI ส่วนแสดงกลุ่มผู้ใช้
+  Widget _buildUserGroupSection() {
+    final group = _userGroup;
+    final groupLabel = group?.displayName ?? 'ลูกค้า';
+    final groupDesc = group?.displayDescription ?? '';
+    final groupColor = group?.colorValue ?? const Color(0xFF4CAF50);
+    final groupIcon = group?.iconData ?? Icons.person;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'ประเภทผู้ใช้',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            color: Colors.grey[600],
+            fontSize: 14,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: groupColor.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: groupColor.withOpacity(0.3)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: groupColor.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  groupIcon,
+                  color: groupColor,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      groupLabel,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: groupColor,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      groupDesc,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _isGroupLoading ? null : _showGroupSelectionDialog,
+            icon: _isGroupLoading
+                ? SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.blue[600],
+                    ),
+                  )
+                : Icon(Icons.swap_horiz, size: 18, color: Colors.blue[600]),
+            label: Text(
+              'เปลี่ยนประเภทผู้ใช้',
+              style: TextStyle(color: Colors.blue[600]),
+            ),
+            style: OutlinedButton.styleFrom(
+              side: BorderSide(color: Colors.blue[600]!),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// แสดง Dialog เลือกกลุ่มผู้ใช้
+  Future<void> _showGroupSelectionDialog() async {
+    final availableGroups = await UserGroupService.getAvailableGroups();
+    
+    if (!mounted) return;
+
+    final selectedGroup = await showDialog<UserGroup>(
+      context: context,
+      builder: (context) => GlassDialog(
+        title: 'เลือกประเภทผู้ใช้',
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'เลือกประเภทผู้ใช้ที่ตรงกับบทบาทของคุณ',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            ...availableGroups.map((group) {
+              final isSelected = _userGroup?.id == group.id;
+              final color = group.colorValue;
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: GlassDialogButton(
+                  text: group.displayName,
+                  onPressed: () => Navigator.of(context).pop(group),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: color.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          group.iconData,
+                          color: color,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              group.displayName,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              group.displayDescription,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (isSelected)
+                        Icon(Icons.check_circle, color: Colors.green[300]),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+            const SizedBox(height: 10),
+            GlassDialogButton(
+              text: 'ยกเลิก',
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (selectedGroup != null && selectedGroup.id != _userGroup?.id) {
+      await _updateUserGroup(selectedGroup.id);
+    }
+  }
+
+  /// อัปเดตกลุ่มผู้ใช้
+  Future<void> _updateUserGroup(String groupId) async {
+    setState(() {
+      _isGroupLoading = true;
+    });
+
+    try {
+      final success = await UserGroupService.updateUserGroup(groupId);
+      
+      if (success) {
+        final newGroup = await UserGroupService.getGroupById(groupId);
+        setState(() {
+          _userGroup = newGroup;
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('เปลี่ยนประเภทผู้ใช้เป็น "${newGroup?.displayName ?? groupId}" สำเร็จ'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      } else {
+        throw Exception('ไม่สามารถอัปเดตประเภทผู้ใช้ได้');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('เกิดข้อผิดพลาด: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      setState(() {
+        _isGroupLoading = false;
       });
     }
   }
