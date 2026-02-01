@@ -9,6 +9,7 @@ class UserGroup {
   final String? createdBy;
   final DateTime? createdAt;
   final bool isActive;
+  final bool requiresProfileCompletion;
 
   UserGroup({
     required this.id,
@@ -18,6 +19,7 @@ class UserGroup {
     this.createdBy,
     this.createdAt,
     this.isActive = true,
+    this.requiresProfileCompletion = false,
   });
 
   factory UserGroup.fromJson(Map<String, dynamic> json) {
@@ -31,6 +33,7 @@ class UserGroup {
           ? DateTime.parse(json['created_at'] as String)
           : null,
       isActive: json['is_active'] ?? true,
+      requiresProfileCompletion: json['requires_profile_completion'] ?? false,
     );
   }
 
@@ -43,6 +46,7 @@ class UserGroup {
       'created_by': createdBy,
       'created_at': createdAt?.toIso8601String(),
       'is_active': isActive,
+      'requires_profile_completion': requiresProfileCompletion,
     };
   }
 

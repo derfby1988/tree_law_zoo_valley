@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import '../models/user_group_model.dart';
 import '../services/supabase_service.dart';
 import '../services/user_group_service.dart';
+import '../services/group_form_config_service.dart';
+import '../models/group_form_config_model.dart';
 import '../widgets/change_password_dialog.dart';
 import '../widgets/avatar_picker.dart';
 import '../widgets/glass_dialog.dart';
@@ -31,6 +33,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
   Map<String, dynamic>? _userData;
   UserGroup? _userGroup;
   bool _isGroupLoading = false;
+  bool _isFormLoading = false;
   
   // Avatar related
   bool _isAvatarLoading = false;
@@ -1291,7 +1294,388 @@ class _UserProfilePageState extends State<UserProfilePage> {
     );
 
     if (selectedGroup != null && selectedGroup.id != _userGroup?.id) {
+      final canProceed = await _ensureGroupRequirements(selectedGroup);
+      if (!canProceed) return;
       await _updateUserGroup(selectedGroup.id);
+    }
+  }
+
+  Future<bool> _ensureGroupRequirements(UserGroup selectedGroup) async {
+    if (_isFormLoading) return false;
+
+    setState(() {
+      _isFormLoading = true;
+    });
+
+    try {
+      final config = await GroupFormConfigService.getFormConfigByGroupId(selectedGroup.id);
+      if (config == null || config.fields.isEmpty) {
+        return !selectedGroup.requiresProfileCompletion;
+      }
+
+      if (!config.isRequired) return true;
+
+      final completed = await _showProfileCompletionDialog(config, selectedGroup);
+      return completed;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('ตรวจสอบข้อมูลไม่สำเร็จ: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return false;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isFormLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<bool> _showProfileCompletionDialog(
+    GroupFormConfig config,
+    UserGroup group,
+  ) async {
+    final currentUser = SupabaseService.currentUser;
+    if (currentUser == null) return false;
+
+    final existingData = await GroupFormConfigService.getUserFormData(
+      userId: currentUser.id,
+      groupId: group.id,
+    );
+
+    final controllers = <String, TextEditingController>{};
+    final dropdownValues = <String, String?>{};
+    Uint8List? avatarBytes;
+    String? avatarFileName;
+    Map<String, dynamic>? pendingFormData;
+
+    for (final field in config.fields) {
+      final initialValue = _getInitialFieldValue(field, existingData);
+      if (field.type == FormFieldType.dropdown) {
+        dropdownValues[field.key] = initialValue;
+      } else if (field.type != FormFieldType.image) {
+        controllers[field.key] = TextEditingController(text: initialValue);
+      }
+    }
+
+    if (!mounted) return false;
+
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => GlassDialog(
+        title: config.dialogTitle,
+        child: StatefulBuilder(
+          builder: (context, setDialogState) => SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (config.dialogDescription != null && config.dialogDescription!.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Text(
+                      config.dialogDescription!,
+                      style: const TextStyle(color: Colors.white70, fontSize: 14),
+                    ),
+                  ),
+                ...config.fields.map((field) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _buildFormField(
+                      field: field,
+                      controller: controllers[field.key],
+                      dropdownValue: dropdownValues[field.key],
+                      onDropdownChanged: (value) {
+                        setDialogState(() {
+                          dropdownValues[field.key] = value;
+                        });
+                      },
+                      avatarUrl: _avatarUrl,
+                      onAvatarSelected: (bytes, fileName) {
+                        setDialogState(() {
+                          avatarBytes = bytes;
+                          avatarFileName = fileName;
+                        });
+                      },
+                    ),
+                  );
+                }).toList(),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: GlassDialogButton(
+                        text: 'ยกเลิก',
+                        onPressed: () => Navigator.of(context).pop(false),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: GlassDialogButton(
+                        text: 'บันทึก',
+                        isPrimary: true,
+                        onPressed: () async {
+                          final validationError = _validateFormFields(
+                            config: config,
+                            controllers: controllers,
+                            dropdownValues: dropdownValues,
+                            hasAvatar: _hasAvatar() || avatarBytes != null,
+                          );
+                          if (validationError != null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(validationError),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                            return;
+                          }
+
+                          final formData = <String, dynamic>{};
+                          for (final field in config.fields) {
+                            if (field.type == FormFieldType.image) {
+                              formData[field.key] = _avatarUrl;
+                            } else if (field.type == FormFieldType.dropdown) {
+                              formData[field.key] = dropdownValues[field.key];
+                            } else {
+                              formData[field.key] = controllers[field.key]?.text.trim();
+                            }
+                          }
+
+                          pendingFormData = formData;
+                          Navigator.of(context).pop(true);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    if (result == true) {
+      if (avatarBytes != null && avatarFileName != null) {
+        final uploaded = await _uploadAvatarOnly(
+          bytes: avatarBytes!,
+          fileName: avatarFileName!,
+        );
+        if (!uploaded) {
+          for (final controller in controllers.values) {
+            controller.dispose();
+          }
+          return false;
+        }
+      }
+
+      final formData = <String, dynamic>{};
+      for (final field in config.fields) {
+        if (field.type == FormFieldType.image) {
+          formData[field.key] = _avatarUrl;
+        } else if (field.type == FormFieldType.dropdown) {
+          formData[field.key] = dropdownValues[field.key];
+        } else {
+          formData[field.key] = controllers[field.key]?.text.trim();
+        }
+      }
+
+      final saved = await GroupFormConfigService.saveUserFormData(
+        userId: currentUser.id,
+        groupId: group.id,
+        formData: formData,
+        isCompleted: true,
+      );
+
+      if (!saved && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('บันทึกข้อมูลไม่สำเร็จ'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+
+    for (final controller in controllers.values) {
+      controller.dispose();
+    }
+
+    return result == true;
+  }
+
+  String? _getInitialFieldValue(
+    FormFieldConfig field,
+    Map<String, dynamic>? existingData,
+  ) {
+    final key = field.key;
+    if (key == 'full_name') return _fullNameController.text;
+    if (key == 'phone') return _phoneController.text;
+    if (key == 'email') return _emailController.text;
+    return existingData?[key]?.toString();
+  }
+
+  String? _validateFormFields({
+    required GroupFormConfig config,
+    required Map<String, TextEditingController> controllers,
+    required Map<String, String?> dropdownValues,
+    required bool hasAvatar,
+  }) {
+    for (final field in config.fields) {
+      if (!field.required) continue;
+      if (field.type == FormFieldType.image) {
+        if (!hasAvatar) return 'กรุณาอัปโหลดรูปโปรไฟล์';
+        continue;
+      }
+      if (field.type == FormFieldType.dropdown) {
+        if (dropdownValues[field.key] == null || dropdownValues[field.key]!.isEmpty) {
+          return 'กรุณาเลือก ${field.label}';
+        }
+        continue;
+      }
+      final value = controllers[field.key]?.text.trim() ?? '';
+      if (value.isEmpty) return 'กรุณากรอก ${field.label}';
+    }
+    return null;
+  }
+
+  Widget _buildFormField({
+    required FormFieldConfig field,
+    TextEditingController? controller,
+    String? dropdownValue,
+    required ValueChanged<String?> onDropdownChanged,
+    required String? avatarUrl,
+    required void Function(Uint8List?, String?) onAvatarSelected,
+  }) {
+    final label = field.required ? '${field.label} *' : field.label;
+
+    if (field.type == FormFieldType.image) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.white)),
+          const SizedBox(height: 8),
+          AvatarPicker(
+            currentAvatarUrl: avatarUrl,
+            onImageSelected: onAvatarSelected,
+            radius: 40,
+          ),
+        ],
+      );
+    }
+
+    if (field.type == FormFieldType.dropdown) {
+      final options = (field.config?['options'] as List<dynamic>?)?.cast<String>() ?? [];
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.white)),
+          const SizedBox(height: 6),
+          DropdownButtonFormField<String>(
+            value: dropdownValue,
+            items: options
+                .map((option) => DropdownMenuItem(value: option, child: Text(option)))
+                .toList(),
+            onChanged: onDropdownChanged,
+            decoration: const InputDecoration(
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ],
+      );
+    }
+
+    final keyboardType = switch (field.type) {
+      FormFieldType.phone => TextInputType.phone,
+      FormFieldType.email => TextInputType.emailAddress,
+      FormFieldType.number => TextInputType.number,
+      FormFieldType.textarea => TextInputType.multiline,
+      _ => TextInputType.text,
+    };
+
+    final maxLines = field.type == FormFieldType.textarea ? 3 : 1;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(color: Colors.white)),
+        const SizedBox(height: 6),
+        TextField(
+          controller: controller,
+          keyboardType: keyboardType,
+          maxLines: maxLines,
+          decoration: const InputDecoration(
+            filled: true,
+            fillColor: Colors.white,
+            border: OutlineInputBorder(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<bool> _uploadAvatarOnly({
+    required Uint8List bytes,
+    required String fileName,
+  }) async {
+    try {
+      final currentUser = SupabaseService.currentUser;
+      if (currentUser == null) return false;
+
+      final path = 'avatars/${currentUser.id}_${DateTime.now().millisecondsSinceEpoch}.${fileName.split('.').last}';
+      final avatarUrl = await Supabase.instance.client.storage
+          .from('avatars')
+          .uploadBinary(
+            path,
+            bytes,
+            fileOptions: const FileOptions(
+              contentType: 'image/jpeg',
+              upsert: true,
+            ),
+          );
+
+      final publicUrl = Supabase.instance.client.storage
+          .from('avatars')
+          .getPublicUrl(avatarUrl);
+
+      await SupabaseService.client.from('users').update({
+        'avatar_url': publicUrl,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', currentUser.id);
+
+      await SupabaseService.client.auth.updateUser(
+        UserAttributes(
+          data: {
+            'avatar_url': publicUrl,
+          },
+        ),
+      );
+
+      setState(() {
+        _avatarUrl = publicUrl;
+        _avatarBytes = null;
+        _avatarFileName = null;
+      });
+
+      return true;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('อัปโหลดรูปภาพไม่สำเร็จ: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return false;
     }
   }
 

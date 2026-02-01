@@ -4,6 +4,7 @@ import '../services/supabase_service.dart';
 import '../widgets/glass_dialog.dart';
 import '../widgets/glass_button.dart';
 import 'user_permissions_page.dart';
+import 'group_form_manager_page.dart';
 
 class UserGroupsPage extends StatefulWidget {
   const UserGroupsPage({super.key});
@@ -40,6 +41,20 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
     Color(0xFF795548), // น้ำตาล
     Color(0xFF607D8B), // น้ำเงินเทา
     Color(0xFFFFEB3B), // เหลือง
+    Color(0xFF8BC34A), // เขียวอ่อน
+    Color(0xFF3F51B5), // น้ำเงินเข้ม
+    Color(0xFF009688), // ฟ้าเขียว
+    Color(0xFFCDDC39), // มะนาว
+    Color(0xFF673AB7), // ม่วงเข้ม
+    Color(0xFFFFC107), // ทอง
+    Color(0xFF03A9F4), // ฟ้าสว่าง
+    Color(0xFF9E9E9E), // เทา
+    Color(0xFF424242), // เทาเข้ม
+    Color(0xFFE040FB), // ม่วงสด
+    Color(0xFF00E676), // เขียวสด
+    Color(0xFF2979FF), // ฟ้าน้ำทะเล
+    Color(0xFFFF6E40), // ส้มอิฐ
+    Color(0xFFC62828), // แดงเข้ม
   ];
 
   /// แปลง Color เป็น HEX string
@@ -841,14 +856,22 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  GlassButton(
-                    text: 'รีเฟรช',
-                    onPressed: _loadUserGroups,
-                    backgroundColor: Colors.grey[700]!,
-                    textColor: Colors.white,
-                    icon: Icons.refresh,
-                    opacity: 0.85,  // เพิ่มความทึบให้เห็นชัด
-                    blurStrength: 5,
+                  Expanded(
+                    child: GlassButton(
+                      text: 'จัดการฟอร์มกลุ่ม',
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const GroupFormManagerPage(),
+                        ),
+                      ),
+                      backgroundColor: Colors.blueGrey[700]!,
+                      textColor: Colors.white,
+                      icon: Icons.format_list_bulleted,
+                      width: double.infinity,
+                      opacity: 0.85,
+                      blurStrength: 5,
+                    ),
                   ),
                 ],
               ),

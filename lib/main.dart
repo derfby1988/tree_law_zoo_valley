@@ -557,7 +557,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     },
                   ),
                                     ListTile(
-                    title: Text('ลูกค้า', style: TextStyle(color: Colors.white)),
+                    title: Text('ลูกค้า / CRM / สมาชิก', style: TextStyle(color: Colors.white)),
                     leading: Icon(Icons.people, color: Colors.white),
                     onTap: () {
                       Navigator.pop(context);
