@@ -1250,6 +1250,12 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
   }
 
   Widget _buildGroupCard(Map<String, dynamic> group) {
+    // นับจำนวนสมาชิกจาก permissions (user_group_members) โดยตรง
+    final memberCount = _permissions
+        .where((p) => p['group_id'] == group['id'])
+        .length;
+    
+    // หารายละเอียดผู้ใช้ (อาจว่างถ้า user_profiles ถูก RLS บล็อก)
     final groupUserIds = _permissions
         .where((p) => p['group_id'] == group['id'])
         .map((p) => p['user_id'].toString())
@@ -1314,7 +1320,7 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
                         ),
                       ),
                       Text(
-                        '${groupUsers.length} ผู้ใช้',
+                        '$memberCount ผู้ใช้',
                         style: TextStyle(
                           color: Colors.white.withOpacity(0.9),
                           fontSize: 12,
