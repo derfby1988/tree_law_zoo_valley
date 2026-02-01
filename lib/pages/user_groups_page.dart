@@ -101,11 +101,16 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
           .select('*')
           .order('created_at', ascending: false);
 
-      // โหลดข้อมูลผู้ใช้ (สำหรับนับสมาชิกที่ active)
+      // โหลดข้อมูลผู้ใช้ (สำหรับนับสมาชิก - ไม่กรอง is_active เพราะ user_group_members ไม่มีข้อมูล is_active)
       final usersResponse = await SupabaseService.client
           .from('user_profiles')
-          .select('*')
-          .eq('is_active', true);
+          .select('*');
+      
+      print('📋 Raw usersResponse: $usersResponse');
+      print('📋 usersResponse length: ${usersResponse.length}');
+      if (usersResponse.isNotEmpty) {
+        print('📋 First user: ${usersResponse.first}');
+      }
 
       // โหลดข้อมูล members (user-group mapping)
       final permissionsResponse = await SupabaseService.client
@@ -852,11 +857,7 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
             // Content Section
             Expanded(
               child: _isLoading
-                  ? Center(
-                      child: CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF2E7D32)),
-                      ),
-                    )
+                  ? _buildSkeletonLoader()
                   : _errorMessage != null
                       ? Center(
                           child: Column(
@@ -945,16 +946,138 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
     );
   }
 
-  /// นับจำนวนสมาชิกที่ active ในกลุ่ม
+  /// นับจำนวนสมาชิกในกลุ่ม (จาก user_group_members โดยตรง)
   int _getActiveMemberCount(String groupId) {
-    // หา user_ids ที่อยู่ในกลุ่มนี้จาก permissions
-    final groupUserIds = _permissions
+    // นับจำนวน user_ids ที่อยู่ในกลุ่มนี้จาก permissions (user_group_members)
+    final count = _permissions
         .where((p) => p['group_id'] == groupId)
-        .map((p) => p['user_id'] as String)
-        .toSet();
+        .length;
     
-    // นับเฉพาะ users ที่ is_active = true (already filtered in _users)
-    return _users.where((u) => groupUserIds.contains(u['id'])).length;
+    return count;
+  }
+
+  Widget _buildSkeletonLoader() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final crossAxisCount = width >= 1000
+            ? 3
+            : width >= 720
+                ? 2
+                : 1;
+        return GridView.builder(
+          padding: EdgeInsets.fromLTRB(20, 4, 20, 20),
+          itemCount: 6,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            crossAxisSpacing: 16,
+            mainAxisSpacing: 16,
+            childAspectRatio: crossAxisCount == 1 ? 1.9 : 1.7,
+          ),
+          itemBuilder: (context, index) {
+            return Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 12,
+                    offset: Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Skeleton Header
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: Colors.grey[400],
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: 120,
+                                height: 16,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[400],
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Container(
+                                width: 60,
+                                height: 12,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[400],
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          width: 80,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: Colors.grey[400],
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Skeleton Buttons
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(16, 12, 16, 16),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: Colors.grey[300],
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Container(
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: Colors.grey[300],
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   Widget _buildGroupCard(Map<String, dynamic> group) {
