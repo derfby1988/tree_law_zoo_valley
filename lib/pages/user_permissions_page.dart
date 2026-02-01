@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
 import '../widgets/glass_dialog.dart';
@@ -35,6 +36,7 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
   List<Map<String, dynamic>> _permissions = [];
   List<Map<String, dynamic>> _pagePermissions = [];
   Map<String, dynamic>? _selectedGroup;
+  String? _updatingPageId; // Track which page is being updated
   
   // Search controllers
   final TextEditingController _groupSearchController = TextEditingController();
@@ -68,7 +70,7 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
 
       // โหลดข้อมูล permissions (user-group mapping)
       final permissionsResponse = await SupabaseService.client
-          .from('user_permissions')
+          .from('user_group_members')
           .select('*');
 
       // โหลดข้อมูลผู้ใช้ (สำหรับแสดงในกลุ่ม)
@@ -112,7 +114,7 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
   Future<void> _updateGroupUsers(String groupId, List<String> userIds) async {
     try {
       await SupabaseService.client
-          .from('user_permissions')
+          .from('user_group_members')
           .delete()
           .eq('group_id', groupId);
 
@@ -120,11 +122,9 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
       if (currentUser == null) throw Exception('ไม่พบข้อมูลผู้ใช้');
 
       for (final userId in userIds) {
-        await SupabaseService.client.from('user_permissions').insert({
+        await SupabaseService.client.from('user_group_members').insert({
           'user_id': userId,
           'group_id': groupId,
-          'assigned_by': currentUser.id,
-          'assigned_at': DateTime.now().toIso8601String(),
         });
       }
 
@@ -560,7 +560,71 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
     );
   }
 
-  /// อัปเดตสิทธิ์การเข้าถึงหน้าต่างๆ ของกลุ่ม
+  /// Toggle page permission immediately
+  Future<void> _togglePagePermission(String groupId, String pageId, bool enable) async {
+    setState(() {
+      _updatingPageId = pageId;
+    });
+    
+    try {
+      final currentUser = Supabase.instance.client.auth.currentUser;
+      if (currentUser == null) throw Exception('ไม่พบข้อมูลผู้ใช้');
+
+      if (enable) {
+        // Insert new permission
+        await SupabaseService.client.from('group_page_permissions').insert({
+          'group_id': groupId,
+          'page_id': pageId,
+          'can_access': true,
+          'assigned_by': currentUser.id,
+          'assigned_at': DateTime.now().toIso8601String(),
+        });
+      } else {
+        // Remove permission
+        await SupabaseService.client
+            .from('group_page_permissions')
+            .delete()
+            .eq('group_id', groupId)
+            .eq('page_id', pageId);
+      }
+
+      // Update local state
+      setState(() {
+        if (enable) {
+          _pagePermissions.add({
+            'group_id': groupId,
+            'page_id': pageId,
+            'can_access': true,
+            'assigned_by': currentUser.id,
+            'assigned_at': DateTime.now().toIso8601String(),
+          });
+        } else {
+          _pagePermissions.removeWhere(
+            (p) => p['group_id'] == groupId && p['page_id'] == pageId,
+          );
+        }
+        _updatingPageId = null;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(enable ? 'เปิดใช้งานสิทธิ์สำเร็จ' : 'ปิดใช้งานสิทธิ์สำเร็จ'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 1),
+        ),
+      );
+    } catch (e) {
+      setState(() {
+        _updatingPageId = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('ไม่สามารถอัปเดตสิทธิ์: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
   /// ใช้ตาราง group_page_permissions
   Future<void> _updatePagePermissions(String groupId, List<String> pageIds) async {
     try {
@@ -807,10 +871,11 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   // Skeleton Header
                   Container(
-                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     decoration: BoxDecoration(
                       color: Colors.grey[300],
                       borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
@@ -818,11 +883,11 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
                     child: Row(
                       children: [
                         Container(
-                          width: 36,
-                          height: 36,
+                          width: 32,
+                          height: 32,
                           decoration: BoxDecoration(
                             color: Colors.grey[400],
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(8),
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -831,17 +896,17 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Container(
-                                width: 120,
-                                height: 16,
+                                width: 100,
+                                height: 14,
                                 decoration: BoxDecoration(
                                   color: Colors.grey[400],
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                               ),
-                              const SizedBox(height: 6),
+                              const SizedBox(height: 4),
                               Container(
-                                width: 60,
-                                height: 12,
+                                width: 50,
+                                height: 10,
                                 decoration: BoxDecoration(
                                   color: Colors.grey[400],
                                   borderRadius: BorderRadius.circular(4),
@@ -853,12 +918,12 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
                       ],
                     ),
                   ),
-                  // Skeleton Content
+                  // Skeleton Content - reduced
                   Padding(
-                    padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
+                    padding: EdgeInsets.fromLTRB(16, 10, 16, 4),
                     child: Container(
-                      width: 80,
-                      height: 12,
+                      width: 70,
+                      height: 10,
                       decoration: BoxDecoration(
                         color: Colors.grey[300],
                         borderRadius: BorderRadius.circular(4),
@@ -870,14 +935,14 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        for (int i = 0; i < 3; i++)
+                        for (int i = 0; i < 2; i++)
                           Padding(
-                            padding: EdgeInsets.only(bottom: 6),
+                            padding: EdgeInsets.only(bottom: 4),
                             child: Row(
                               children: [
                                 Container(
-                                  width: 14,
-                                  height: 14,
+                                  width: 12,
+                                  height: 12,
                                   decoration: BoxDecoration(
                                     color: Colors.grey[300],
                                     shape: BoxShape.circle,
@@ -885,8 +950,8 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
                                 ),
                                 const SizedBox(width: 6),
                                 Container(
-                                  width: 150,
-                                  height: 12,
+                                  width: 120,
+                                  height: 10,
                                   decoration: BoxDecoration(
                                     color: Colors.grey[300],
                                     borderRadius: BorderRadius.circular(4),
@@ -898,31 +963,15 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
                       ],
                     ),
                   ),
-                  // Skeleton Buttons
+                  // Skeleton Button - single button
                   Padding(
-                    padding: EdgeInsets.fromLTRB(16, 8, 16, 16),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Container(
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: Colors.grey[300],
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Container(
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: Colors.grey[300],
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                        ),
-                      ],
+                    padding: EdgeInsets.fromLTRB(16, 8, 16, 12),
+                    child: Container(
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                   ),
                 ],
@@ -1061,7 +1110,142 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
                   },
                 ),
         ),
+        // Page Permissions Section - show when viewing single group
+        if (widget.initialGroup != null && filteredGroups.isNotEmpty)
+          _buildPagePermissionsSection(filteredGroups.first),
       ],
+    );
+  }
+
+  Widget _buildPagePermissionsSection(Map<String, dynamic> group) {
+    final groupColor = _hexToColor(group['color']);
+    
+    // โหลดสิทธิ์ปัจจุบันของกลุ่มจาก _pagePermissions
+    final groupPagePermissions = _pagePermissions
+        .where((p) => p['group_id'] == group['id'] && p['can_access'] == true)
+        .map((p) => p['page_id'] as String)
+        .toList();
+    final selectedPages = Set<String>.from(groupPagePermissions);
+
+    return Container(
+      margin: EdgeInsets.fromLTRB(20, 0, 20, 20),
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Section Header
+          Row(
+            children: [
+              Icon(Icons.security, color: groupColor, size: 24),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'สิทธิ์การเข้าถึงหน้า',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: Colors.grey[800],
+                      ),
+                    ),
+                    Text(
+                      'เลือกหน้าที่กลุ่มนี้สามารถเข้าถึงได้',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          
+          // Page List with Checkboxes
+          Container(
+            constraints: BoxConstraints(maxHeight: 400),
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: _systemPages.length,
+              itemBuilder: (context, index) {
+                final page = _systemPages[index];
+                final hasPermission = selectedPages.contains(page['id']);
+                final isUpdating = _updatingPageId == page['id'];
+                
+                return SwitchListTile(
+                  value: hasPermission,
+                  activeColor: groupColor,
+                  onChanged: isUpdating ? null : (value) async {
+                    await _togglePagePermission(
+                      group['id'],
+                      page['id'] as String,
+                      value,
+                    );
+                  },
+                  title: Text(
+                    page['name'] as String,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w500,
+                      fontSize: 14,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'ปุ่ม: ${page['button']}',
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 12,
+                    ),
+                  ),
+                  secondary: isUpdating
+                    ? SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CupertinoActivityIndicator(
+                          color: groupColor,
+                        ),
+                      )
+                    : Icon(
+                        page['icon'] as IconData,
+                        color: hasPermission ? groupColor : Colors.grey[400],
+                      ),
+                );
+              },
+            ),
+          ),
+          // บันทึกอัตโนมัติเมื่อ toggle - ไม่ต้องกดปุ่มบันทึก
+          // แสดงข้อความแจ้งเตือนการบันทึกอัตโนมัติ
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline, size: 16, color: Colors.grey[600]),
+                const SizedBox(width: 8),
+                Text(
+                  'เปิด/ปิดสิทธิ์จะบันทึกอัตโนมัติ',
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1204,21 +1388,6 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
             padding: EdgeInsets.fromLTRB(16, 8, 16, 16),
             child: Row(
               children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _showPagePermissionsDialog(group),
-                    icon: Icon(Icons.edit, size: 16, color: groupColor),
-                    label: Text('แก้ไข', style: TextStyle(color: groupColor)),
-                    style: OutlinedButton.styleFrom(
-                      side: BorderSide(color: groupColor.withOpacity(0.4)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      padding: EdgeInsets.symmetric(vertical: 10),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: () => _showGroupUsersDialog(group),
