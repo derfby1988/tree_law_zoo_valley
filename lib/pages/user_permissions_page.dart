@@ -19,7 +19,9 @@ final List<Map<String, dynamic>> _systemPages = [
 ];
 
 class UserPermissionsPage extends StatefulWidget {
-  const UserPermissionsPage({super.key});
+  final Map<String, dynamic>? initialGroup;
+  
+  const UserPermissionsPage({super.key, this.initialGroup});
 
   @override
   State<UserPermissionsPage> createState() => _UserPermissionsPageState();
@@ -81,11 +83,22 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
           .from('group_page_permissions')
           .select('*');
 
+      final loadedGroups = List<Map<String, dynamic>>.from(groupsResponse);
+      
       setState(() {
-        _userGroups = List<Map<String, dynamic>>.from(groupsResponse);
+        _userGroups = loadedGroups;
         _permissions = List<Map<String, dynamic>>.from(permissionsResponse);
         _pagePermissions = List<Map<String, dynamic>>.from(pagePermissionsResponse);
         _users = List<Map<String, dynamic>>.from(usersResponse);
+        
+        // ถ้ามี initialGroup ให้เลือกกลุ่มนั้นอัตโนมัติ
+        if (widget.initialGroup != null) {
+          _selectedGroup = loadedGroups.firstWhere(
+            (g) => g['id'] == widget.initialGroup!['id'],
+            orElse: () => widget.initialGroup!,
+          );
+        }
+        
         _isLoading = false;
       });
     } catch (e) {

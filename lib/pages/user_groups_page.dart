@@ -24,6 +24,8 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
   String? _errorMessage;
   String? _successMessage;
   List<Map<String, dynamic>> _userGroups = [];
+  List<Map<String, dynamic>> _users = [];
+  List<Map<String, dynamic>> _permissions = [];
   Map<String, dynamic>? _selectedGroup;
 
   // รายการสีที่แนะนำ
@@ -58,6 +60,13 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
     }
   }
 
+  /// ทำให้สีเข้มขึ้น
+  Color _darkenColor(Color color, double amount) {
+    final hsl = HSLColor.fromColor(color);
+    final lightness = (hsl.lightness - amount).clamp(0.0, 1.0);
+    return hsl.withLightness(lightness).toColor();
+  }
+
   /// ตรวจสอบว่าสีซ้ำหรือไม่
   bool _isColorDuplicate(String colorHex, {String? excludeGroupId}) {
     for (final group in _userGroups) {
@@ -87,16 +96,28 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
 
     try {
       print('🔍 Loading user groups...');
-      final response = await SupabaseService.client
+      final groupsResponse = await SupabaseService.client
           .from('user_groups')
           .select('*')
           .order('created_at', ascending: false);
 
-      print('📊 Response: $response');
-      print('📊 Response type: ${response.runtimeType}');
+      // โหลดข้อมูลผู้ใช้ (สำหรับนับสมาชิกที่ active)
+      final usersResponse = await SupabaseService.client
+          .from('user_profiles')
+          .select('*')
+          .eq('is_active', true);
+
+      // โหลดข้อมูล members (user-group mapping)
+      final permissionsResponse = await SupabaseService.client
+          .from('user_group_members')
+          .select('*');
+
+      print('📊 Groups: ${groupsResponse.length}, Users: ${usersResponse.length}, Permissions: ${permissionsResponse.length}');
       
       setState(() {
-        _userGroups = List<Map<String, dynamic>>.from(response);
+        _userGroups = List<Map<String, dynamic>>.from(groupsResponse);
+        _users = List<Map<String, dynamic>>.from(usersResponse);
+        _permissions = List<Map<String, dynamic>>.from(permissionsResponse);
         print('✅ Loaded ${_userGroups.length} groups');
         _isLoading = false;
       });
@@ -201,6 +222,10 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
   }
 
   void _showCreateGroupDialog() {
+    // Clear controllers for empty fields
+    _groupNameController.clear();
+    _groupDescriptionController.clear();
+    
     setState(() {
       _errorMessage = null;
       _selectedColor = Color(0xFF4CAF50); // default color
@@ -242,7 +267,7 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
                   maxLines: 3,
                 ),
                 const SizedBox(height: 20),
-                // Color Picker Section
+                // Color Picker Section - Show only unused colors
                 Container(
                   width: double.infinity,
                   padding: EdgeInsets.all(16),
@@ -255,7 +280,7 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'เลือกสีประจำกลุ่ม',
+                        'เลือกสีประจำกลุ่ม (แสดงเฉพาะสีที่ยังไม่ถูกใช้)',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
@@ -265,7 +290,9 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
-                        children: _presetColors.map((color) {
+                        children: _presetColors
+                            .where((color) => !_isColorDuplicate(_colorToHex(color)))
+                            .map((color) {
                           final isSelected = _selectedColor == color;
                           return GestureDetector(
                             onTap: () {
@@ -666,6 +693,32 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
     );
   }
 
+  Future<void> _updateGroupStatus(String groupId, bool isActive) async {
+    try {
+      await SupabaseService.client
+          .from('user_groups')
+          .update({'is_active': isActive})
+          .eq('id', groupId);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(isActive ? 'เปิดใช้งานกลุ่มสำเร็จ' : 'ปิดใช้งานกลุ่มสำเร็จ'),
+          backgroundColor: isActive ? Colors.green : Colors.orange,
+        ),
+      );
+
+      _loadUserGroups();
+    } catch (e) {
+      print('❌ Error updating group status: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('ไม่สามารถอัปเดตสถานะกลุ่ม: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   Widget _buildDetailRow(String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -861,12 +914,28 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
                                 ],
                               ),
                             )
-                          : ListView.builder(
-                              padding: EdgeInsets.all(20),
-                              itemCount: _userGroups.length,
-                              itemBuilder: (context, index) {
-                                final group = _userGroups[index];
-                                return _buildGroupCard(group);
+                          : LayoutBuilder(
+                              builder: (context, constraints) {
+                                final width = constraints.maxWidth;
+                                final crossAxisCount = width >= 1000
+                                    ? 3
+                                    : width >= 720
+                                        ? 2
+                                        : 1;
+                                return GridView.builder(
+                                  padding: EdgeInsets.fromLTRB(20, 4, 20, 20),
+                                  itemCount: _userGroups.length,
+                                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: crossAxisCount,
+                                    crossAxisSpacing: 16,
+                                    mainAxisSpacing: 16,
+                                    childAspectRatio: crossAxisCount == 1 ? 1.9 : 1.7,
+                                  ),
+                                  itemBuilder: (context, index) {
+                                    final group = _userGroups[index];
+                                    return _buildGroupCard(group);
+                                  },
+                                );
                               },
                             ),
             ),
@@ -876,164 +945,182 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
     );
   }
 
-  Widget _buildGroupCard(Map<String, dynamic> group) {
-    final groupColor = _hexToColor(group['color'] ?? '#4CAF50');
+  /// นับจำนวนสมาชิกที่ active ในกลุ่ม
+  int _getActiveMemberCount(String groupId) {
+    // หา user_ids ที่อยู่ในกลุ่มนี้จาก permissions
+    final groupUserIds = _permissions
+        .where((p) => p['group_id'] == groupId)
+        .map((p) => p['user_id'] as String)
+        .toSet();
     
+    // นับเฉพาะ users ที่ is_active = true (already filtered in _users)
+    return _users.where((u) => groupUserIds.contains(u['id'])).length;
+  }
+
+  Widget _buildGroupCard(Map<String, dynamic> group) {
+    final groupColor = _hexToColor(group['color']);
+    final headerColor = _darkenColor(groupColor, 0.15);
+
     return Container(
-      margin: EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.08),
-            blurRadius: 8,
-            offset: Offset(0, 2),
+            blurRadius: 12,
+            offset: Offset(0, 4),
           ),
         ],
       ),
-      child: ListTile(
-        contentPadding: EdgeInsets.all(16),
-        leading: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: groupColor.withOpacity(0.15),
-            shape: BoxShape.circle,
-            border: Border.all(color: groupColor, width: 2),
-          ),
-          child: Icon(
-            Icons.group,
-            color: groupColor,
-            size: 24,
-          ),
-        ),
-        title: Row(
-          children: [
-            Expanded(
-              child: Text(
-                group['group_name'] ?? '',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header with gradient
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [headerColor, groupColor],
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
               ),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
             ),
-            // Color dot indicator
-            Container(
-              width: 12,
-              height: 12,
-              decoration: BoxDecoration(
-                color: groupColor,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: groupColor.withOpacity(0.4),
-                    blurRadius: 4,
-                    offset: Offset(0, 1),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 4),
-            Text(
-              group['group_description'] ?? '-',
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 14,
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 8),
-            Row(
+            child: Row(
               children: [
-                Icon(
-                  group['is_active'] == true ? Icons.check_circle : Icons.cancel,
-                  size: 16,
-                  color: group['is_active'] == true ? Colors.green : Colors.red,
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(Icons.group, color: Colors.white, size: 20),
                 ),
-                const SizedBox(width: 4),
-                Text(
-                  group['is_active'] == true ? 'ใช้งาน' : 'ไม่ใช้งาน',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: group['is_active'] == true ? Colors.green : Colors.red,
-                    fontWeight: FontWeight.w500,
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        group['group_name'] ?? '',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Text(
+                        '${_getActiveMemberCount(group['id'])} สมาชิก',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.9),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Status dropdown in header
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<bool>(
+                      value: group['is_active'] == true,
+                      isDense: true,
+                      icon: Icon(
+                        Icons.arrow_drop_down,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                      dropdownColor: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      items: [
+                        DropdownMenuItem(
+                          value: true,
+                          child: Row(
+                            children: [
+                              Icon(Icons.check_circle, color: Colors.green, size: 14),
+                              SizedBox(width: 6),
+                              Text('ใช้งาน', style: TextStyle(fontSize: 12)),
+                            ],
+                          ),
+                        ),
+                        DropdownMenuItem(
+                          value: false,
+                          child: Row(
+                            children: [
+                              Icon(Icons.cancel, color: Colors.red, size: 14),
+                              SizedBox(width: 6),
+                              Text('ไม่ใช้งาน', style: TextStyle(fontSize: 12)),
+                            ],
+                          ),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value != null) {
+                          _updateGroupStatus(group['id'], value);
+                        }
+                      },
+                    ),
                   ),
                 ),
               ],
             ),
-          ],
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => UserPermissionsPage(),
-                  ),
-                );
-              },
-              child: const Text(
-                'สิทธิ์',
-                style: TextStyle(color: Colors.blue),
-              ),
-            ),
-            PopupMenuButton<String>(
-              onSelected: (value) {
-                if (value == 'view') {
-                  _showGroupDetails(group);
-                } else if (value == 'edit') {
-                  _showEditGroupDialog(group);
-                } else if (value == 'delete') {
-                  _deleteUserGroup(group['id']);
-                }
-              },
-              itemBuilder: (context) => [
-                PopupMenuItem(
-                  value: 'view',
-                  child: Row(
-                    children: [
-                      Icon(Icons.visibility, size: 18),
-                      SizedBox(width: 8),
-                      Text('ดูรายละเอียด'),
-                    ],
+          ),
+          // Description - removed to save space
+          // Members list - removed to save space, count shown in header
+          // Action buttons - compact
+          Padding(
+            padding: EdgeInsets.fromLTRB(16, 8, 16, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _showEditGroupDialog(group),
+                    icon: Icon(Icons.edit, size: 14, color: groupColor),
+                    label: Text('แก้ไข', style: TextStyle(color: groupColor, fontSize: 11)),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: groupColor.withOpacity(0.4)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                    ),
                   ),
                 ),
-                PopupMenuItem(
-                  value: 'edit',
-                  child: Row(
-                    children: [
-                      Icon(Icons.edit, size: 18),
-                      SizedBox(width: 8),
-                      Text('แก้ไข'),
-                    ],
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'delete',
-                  child: Row(
-                    children: [
-                      Icon(Icons.delete, size: 18, color: Colors.red),
-                      SizedBox(width: 8),
-                      Text('ลบ', style: TextStyle(color: Colors.red)),
-                    ],
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => UserPermissionsPage(
+                            initialGroup: group,
+                          ),
+                        ),
+                      );
+                    },
+                    icon: Icon(Icons.security, size: 14, color: headerColor),
+                    label: Text('กำหนดสิทธิ์', style: TextStyle(color: headerColor, fontSize: 11)),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: headerColor.withOpacity(0.4)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                    ),
                   ),
                 ),
               ],
             ),
-          ],
-        ),
-        onTap: () => _showGroupDetails(group),
+          ),
+        ],
       ),
     );
   }

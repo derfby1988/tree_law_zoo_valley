@@ -84,21 +84,54 @@ class UserGroupService {
       final currentUser = SupabaseService.currentUser;
       if (currentUser == null) return null;
 
+      debugPrint('🔍 Getting group ID for user: ${currentUser.id}');
+
+      // 1. ลองดึงจาก user_group_members table ก่อน (แหล่งข้อมูลที่ถูกต้อง)
+      try {
+        final memberResponse = await _client
+            .from('user_group_members')
+            .select('group_id')
+            .eq('user_id', currentUser.id)
+            .maybeSingle();
+
+        if (memberResponse != null && memberResponse['group_id'] != null) {
+          debugPrint('✅ Found group ID from user_group_members: ${memberResponse['group_id']}');
+          return memberResponse['group_id'] as String;
+        } else {
+          debugPrint('❌ No group ID found in user_group_members');
+        }
+      } catch (e) {
+        debugPrint('❌ Error reading from user_group_members: $e');
+      }
+
+      // 2. Fallback: ดึงจาก metadata (ถ้าไม่มีใน user_group_members)
       final metadata = currentUser.userMetadata;
       if (metadata != null && metadata['user_group_id'] != null) {
+        debugPrint('✅ Found group ID from metadata: ${metadata['user_group_id']}');
         return metadata['user_group_id'] as String;
+      } else {
+        debugPrint('❌ No group ID found in metadata');
       }
 
-      final response = await _client
-          .from('users')
-          .select('user_group_id')
-          .eq('id', currentUser.id)
-          .maybeSingle();
+      // 3. Fallback: ดึงจาก users table
+      try {
+        final response = await _client
+            .from('users')
+            .select('user_group_id')
+            .eq('id', currentUser.id)
+            .maybeSingle();
 
-      if (response != null) {
-        return response['user_group_id'] as String?;
+        if (response != null && response['user_group_id'] != null) {
+          debugPrint('✅ Found group ID from users table: ${response['user_group_id']}');
+          return response['user_group_id'] as String?;
+        } else {
+          debugPrint('❌ No group ID found in users table');
+        }
+      } catch (e) {
+        debugPrint('❌ Error reading from users table: $e');
       }
 
+      debugPrint('❌ No group ID found anywhere');
       return null;
     } catch (e) {
       debugPrint('Error getting user group ID: $e');
@@ -142,6 +175,25 @@ class UserGroupService {
             .eq('id', currentUser.id);
       } catch (e) {
         debugPrint('Could not update users table user_group_id: $e');
+      }
+
+      // อัปเดตตาราง user_group_members
+      try {
+        // ลบข้อมูลเก่าของผู้ใช้ (ถ้ามี)
+        await _client
+            .from('user_group_members')
+            .delete()
+            .eq('user_id', currentUser.id);
+        
+        // เพิ่มข้อมูลใหม่
+        await _client
+            .from('user_group_members')
+            .insert({
+              'user_id': currentUser.id,
+              'group_id': groupId,
+            });
+      } catch (e) {
+        debugPrint('Could not update user_group_members table: $e');
       }
 
       return true;

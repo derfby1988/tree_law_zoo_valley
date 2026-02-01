@@ -191,6 +191,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
             debugPrint('Avatar URL from auth metadata: ${metadata['avatar_url']}');
           });
           debugPrint('User data loaded from auth.users metadata');
+          await _loadUserGroup();
           return; // ใช้ข้อมูลจาก auth แล้ว
         }
       } catch (e) {
@@ -268,17 +269,25 @@ class _UserProfilePageState extends State<UserProfilePage> {
 
   Future<void> _loadUserGroup() async {
     try {
+      debugPrint('🔍 Loading user group...');
       final groupId = await UserGroupService.getCurrentUserGroupId();
+      debugPrint('📊 Got group ID: $groupId');
+      
       if (groupId != null) {
         final group = await UserGroupService.getGroupById(groupId);
+        debugPrint('📋 Got group data: ${group?.displayName}');
+        
         if (mounted) {
           setState(() {
             _userGroup = group;
           });
+          debugPrint('✅ Updated UI with group: ${group?.displayName}');
         }
+      } else {
+        debugPrint('❌ No group ID found');
       }
     } catch (e) {
-      debugPrint('Error loading user group: $e');
+      debugPrint('❌ Error loading user group: $e');
     }
   }
 
@@ -1188,79 +1197,95 @@ class _UserProfilePageState extends State<UserProfilePage> {
       context: context,
       builder: (context) => GlassDialog(
         title: 'เลือกประเภทผู้ใช้',
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'เลือกประเภทผู้ใช้ที่ตรงกับบทบาทของคุณ',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 20),
-            ...availableGroups.map((group) {
-              final isSelected = _userGroup?.id == group.id;
-              final color = group.colorValue;
-
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: GlassDialogButton(
-                  text: group.displayName,
-                  onPressed: () => Navigator.of(context).pop(group),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: color.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Icon(
-                          group.iconData,
-                          color: color,
-                          size: 24,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              group.displayName,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              group.displayDescription,
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (isSelected)
-                        Icon(Icons.check_circle, color: Colors.green[300]),
-                    ],
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final maxHeight = constraints.maxHeight * 0.7;
+            return ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: maxHeight),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'เลือกประเภทผู้ใช้ที่ตรงกับบทบาทของคุณ',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
-                ),
-              );
-            }).toList(),
-            const SizedBox(height: 10),
-            GlassDialogButton(
-              text: 'ยกเลิก',
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-          ],
+                  const SizedBox(height: 16),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      child: Column(
+                        children: [
+                          ...availableGroups.map((group) {
+                            final isSelected = _userGroup?.id == group.id;
+                            final color = group.colorValue;
+
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: GlassDialogButton(
+                                text: group.displayName,
+                                onPressed: () => Navigator.of(context).pop(group),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 40,
+                                      height: 40,
+                                      decoration: BoxDecoration(
+                                        color: color.withOpacity(0.2),
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: Icon(
+                                        group.iconData,
+                                        color: color,
+                                        size: 24,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            group.displayName,
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            group.displayDescription,
+                                            style: const TextStyle(
+                                              color: Colors.white70,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    if (isSelected)
+                                      Icon(Icons.check_circle, color: Colors.green[300]),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  GlassDialogButton(
+                    text: 'ยกเลิก',
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+            );
+          },
         ),
       ),
     );
