@@ -671,9 +671,11 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
                     ),
                   ),
                   ElevatedButton.icon(
-                    onPressed: () => _showGroupPermissionDialog(
-                      _userGroups.isNotEmpty ? _userGroups.first : {},
-                    ),
+                    onPressed: widget.initialGroup == null
+                        ? () => _showGroupPermissionDialog(
+                            _userGroups.isNotEmpty ? _userGroups.first : {},
+                          )
+                        : null,
                     icon: Icon(Icons.add, size: 18),
                     label: Text('เพิ่มบทบาท'),
                     style: ElevatedButton.styleFrom(
@@ -693,11 +695,7 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
             // Content Section
             Expanded(
               child: _isLoading
-                  ? Center(
-                      child: CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF2E7D32)),
-                      ),
-                    )
+                  ? _buildSkeletonLoader()
                   : _errorMessage != null
                       ? Center(
                           child: Column(
@@ -776,59 +774,226 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
     );
   }
 
+  Widget _buildSkeletonLoader() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final crossAxisCount = width >= 1000
+            ? 3
+            : width >= 720
+                ? 2
+                : 1;
+        return GridView.builder(
+          padding: EdgeInsets.fromLTRB(20, 4, 20, 20),
+          itemCount: 6,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            crossAxisSpacing: 16,
+            mainAxisSpacing: 16,
+            childAspectRatio: crossAxisCount == 1 ? 1.8 : 1.5,
+          ),
+          itemBuilder: (context, index) {
+            return Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 12,
+                    offset: Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Skeleton Header
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: Colors.grey[400],
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: 120,
+                                height: 16,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[400],
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Container(
+                                width: 60,
+                                height: 12,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[400],
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Skeleton Content
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
+                    child: Container(
+                      width: 80,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (int i = 0; i < 3; i++)
+                          Padding(
+                            padding: EdgeInsets.only(bottom: 6),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 14,
+                                  height: 14,
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[300],
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Container(
+                                  width: 150,
+                                  height: 12,
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[300],
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  // Skeleton Buttons
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(16, 8, 16, 16),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: Colors.grey[300],
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Container(
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: Colors.grey[300],
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Widget _buildGroupsTab() {
-    // Filter groups based on search query
-    final filteredGroups = _userGroups.where((group) {
-      final searchLower = _groupSearchQuery.toLowerCase();
-      final groupName = (group['group_name'] ?? '').toLowerCase();
-      final description = (group['group_description'] ?? '').toLowerCase();
-      return groupName.contains(searchLower) || description.contains(searchLower);
-    }).toList();
+    // If initialGroup is provided, show only that group
+    List<Map<String, dynamic>> filteredGroups;
+    if (widget.initialGroup != null) {
+      filteredGroups = _userGroups.where((group) => group['id'] == widget.initialGroup!['id']).toList();
+    } else {
+      // Filter groups based on search query
+      filteredGroups = _userGroups.where((group) {
+        final searchLower = _groupSearchQuery.toLowerCase();
+        final groupName = (group['group_name'] ?? '').toLowerCase();
+        final description = (group['group_description'] ?? '').toLowerCase();
+        return groupName.contains(searchLower) || description.contains(searchLower);
+      }).toList();
+    }
 
     return Column(
       children: [
-        // Search Bar
-        Container(
-          padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          child: TextField(
-            controller: _groupSearchController,
-            onChanged: (value) {
-              setState(() {
-                _groupSearchQuery = value;
-              });
-            },
-            decoration: InputDecoration(
-              hintText: 'ค้นหากลุ่ม...',
-              prefixIcon: Icon(Icons.search, color: Colors.grey),
-              suffixIcon: _groupSearchQuery.isNotEmpty
-                  ? IconButton(
-                      icon: Icon(Icons.clear, color: Colors.grey),
-                      onPressed: () {
-                        _groupSearchController.clear();
-                        setState(() {
-                          _groupSearchQuery = '';
-                        });
-                      },
-                    )
-                  : null,
-              filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
+        // Search Bar - only show if not viewing single group
+        if (widget.initialGroup == null)
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            child: TextField(
+              controller: _groupSearchController,
+              onChanged: (value) {
+                setState(() {
+                  _groupSearchQuery = value;
+                });
+              },
+              decoration: InputDecoration(
+                hintText: 'ค้นหากลุ่ม...',
+                prefixIcon: Icon(Icons.search, color: Colors.grey),
+                suffixIcon: _groupSearchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: Icon(Icons.clear, color: Colors.grey),
+                        onPressed: () {
+                          _groupSearchController.clear();
+                          setState(() {
+                            _groupSearchQuery = '';
+                          });
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Color(0xFF2E7D32), width: 2),
+                ),
+                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Color(0xFF2E7D32), width: 2),
-              ),
-              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             ),
           ),
-        ),
         // Results count
         if (filteredGroups.isNotEmpty)
           Padding(
