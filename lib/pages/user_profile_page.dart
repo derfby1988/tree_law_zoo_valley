@@ -1159,32 +1159,42 @@ class _UserProfilePageState extends State<UserProfilePage> {
           ),
         ),
         const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: _isGroupLoading ? null : _showGroupSelectionDialog,
-            icon: _isGroupLoading
-                ? SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.blue[600],
+        // Get screen width for responsive button sizing
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final isLandscape = MediaQuery.of(context).size.width > MediaQuery.of(context).size.height;
+            final buttonWidth = isLandscape ? MediaQuery.of(context).size.width * 0.5 : double.infinity;
+            
+            return Center(
+              child: SizedBox(
+                width: buttonWidth,
+                child: OutlinedButton.icon(
+                  onPressed: _isGroupLoading ? null : _showGroupSelectionDialog,
+                  icon: _isGroupLoading
+                      ? SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.blue[600],
+                          ),
+                        )
+                      : Icon(Icons.swap_horiz, size: 18, color: Colors.blue[600]),
+                  label: Text(
+                    'เปลี่ยนประเภทผู้ใช้',
+                    style: TextStyle(color: Colors.blue[600]),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: Colors.blue[600]!),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                  )
-                : Icon(Icons.swap_horiz, size: 18, color: Colors.blue[600]),
-            label: Text(
-              'เปลี่ยนประเภทผู้ใช้',
-              style: TextStyle(color: Colors.blue[600]),
-            ),
-            style: OutlinedButton.styleFrom(
-              side: BorderSide(color: Colors.blue[600]!),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
               ),
-              padding: const EdgeInsets.symmetric(vertical: 12),
-            ),
-          ),
+            );
+          },
         ),
       ],
     );
