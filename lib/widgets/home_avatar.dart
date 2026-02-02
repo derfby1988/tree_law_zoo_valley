@@ -3,6 +3,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/supabase_service.dart';
+import '../services/user_group_service.dart';
+import '../models/user_group_model.dart';
 import 'dart:async';
 
 /// Widget สำหรับแสดง Avatar ในหน้า Home พร้อม optimization และ auto refresh
@@ -10,12 +12,14 @@ class HomeAvatar extends StatefulWidget {
   final double radius;
   final VoidCallback? onTap;
   final bool isGuestMode;
+  final double borderWidth;
 
   const HomeAvatar({
     super.key,
     this.radius = 25,
     this.onTap,
     required this.isGuestMode,
+    this.borderWidth = 0.0,
   });
 
   @override
@@ -26,6 +30,7 @@ class _HomeAvatarState extends State<HomeAvatar> {
   String? _avatarUrl;
   bool _isLoading = false;
   StreamSubscription<AuthState>? _authSubscription;
+  Color? _groupColor;
 
   @override
   void initState() {
@@ -63,7 +68,7 @@ class _HomeAvatarState extends State<HomeAvatar> {
     });
   }
 
-  /// โหลด avatar URL จาก user metadata
+  /// โหลด avatar URL จาก user metadata และสีกลุ่มจากตาราง user_groups
   Future<void> _loadUserAvatar() async {
     if (widget.isGuestMode) return;
 
@@ -80,17 +85,36 @@ class _HomeAvatarState extends State<HomeAvatar> {
         debugPrint('HomeAvatar: Checking avatar URL: $avatarUrl');
         
         if (avatarUrl != null && avatarUrl.isNotEmpty && avatarUrl != 'pending') {
-          // ถ้า URL เปลี่ยนไปให้ setState เสมอ
           setState(() {
             _avatarUrl = avatarUrl;
           });
           debugPrint('HomeAvatar: Set avatar URL: $avatarUrl');
         } else {
-          // ถ้าไม่มี avatar ให้ล้างค่า
           setState(() {
             _avatarUrl = null;
           });
           debugPrint('HomeAvatar: Cleared avatar URL');
+        }
+        
+        // โหลดสีกลุ่มจากตาราง user_groups ผ่าน UserGroupService
+        try {
+          final userGroup = await UserGroupService.getCurrentUserGroup();
+          if (userGroup != null && userGroup.color != null) {
+            setState(() {
+              _groupColor = userGroup.colorValue;
+            });
+            debugPrint('HomeAvatar: Set group color from user_groups: ${userGroup.color}');
+          } else {
+            setState(() {
+              _groupColor = null;
+            });
+            debugPrint('HomeAvatar: No group color found in user_groups');
+          }
+        } catch (e) {
+          debugPrint('HomeAvatar: Error loading group color: $e');
+          setState(() {
+            _groupColor = null;
+          });
         }
       }
     } catch (e) {
@@ -129,14 +153,27 @@ class _HomeAvatarState extends State<HomeAvatar> {
 
   @override
   Widget build(BuildContext context) {
+    final hasBorder = widget.borderWidth > 0 && _groupColor != null;
+    
     return GestureDetector(
       onTap: widget.onTap,
-      child: CircleAvatar(
-        radius: widget.radius,
-        backgroundColor: Colors.white.withOpacity(0.9),
-        child: widget.isGuestMode
-            ? Icon(Icons.person_outline, color: Colors.grey[600], size: widget.radius)
-            : _buildAvatarContent(),
+      child: Container(
+        width: (widget.radius + (hasBorder ? widget.borderWidth : 0)) * 2,
+        height: (widget.radius + (hasBorder ? widget.borderWidth : 0)) * 2,
+        decoration: hasBorder ? BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: _groupColor!,
+            width: widget.borderWidth,
+          ),
+        ) : null,
+        child: CircleAvatar(
+          radius: widget.radius,
+          backgroundColor: Colors.white.withOpacity(0.9),
+          child: widget.isGuestMode
+              ? Icon(Icons.person_outline, color: Colors.grey[600], size: widget.radius)
+              : _buildAvatarContent(),
+        ),
       ),
     );
   }

@@ -879,6 +879,7 @@ class _MyHomePageState extends State<MyHomePage> {
           child: HomeAvatar(
             radius: compact ? 16 : 25,
             isGuestMode: widget.isGuestMode,
+            borderWidth: 0.5,
           ),
         ),
         SizedBox(width: compact ? 8 : 15),
