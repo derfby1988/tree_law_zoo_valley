@@ -253,6 +253,152 @@ class InventoryService {
     }
   }
 
+  /// เพิ่มสูตรพร้อมส่วนผสม
+  static Future<bool> addRecipeWithIngredients({
+    required String name,
+    required String categoryId,
+    double yieldQuantity = 1,
+    String yieldUnit = 'ชิ้น',
+    double cost = 0,
+    double price = 0,
+    String? description,
+    required List<Map<String, dynamic>> ingredients, // [{product_id, quantity, unit_id}]
+  }) async {
+    try {
+      // 1. เพิ่มสูตร
+      final recipeResponse = await _client.from('inventory_recipes').insert({
+        'name': name,
+        'category_id': categoryId,
+        'yield_quantity': yieldQuantity,
+        'yield_unit': yieldUnit,
+        'cost': cost,
+        'price': price,
+        'description': description,
+      }).select('id').single();
+
+      final recipeId = recipeResponse['id'] as String;
+
+      // 2. เพิ่มส่วนผสม
+      if (ingredients.isNotEmpty) {
+        final ingredientsData = ingredients.map((ing) => {
+          'recipe_id': recipeId,
+          'product_id': ing['product_id'],
+          'quantity': ing['quantity'],
+          'unit_id': ing['unit_id'],
+        }).toList();
+
+        await _client.from('inventory_recipe_ingredients').insert(ingredientsData);
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('Error adding recipe with ingredients: $e');
+      return false;
+    }
+  }
+
+  /// ตรวจสอบชื่อสูตรซ้ำ
+  static Future<bool> checkRecipeNameExists(String name) async {
+    try {
+      final response = await _client
+          .from('inventory_recipes')
+          .select('id')
+          .eq('name', name)
+          .eq('is_active', true)
+          .limit(1);
+      return (response as List).isNotEmpty;
+    } catch (e) {
+      debugPrint('Error checking recipe name: $e');
+      return false;
+    }
+  }
+
+  /// ดึง units เรียงตามการใช้งานล่าสุดในสูตรอาหาร
+  static Future<List<Map<String, dynamic>>> getUnitsSortedByRecipeUsage() async {
+    try {
+      final units = await getUnits();
+      // ดึง recipes เพื่อดู yield_unit ที่ใช้ล่าสุด
+      final recipes = await _client
+          .from('inventory_recipes')
+          .select('yield_unit, updated_at')
+          .eq('is_active', true)
+          .order('updated_at', ascending: false);
+      
+      // สร้าง map ของ unit name -> latest usage timestamp
+      final usageMap = <String, String>{};
+      for (final r in recipes) {
+        final unitName = r['yield_unit'] as String? ?? '';
+        if (unitName.isNotEmpty && !usageMap.containsKey(unitName)) {
+          usageMap[unitName] = r['updated_at']?.toString() ?? '';
+        }
+      }
+      
+      // เรียง: units ที่ใช้ล่าสุดก่อน, ที่ไม่เคยใช้ตามหลัง (เรียงตามชื่อ)
+      units.sort((a, b) {
+        final aName = a['name'] as String? ?? '';
+        final bName = b['name'] as String? ?? '';
+        final aUsage = usageMap[aName];
+        final bUsage = usageMap[bName];
+        
+        if (aUsage != null && bUsage != null) {
+          return bUsage.compareTo(aUsage); // ล่าสุดก่อน
+        } else if (aUsage != null) {
+          return -1; // a ใช้แล้ว อยู่ก่อน
+        } else if (bUsage != null) {
+          return 1; // b ใช้แล้ว อยู่ก่อน
+        }
+        return aName.compareTo(bName); // ไม่เคยใช้ เรียงตามชื่อ
+      });
+      
+      return units;
+    } catch (e) {
+      debugPrint('Error loading units sorted by recipe usage: $e');
+      return [];
+    }
+  }
+
+  /// ดึง categories เรียงตามการใช้งานล่าสุดในสูตรอาหาร
+  static Future<List<Map<String, dynamic>>> getCategoriesSortedByRecipeUsage() async {
+    try {
+      final categories = await getCategories();
+      final recipes = await _client
+          .from('inventory_recipes')
+          .select('category_id, updated_at')
+          .eq('is_active', true)
+          .order('updated_at', ascending: false);
+      
+      // สร้าง map ของ category_id -> latest usage timestamp
+      final usageMap = <String, String>{};
+      for (final r in recipes) {
+        final catId = r['category_id'] as String? ?? '';
+        if (catId.isNotEmpty && !usageMap.containsKey(catId)) {
+          usageMap[catId] = r['updated_at']?.toString() ?? '';
+        }
+      }
+      
+      categories.sort((a, b) {
+        final aId = a['id'] as String? ?? '';
+        final bId = b['id'] as String? ?? '';
+        final aUsage = usageMap[aId];
+        final bUsage = usageMap[bId];
+        
+        if (aUsage != null && bUsage != null) {
+          return bUsage.compareTo(aUsage);
+        } else if (aUsage != null) {
+          return -1;
+        } else if (bUsage != null) {
+          return 1;
+        }
+        return (a['name'] as String? ?? '').compareTo(b['name'] as String? ?? '');
+      });
+      
+      return categories;
+    } catch (e) {
+      debugPrint('Error loading categories sorted by recipe usage: $e');
+      return [];
+    }
+  }
+
   static Future<bool> updateRecipe(String id, Map<String, dynamic> data) async {
     try {
       data['updated_at'] = DateTime.now().toIso8601String();

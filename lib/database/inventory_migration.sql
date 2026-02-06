@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS inventory_recipe_ingredients (
   recipe_id UUID REFERENCES inventory_recipes(id) ON DELETE CASCADE,
   product_id UUID REFERENCES inventory_products(id),
   quantity DOUBLE PRECISION NOT NULL DEFAULT 0,
+  unit_id UUID REFERENCES inventory_units(id),
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -132,7 +133,33 @@ INSERT INTO inventory_units (name, abbreviation) VALUES
   ('ลิตร', 'ลิตร'),
   ('ถุง', 'ถุง'),
   ('ฟอง', 'ฟอง'),
-  ('กล่อง', 'กล่อง');
+  ('กล่อง', 'กล่อง'),
+  ('กรัม', 'ก.'),
+  ('มิลลิลิตร', 'มล.'),
+  ('ถ้วย', 'ถ้วย'),
+  ('จาน', 'จาน'),
+  ('ชาม', 'ชาม'),
+  ('แก้ว', 'แก้ว'),
+  ('ช้อนโต๊ะ', 'ช้อนโต๊ะ'),
+  ('ช้อนชา', 'ช้อนชา'),
+  ('หยิบมือ', 'หยิบมือ'),
+  ('มัด', 'มัด'),
+  ('ห่อ', 'ห่อ'),
+  ('แพ็ค', 'แพ็ค'),
+  ('โหล', 'โหล'),
+  ('ลัง', 'ลัง'),
+  ('กระป๋อง', 'กระป๋อง'),
+  ('ขีด', 'ขีด'),
+  ('ตัว', 'ตัว'),
+  ('ลูก', 'ลูก'),
+  ('หัว', 'หัว'),
+  ('ต้น', 'ต้น'),
+  ('ใบ', 'ใบ'),
+  ('แผ่น', 'แผ่น'),
+  ('ไม้', 'ไม้'),
+  ('เส้น', 'เส้น'),
+  ('พวง', 'พวง')
+ON CONFLICT (name) DO NOTHING;
 
 -- ชั้นวาง (ต้อง reference warehouse_id จริง)
 -- หลังจาก insert warehouses แล้ว ให้ใช้ subquery

@@ -14,6 +14,8 @@ class _RecipeTabState extends State<RecipeTab> {
 
   List<Map<String, dynamic>> _recipes = [];
   List<Map<String, dynamic>> _categories = [];
+  List<Map<String, dynamic>> _units = [];
+  List<Map<String, dynamic>> _products = [];
   bool _isLoading = true;
   String? _errorMessage;
 
@@ -36,10 +38,14 @@ class _RecipeTabState extends State<RecipeTab> {
       final results = await Future.wait([
         InventoryService.getRecipes(),
         InventoryService.getCategories(),
+        InventoryService.getUnitsSortedByRecipeUsage(),
+        InventoryService.getProducts(),
       ]);
       setState(() {
         _recipes = results[0];
         _categories = results[1];
+        _units = results[2];
+        _products = results[3];
         _isLoading = false;
       });
     } catch (e) {
@@ -154,10 +160,11 @@ class _RecipeTabState extends State<RecipeTab> {
                   runSpacing: 8,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    Container(
-                      constraints: BoxConstraints(maxWidth: isNarrow ? double.infinity : 180),
+                    SizedBox(
+                      width: isNarrow ? constraints.maxWidth : 180,
                       child: DropdownButtonFormField<String>(
                         value: categoryNames.contains(_selectedCategory) ? _selectedCategory : 'ทั้งหมด',
+                        isExpanded: true,
                         decoration: InputDecoration(
                           labelText: 'ประเภท',
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
@@ -505,74 +512,443 @@ class _RecipeTabState extends State<RecipeTab> {
   void _showAddRecipeDialog() {
     final formKey = GlobalKey<FormState>();
     final nameController = TextEditingController();
-    final yieldController = TextEditingController(text: '1');
-    final costController = TextEditingController();
-    final priceController = TextEditingController();
+    final descriptionController = TextEditingController();
     String? selectedCategoryId;
+    String? selectedYieldUnit = 'กรัม';  // Default หน่วยนับ
     bool isLoading = false;
+    String? nameError;
+    
+    // Ingredients state
+    List<Map<String, dynamic>> ingredients = []; // [{product_id, quantity, unit_id, product_name, unit_name}]
+    String? selectedProductId;
+    String? selectedIngredientUnit;
+    final quantityController = TextEditingController();
+
+    // เรียง categories ตามการใช้งานล่าสุดในสูตร
+    List<Map<String, dynamic>> getSortedDialogCategories() {
+      final sorted = List<Map<String, dynamic>>.from(_categories);
+      final usageMap = <String, String>{};
+      for (final r in _recipes) {
+        final catId = r['category_id'] as String? ?? '';
+        final updatedAt = r['updated_at']?.toString() ?? '';
+        if (catId.isNotEmpty && (!usageMap.containsKey(catId) || updatedAt.compareTo(usageMap[catId]!) > 0)) {
+          usageMap[catId] = updatedAt;
+        }
+      }
+      sorted.sort((a, b) {
+        final aUsage = usageMap[a['id']];
+        final bUsage = usageMap[b['id']];
+        if (aUsage != null && bUsage != null) return bUsage.compareTo(aUsage);
+        if (aUsage != null) return -1;
+        if (bUsage != null) return 1;
+        return (a['name'] as String? ?? '').compareTo(b['name'] as String? ?? '');
+      });
+      return sorted;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final sortedCategories = getSortedDialogCategories();
+
+          // เพิ่มวัตถุดิบในรายการ
+          void addIngredient() {
+            if (selectedProductId != null && quantityController.text.isNotEmpty && selectedIngredientUnit != null) {
+              final product = _products.firstWhere((p) => p['id'] == selectedProductId);
+              final unit = _units.firstWhere((u) => u['id'] == selectedIngredientUnit);
+              final quantity = double.tryParse(quantityController.text) ?? 0;
+              
+              if (quantity > 0) {
+                setDialogState(() {
+                  ingredients.add({
+                    'product_id': selectedProductId,
+                    'quantity': quantity,
+                    'unit_id': selectedIngredientUnit,
+                    'product_name': product['name'],
+                    'unit_name': unit['name'],
+                    'unit_abbreviation': unit['abbreviation'],
+                  });
+                  selectedProductId = null;
+                  selectedIngredientUnit = null;
+                  quantityController.clear();
+                });
+              }
+            }
+          }
+
+          // ลบวัตถุดิบ
+          void removeIngredient(int index) {
+            setDialogState(() {
+              ingredients.removeAt(index);
+            });
+          }
+
+          return AlertDialog(
+            title: Row(children: [Icon(Icons.add_circle, color: Colors.green), SizedBox(width: 8), Expanded(child: Text('เพิ่มสูตรอาหารใหม่'))]),
+            content: SizedBox(
+              width: MediaQuery.of(context).size.width * 0.8,
+              child: SingleChildScrollView(
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // ชื่อสูตร
+                      TextFormField(
+                        controller: nameController,
+                        decoration: InputDecoration(
+                          labelText: 'ชื่อสูตร *',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          prefixIcon: Icon(Icons.restaurant_menu),
+                          errorText: nameError,
+                        ),
+                        validator: (v) => v?.trim().isEmpty == true ? 'กรุณากรอกชื่อสูตร' : null,
+                        onChanged: (_) {
+                          if (nameError != null) setDialogState(() => nameError = null);
+                        },
+                      ),
+                      SizedBox(height: 12),
+
+                      // ประเภท (เรียงตามล่าสุด)
+                      DropdownButtonFormField<String>(
+                        decoration: InputDecoration(
+                          labelText: 'ประเภท *',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          prefixIcon: Icon(Icons.category),
+                        ),
+                        value: selectedCategoryId,
+                        isExpanded: true,
+                        items: sortedCategories.map((c) {
+                          final recipeCount = _recipes.where((r) => r['category_id'] == c['id']).length;
+                          return DropdownMenuItem(
+                            value: c['id'] as String,
+                            child: Row(
+                              children: [
+                                Expanded(child: Text(c['name'] ?? '', overflow: TextOverflow.ellipsis)),
+                                if (recipeCount > 0)
+                                  Container(
+                                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                    decoration: BoxDecoration(color: Colors.green.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
+                                    child: Text('$recipeCount', style: TextStyle(fontSize: 10, color: Colors.green[700])),
+                                  ),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (v) => setDialogState(() => selectedCategoryId = v),
+                        validator: (v) => v == null ? 'กรุณาเลือกประเภท' : null,
+                      ),
+                      SizedBox(height: 12),
+
+                      // หน่วยนับ (เรียงตามล่าสุด) + ปุ่มเพิ่มหน่วยใหม่
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              decoration: InputDecoration(
+                                labelText: 'หน่วยนับ *',
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                prefixIcon: Icon(Icons.straighten),
+                              ),
+                              value: selectedYieldUnit,
+                              isExpanded: true,
+                              items: _units.map((u) => DropdownMenuItem(
+                                value: u['name'] as String,
+                                child: Text('${u['name']} ${u['abbreviation'] != u['name'] ? '(${u['abbreviation']})' : ''}', overflow: TextOverflow.ellipsis),
+                              )).toList(),
+                              onChanged: (v) => setDialogState(() => selectedYieldUnit = v),
+                              validator: (v) => v == null ? 'กรุณาเลือกหน่วย' : null,
+                            ),
+                          ),
+                          SizedBox(width: 8),
+                          Padding(
+                            padding: EdgeInsets.only(top: 4),
+                            child: IconButton(
+                              onPressed: () => _showAddUnitDialog(setDialogState),
+                              icon: Icon(Icons.add_circle, color: Colors.blue, size: 28),
+                              tooltip: 'เพิ่มหน่วยใหม่',
+                              style: IconButton.styleFrom(
+                                backgroundColor: Colors.blue.withOpacity(0.1),
+                                padding: EdgeInsets.all(8),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 12),
+
+                      // ส่วนผสม
+                      Container(
+                        padding: EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.blue.withOpacity(0.2)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.inventory_2, color: Colors.blue, size: 20),
+                                SizedBox(width: 8),
+                                Text('วัตถุดิบ', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+                                Spacer(),
+                                Text('${ingredients.length} รายการ', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                              ],
+                            ),
+                            SizedBox(height: 12),
+                            
+                            // เพิ่มวัตถุดิบใหม่
+                            Row(
+                              children: [
+                                Expanded(
+                                  flex: 3,
+                                  child: DropdownButtonFormField<String>(
+                                    decoration: InputDecoration(
+                                      labelText: 'วัตถุดิบ',
+                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                                      isDense: true,
+                                      contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                    ),
+                                    value: selectedProductId,
+                                    isExpanded: true,
+                                    items: _products.map((p) => DropdownMenuItem(
+                                      value: p['id'] as String,
+                                      child: Text(p['name'] ?? '', overflow: TextOverflow.ellipsis),
+                                    )).toList(),
+                                    onChanged: (v) => setDialogState(() => selectedProductId = v),
+                                  ),
+                                ),
+                                SizedBox(width: 8),
+                                Expanded(
+                                  flex: 2,
+                                  child: TextFormField(
+                                    controller: quantityController,
+                                    decoration: InputDecoration(
+                                      labelText: 'จำนวน',
+                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                                      isDense: true,
+                                      contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                    ),
+                                    keyboardType: TextInputType.number,
+                                  ),
+                                ),
+                                SizedBox(width: 8),
+                                Expanded(
+                                  flex: 2,
+                                  child: DropdownButtonFormField<String>(
+                                    decoration: InputDecoration(
+                                      labelText: 'หน่วย',
+                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                                      isDense: true,
+                                      contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                    ),
+                                    value: selectedIngredientUnit,
+                                    isExpanded: true,
+                                    items: _units.map((u) => DropdownMenuItem(
+                                      value: u['id'] as String,
+                                      child: Text(u['name'] ?? '', overflow: TextOverflow.ellipsis),
+                                    )).toList(),
+                                    onChanged: (v) => setDialogState(() => selectedIngredientUnit = v),
+                                  ),
+                                ),
+                                SizedBox(width: 8),
+                                IconButton(
+                                  onPressed: addIngredient,
+                                  icon: Icon(Icons.add_circle, color: Colors.green),
+                                  tooltip: 'เพิ่มวัตถุดิบ',
+                                ),
+                              ],
+                            ),
+                            
+                            // รายการวัตถุดิบ
+                            if (ingredients.isNotEmpty) ...[
+                              SizedBox(height: 12),
+                              ...ingredients.asMap().entries.map((entry) {
+                                final index = entry.key;
+                                final ing = entry.value;
+                                return Container(
+                                  margin: EdgeInsets.only(bottom: 4),
+                                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(color: Colors.grey[300]!),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        flex: 3,
+                                        child: Text(ing['product_name'] ?? '', style: TextStyle(fontSize: 13)),
+                                      ),
+                                      SizedBox(width: 8),
+                                      Text('${ing['quantity']}', style: TextStyle(fontWeight: FontWeight.w500)),
+                                      SizedBox(width: 4),
+                                      Text(ing['unit_name'] ?? '', style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+                                      Spacer(),
+                                      IconButton(
+                                        onPressed: () => removeIngredient(index),
+                                        icon: Icon(Icons.remove_circle, color: Colors.red, size: 20),
+                                        tooltip: 'ลบ',
+                                        padding: EdgeInsets.zero,
+                                        constraints: BoxConstraints(minWidth: 32, minHeight: 32),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                            ],
+                          ],
+                        ),
+                      ),
+                      SizedBox(height: 12),
+
+                      // คำอธิบาย
+                      TextFormField(
+                        controller: descriptionController,
+                        decoration: InputDecoration(
+                          labelText: 'คำอธิบาย / หมายเหตุ',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          prefixIcon: Icon(Icons.notes),
+                          hintText: 'เช่น วิธีทำ, เคล็ดลับ...',
+                        ),
+                        maxLines: 2,
+                        minLines: 1,
+                      ),
+                      SizedBox(height: 12),
+
+                      // Info box
+                      Container(
+                        padding: EdgeInsets.all(12),
+                        decoration: BoxDecoration(color: Colors.amber.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                        child: Row(children: [
+                          Icon(Icons.info_outline, color: Colors.amber[800], size: 20),
+                          SizedBox(width: 8),
+                          Expanded(child: Text('ต้นทุน, ราคาขาย สามารถเพิ่มได้ภายหลังจากหน้าแก้ไขสูตร', style: TextStyle(fontSize: 12, color: Colors.amber[800]))),
+                        ]),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: isLoading ? null : () => Navigator.pop(context), child: Text('ยกเลิก')),
+              ElevatedButton.icon(
+                onPressed: isLoading ? null : () async {
+                  if (formKey.currentState?.validate() != true) return;
+
+                  // ตรวจสอบชื่อซ้ำ
+                  setDialogState(() => isLoading = true);
+                  final exists = await InventoryService.checkRecipeNameExists(nameController.text.trim());
+                  if (exists) {
+                    setDialogState(() {
+                      isLoading = false;
+                      nameError = 'ชื่อสูตร "${nameController.text.trim()}" มีอยู่แล้ว';
+                    });
+                    return;
+                  }
+
+                  // เตรียมข้อมูลวัตถุดิบสำหรับบันทึก
+                  final ingredientsData = ingredients.map((ing) => {
+                    'product_id': ing['product_id'],
+                    'quantity': ing['quantity'],
+                    'unit_id': ing['unit_id'],
+                  }).toList();
+
+                  final ok = await InventoryService.addRecipeWithIngredients(
+                    name: nameController.text.trim(),
+                    categoryId: selectedCategoryId!,
+                    yieldUnit: selectedYieldUnit!,
+                    description: descriptionController.text.trim().isEmpty ? null : descriptionController.text.trim(),
+                    ingredients: ingredientsData,
+                  );
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                    if (ok) {
+                      _loadData();
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เพิ่มสูตร "${nameController.text}" พร้อมวัตถุดิบ ${ingredients.length} รายการ สำเร็จ'), backgroundColor: Colors.green));
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เกิดข้อผิดพลาด'), backgroundColor: Colors.red));
+                    }
+                  }
+                },
+                icon: isLoading ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Icon(Icons.save),
+                label: Text('บันทึก'),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _showAddUnitDialog(void Function(void Function()) parentSetState) {
+    final unitNameController = TextEditingController();
+    final abbreviationController = TextEditingController();
+    bool isUnitLoading = false;
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: Row(children: [Icon(Icons.add_circle, color: Colors.green), SizedBox(width: 8), Text('เพิ่มสูตรอาหารใหม่')]),
-          content: SingleChildScrollView(
-            child: Form(
-              key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextFormField(controller: nameController, decoration: InputDecoration(labelText: 'ชื่อสูตร *', border: OutlineInputBorder()), validator: (v) => v?.trim().isEmpty == true ? 'กรุณากรอกชื่อสูตร' : null),
-                  SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    decoration: InputDecoration(labelText: 'ประเภท *', border: OutlineInputBorder()),
-                    value: selectedCategoryId,
-                    items: _categories.map((c) => DropdownMenuItem(value: c['id'] as String, child: Text(c['name'] ?? ''))).toList(),
-                    onChanged: (v) => setDialogState(() => selectedCategoryId = v),
-                    validator: (v) => v == null ? 'กรุณาเลือกประเภท' : null,
-                  ),
-                  SizedBox(height: 12),
-                  Row(children: [
-                    Expanded(child: TextFormField(controller: yieldController, decoration: InputDecoration(labelText: 'จำนวนที่ได้ *', border: OutlineInputBorder()), keyboardType: TextInputType.number, validator: (v) => v?.trim().isEmpty == true ? 'กรุณากรอก' : null)),
-                    SizedBox(width: 12),
-                    Expanded(child: TextFormField(controller: costController, decoration: InputDecoration(labelText: 'ต้นทุน/ชุด *', border: OutlineInputBorder(), prefixText: '฿'), keyboardType: TextInputType.number, validator: (v) => v?.trim().isEmpty == true ? 'กรุณากรอก' : null)),
-                  ]),
-                  SizedBox(height: 12),
-                  TextFormField(controller: priceController, decoration: InputDecoration(labelText: 'ราคาขาย/ชิ้น *', border: OutlineInputBorder(), prefixText: '฿'), keyboardType: TextInputType.number, validator: (v) => v?.trim().isEmpty == true ? 'กรุณากรอก' : null),
-                  SizedBox(height: 12),
-                  Container(
-                    padding: EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: Colors.amber.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                    child: Row(children: [
-                      Icon(Icons.info_outline, color: Colors.amber[800], size: 20),
-                      SizedBox(width: 8),
-                      Expanded(child: Text('ส่วนผสมสามารถเพิ่มได้ภายหลังจากหน้าแก้ไขสูตร', style: TextStyle(fontSize: 12, color: Colors.amber[800]))),
-                    ]),
-                  ),
-                ],
+          title: Row(children: [Icon(Icons.straighten, color: Colors.blue), SizedBox(width: 8), Text('เพิ่มหน่วยนับใหม่')]),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: unitNameController,
+                decoration: InputDecoration(
+                  labelText: 'ชื่อหน่วย *',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  prefixIcon: Icon(Icons.label),
+                  hintText: 'เช่น ถ้วย, จาน, ชาม',
+                ),
               ),
-            ),
+              SizedBox(height: 12),
+              TextField(
+                controller: abbreviationController,
+                decoration: InputDecoration(
+                  labelText: 'ตัวย่อ',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  prefixIcon: Icon(Icons.short_text),
+                  hintText: 'เช่น กก., มล.',
+                ),
+              ),
+            ],
           ),
           actions: [
-            TextButton(onPressed: isLoading ? null : () => Navigator.pop(context), child: Text('ยกเลิก')),
-            ElevatedButton(
-              onPressed: isLoading ? null : () async {
-                if (formKey.currentState?.validate() != true) return;
-                setDialogState(() => isLoading = true);
-                final ok = await InventoryService.addRecipe(
-                  name: nameController.text.trim(),
-                  categoryId: selectedCategoryId!,
-                  yieldQuantity: double.tryParse(yieldController.text) ?? 1,
-                  cost: double.tryParse(costController.text) ?? 0,
-                  price: double.tryParse(priceController.text) ?? 0,
+            TextButton(onPressed: isUnitLoading ? null : () => Navigator.pop(context), child: Text('ยกเลิก')),
+            ElevatedButton.icon(
+              onPressed: isUnitLoading ? null : () async {
+                if (unitNameController.text.trim().isEmpty) return;
+                setDialogState(() => isUnitLoading = true);
+                final ok = await InventoryService.addUnit(
+                  unitNameController.text.trim(),
+                  abbreviation: abbreviationController.text.trim().isEmpty ? null : abbreviationController.text.trim(),
                 );
                 if (context.mounted) {
-                  Navigator.pop(context);
-                  if (ok) { _loadData(); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เพิ่มสูตร ${nameController.text} สำเร็จ'), backgroundColor: Colors.green)); }
-                  else { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เกิดข้อผิดพลาด'), backgroundColor: Colors.red)); }
+                  if (ok) {
+                    // โหลด units ใหม่
+                    final newUnits = await InventoryService.getUnitsSortedByRecipeUsage();
+                    setState(() => _units = newUnits);
+                    if (context.mounted) Navigator.pop(context);
+                    parentSetState(() {});
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เพิ่มหน่วย "${unitNameController.text}" สำเร็จ'), backgroundColor: Colors.green));
+                  } else {
+                    setDialogState(() => isUnitLoading = false);
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เกิดข้อผิดพลาด (อาจมีชื่อซ้ำ)'), backgroundColor: Colors.red));
+                  }
                 }
               },
-              child: isLoading ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text('บันทึก'),
+              icon: isUnitLoading ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Icon(Icons.add),
+              label: Text('เพิ่ม'),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
             ),
           ],
         ),
