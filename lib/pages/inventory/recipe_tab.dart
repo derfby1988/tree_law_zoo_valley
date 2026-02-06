@@ -146,33 +146,62 @@ class _RecipeTabState extends State<RecipeTab> {
               ),
             ),
             SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: categoryNames.contains(_selectedCategory) ? _selectedCategory : 'ทั้งหมด',
-                    decoration: InputDecoration(
-                      labelText: 'ประเภท',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final isNarrow = constraints.maxWidth < 400;
+                return Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Container(
+                      constraints: BoxConstraints(maxWidth: isNarrow ? double.infinity : 180),
+                      child: DropdownButtonFormField<String>(
+                        value: categoryNames.contains(_selectedCategory) ? _selectedCategory : 'ทั้งหมด',
+                        decoration: InputDecoration(
+                          labelText: 'ประเภท',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          isDense: true,
+                        ),
+                        items: categoryNames.map((e) => DropdownMenuItem(value: e, child: Text(e, overflow: TextOverflow.ellipsis))).toList(),
+                        onChanged: (value) => setState(() => _selectedCategory = value!),
+                      ),
                     ),
-                    items: categoryNames.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                    onChanged: (value) => setState(() => _selectedCategory = value!),
-                  ),
-                ),
-                SizedBox(width: 12),
-                ElevatedButton.icon(
-                  onPressed: () => _showAddRecipeDialog(),
-                  icon: Icon(Icons.add),
-                  label: Text('เพิ่มสูตร'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Color(0xFF2E7D32),
-                    foregroundColor: Colors.white,
-                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                ),
-              ],
+                    IconButton(
+                      onPressed: () => _showManageCategoriesDialog(),
+                      icon: Icon(Icons.settings, size: 20),
+                      tooltip: 'จัดการประเภท',
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.grey[200],
+                        padding: EdgeInsets.all(10),
+                      ),
+                    ),
+                    if (isNarrow)
+                      IconButton(
+                        onPressed: () => _showAddRecipeDialog(),
+                        icon: Icon(Icons.add, color: Colors.white),
+                        tooltip: 'เพิ่มสูตร',
+                        style: IconButton.styleFrom(
+                          backgroundColor: Color(0xFF2E7D32),
+                          padding: EdgeInsets.all(10),
+                        ),
+                      )
+                    else
+                      ElevatedButton.icon(
+                        onPressed: () => _showAddRecipeDialog(),
+                        icon: Icon(Icons.add, size: 18),
+                        label: Text('เพิ่มสูตร'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Color(0xFF2E7D32),
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                  ],
+                );
+              },
             ),
           ],
         ),
@@ -612,6 +641,134 @@ class _RecipeTabState extends State<RecipeTab> {
             child: Text('ลบ'),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showManageCategoriesDialog() {
+    final nameController = TextEditingController();
+    bool isLoading = false;
+
+    // นับจำนวนสูตรอาหารในแต่ละประเภท
+    Map<String, int> getCategoryRecipeCounts() {
+      final counts = <String, int>{};
+      for (final cat in _categories) {
+        final catId = cat['id'] as String?;
+        if (catId != null) {
+          counts[catId] = _recipes.where((r) => r['category_id'] == catId).length;
+        }
+      }
+      return counts;
+    }
+
+    // เรียงประเภทตามจำนวนสูตร (มากไปน้อย)
+    List<Map<String, dynamic>> getSortedCategories() {
+      final counts = getCategoryRecipeCounts();
+      final sorted = List<Map<String, dynamic>>.from(_categories);
+      sorted.sort((a, b) {
+        final countA = counts[a['id']] ?? 0;
+        final countB = counts[b['id']] ?? 0;
+        return countB.compareTo(countA); // มากไปน้อย
+      });
+      return sorted;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final sortedCategories = getSortedCategories();
+          final counts = getCategoryRecipeCounts();
+
+          return AlertDialog(
+            title: Row(children: [Icon(Icons.category, color: Colors.blue), SizedBox(width: 8), Text('จัดการประเภทสูตร')]),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('เพิ่มประเภทใหม่', style: TextStyle(fontWeight: FontWeight.bold)),
+                  SizedBox(height: 8),
+                  TextField(
+                    controller: nameController,
+                    decoration: InputDecoration(
+                      labelText: 'ชื่อประเภท',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      prefixIcon: Icon(Icons.add_circle_outline),
+                    ),
+                  ),
+                  Divider(height: 24),
+                  Row(
+                    children: [
+                      Expanded(child: Text('ประเภททั้งหมด (${_categories.length} รายการ)', style: TextStyle(fontWeight: FontWeight.bold))),
+                      Text('จำนวนสูตร', style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+                    ],
+                  ),
+                  SizedBox(height: 8),
+                  if (_categories.isEmpty)
+                    Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Center(child: Text('ยังไม่มีประเภท', style: TextStyle(color: Colors.grey[600]))),
+                    )
+                  else
+                    ...sortedCategories.map((c) {
+                      final count = counts[c['id']] ?? 0;
+                      return Container(
+                        margin: EdgeInsets.only(bottom: 4),
+                        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: count > 0 ? Colors.blue.withOpacity(0.1) : Colors.grey.withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: count > 0 ? Colors.blue.withOpacity(0.3) : Colors.grey.withOpacity(0.2)),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.label, size: 16, color: count > 0 ? Colors.blue : Colors.grey),
+                            SizedBox(width: 8),
+                            Expanded(child: Text(c['name'] ?? '', style: TextStyle(fontWeight: count > 0 ? FontWeight.w500 : FontWeight.normal))),
+                            Container(
+                              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: count > 0 ? Colors.green.withOpacity(0.2) : Colors.grey.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                '$count สูตร',
+                                style: TextStyle(fontSize: 11, color: count > 0 ? Colors.green[700] : Colors.grey[600], fontWeight: FontWeight.w500),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: isLoading ? null : () => Navigator.pop(context), child: Text('ปิด')),
+              ElevatedButton.icon(
+                onPressed: isLoading ? null : () async {
+                  if (nameController.text.trim().isEmpty) return;
+                  setDialogState(() => isLoading = true);
+                  final ok = await InventoryService.addCategory(nameController.text.trim());
+                  if (context.mounted) {
+                    if (ok) {
+                      await _loadData();
+                      setDialogState(() { isLoading = false; nameController.clear(); });
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เพิ่มประเภทสำเร็จ'), backgroundColor: Colors.green));
+                    } else {
+                      setDialogState(() => isLoading = false);
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เกิดข้อผิดพลาด'), backgroundColor: Colors.red));
+                    }
+                  }
+                },
+                icon: isLoading ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Icon(Icons.add),
+                label: Text('เพิ่ม'),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
