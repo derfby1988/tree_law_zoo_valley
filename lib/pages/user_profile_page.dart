@@ -1204,6 +1204,19 @@ class _UserProfilePageState extends State<UserProfilePage> {
   Future<void> _showGroupSelectionDialog() async {
     final availableGroups = await UserGroupService.getAvailableGroups();
     
+    // โหลดข้อมูลสมาชิกเพื่อนับจำนวน
+    final permissionsResponse = await SupabaseService.client
+        .from('user_group_members')
+        .select('*');
+    final permissions = List<Map<String, dynamic>>.from(permissionsResponse);
+    
+    // เรียงลำดับกลุ่มตามจำนวนสมาชิกจากมากไปน้อย
+    availableGroups.sort((a, b) {
+      final countA = permissions.where((p) => p['group_id'] == a.id).length;
+      final countB = permissions.where((p) => p['group_id'] == b.id).length;
+      return countB.compareTo(countA); // มากไปน้อย
+    });
+    
     if (!mounted) return;
 
     final selectedGroup = await showDialog<UserGroup>(

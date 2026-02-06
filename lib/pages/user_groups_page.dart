@@ -138,7 +138,15 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
         _userGroups = List<Map<String, dynamic>>.from(groupsResponse);
         _users = List<Map<String, dynamic>>.from(usersResponse);
         _permissions = List<Map<String, dynamic>>.from(permissionsResponse);
-        print('✅ Loaded ${_userGroups.length} groups');
+        
+        // เรียงลำดับกลุ่มตามจำนวนสมาชิกจากมากไปน้อย
+        _userGroups.sort((a, b) {
+          final countA = _getActiveMemberCount(a['id']);
+          final countB = _getActiveMemberCount(b['id']);
+          return countB.compareTo(countA); // มากไปน้อย
+        });
+        
+        print('✅ Loaded ${_userGroups.length} groups (sorted by member count)');
         _isLoading = false;
       });
     } catch (e) {

@@ -75,6 +75,7 @@ GoogleService-Info.plist
 
 # Database files (มีข้อมูลจริง)
 *.sql
+!lib/database/*.sql
 
 # Media files (รูปภาพและวิดีโอ)
 *.jpg

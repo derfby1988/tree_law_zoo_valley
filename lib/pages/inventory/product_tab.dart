@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../services/inventory_service.dart';
+import 'inventory_filter_widget.dart';
 
 class ProductTab extends StatefulWidget {
   const ProductTab({super.key});
@@ -12,79 +14,120 @@ class _ProductTabState extends State<ProductTab> {
   String _selectedWarehouse = 'ทั้งหมด';
   String _selectedShelf = 'ทั้งหมด';
 
-  final products = [
-    {'name': 'แฮมเบอร์เกอร์', 'qty': '98', 'shelf': 'A1', 'status': 'พร้อม', 'unit': 'ชิ้น', 'price': '120'},
-    {'name': 'โคคา-โคลา', 'qty': '45', 'shelf': 'B1', 'status': 'พร้อม', 'unit': 'ขวด', 'price': '45'},
-    {'name': 'เค้กช็อกโกแลต', 'qty': '8', 'shelf': 'A2', 'status': 'ใกล้หมด', 'unit': 'ชิ้น', 'price': '85'},
-    {'name': 'ไอศกรีมวานิลา', 'qty': '5', 'shelf': 'B2', 'status': 'ใกล้หมด', 'unit': 'ชิ้น', 'price': '60'},
-    {'name': 'ขนมปังสด', 'qty': '0', 'shelf': 'C3', 'status': 'หมด', 'unit': 'ถุง', 'price': '25'},
-    {'name': 'นมสด', 'qty': '10', 'shelf': 'D1', 'status': 'พร้อม', 'unit': 'ขวด', 'price': '35'},
-    {'name': 'เนื้อสด', 'qty': '5', 'shelf': 'D2', 'status': 'ใกล้หมด', 'unit': 'กก.', 'price': '350'},
-    {'name': 'ผักสด', 'qty': '8', 'shelf': 'E1', 'status': 'ใกล้หมด', 'unit': 'กก.', 'price': '80'},
-  ];
+  List<Map<String, dynamic>> _products = [];
+  List<Map<String, dynamic>> _categories = [];
+  List<Map<String, dynamic>> _units = [];
+  List<Map<String, dynamic>> _shelves = [];
+  List<Map<String, dynamic>> _warehouses = [];
+  bool _isLoading = true;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+    _searchController.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadData() async {
+    setState(() { _isLoading = true; _errorMessage = null; });
+    try {
+      final results = await Future.wait([
+        InventoryService.getProducts(),
+        InventoryService.getCategories(),
+        InventoryService.getUnits(),
+        InventoryService.getShelves(),
+        InventoryService.getWarehouses(),
+      ]);
+      setState(() {
+        _products = results[0];
+        _categories = results[1];
+        _units = results[2];
+        _shelves = results[3];
+        _warehouses = results[4];
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() { _errorMessage = 'ไม่สามารถโหลดข้อมูล: $e'; _isLoading = false; });
+    }
+  }
+
+  List<Map<String, dynamic>> get _filteredProducts {
+    var list = List<Map<String, dynamic>>.from(_products);
+    final search = _searchController.text.toLowerCase();
+    if (search.isNotEmpty) {
+      list = list.where((p) => (p['name'] as String).toLowerCase().contains(search)).toList();
+    }
+    if (_selectedWarehouse != 'ทั้งหมด') {
+      list = list.where((p) {
+        final shelf = p['shelf'];
+        if (shelf == null) return false;
+        final wh = shelf['warehouse'];
+        return wh != null && wh['name'] == _selectedWarehouse;
+      }).toList();
+    }
+    if (_selectedShelf != 'ทั้งหมด') {
+      list = list.where((p) {
+        final shelf = p['shelf'];
+        return shelf != null && shelf['code'] == _selectedShelf;
+      }).toList();
+    }
+    return list;
+  }
+
+  String _getProductStatus(Map<String, dynamic> p) {
+    final qty = (p['quantity'] as num?)?.toDouble() ?? 0;
+    final minQty = (p['min_quantity'] as num?)?.toDouble() ?? 0;
+    if (qty <= 0) return 'หมด';
+    if (qty <= minQty) return 'ใกล้หมด';
+    return 'พร้อม';
+  }
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildSearchAndFilter(),
-          SizedBox(height: 16),
-          _buildActionButtons(),
-          SizedBox(height: 16),
-          _buildProductList(),
-        ],
-      ),
-    );
-  }
+    if (_isLoading) {
+      return Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()));
+    }
+    if (_errorMessage != null) {
+      return Center(child: Padding(padding: EdgeInsets.all(32), child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.error_outline, size: 48, color: Colors.red),
+        SizedBox(height: 8),
+        Text(_errorMessage!, style: TextStyle(color: Colors.red)),
+        SizedBox(height: 12),
+        ElevatedButton(onPressed: _loadData, child: Text('ลองใหม่')),
+      ])));
+    }
 
-  Widget _buildSearchAndFilter() {
-    return Card(
-      elevation: 2,
-      child: Padding(
-        padding: EdgeInsets.all(12),
+    final warehouseOptions = ['ทั้งหมด', ..._warehouses.map((w) => w['name'] as String)];
+    final shelfOptions = ['ทั้งหมด', ..._shelves.map((s) => s['code'] as String)];
+
+    return RefreshIndicator(
+      onRefresh: _loadData,
+      child: SingleChildScrollView(
+        physics: AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.all(16),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'ค้นหาสินค้า...',
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-              ),
+            InventoryFilterWidget(
+              searchController: _searchController,
+              selectedWarehouse: _selectedWarehouse,
+              selectedShelf: _selectedShelf,
+              onWarehouseChanged: (value) => setState(() => _selectedWarehouse = value!),
+              onShelfChanged: (value) => setState(() => _selectedShelf = value!),
+              warehouseOptions: warehouseOptions,
+              shelfOptions: shelfOptions,
             ),
-            SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: _selectedWarehouse,
-                    decoration: InputDecoration(
-                      labelText: 'คลังสินค้า',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    ),
-                    items: ['ทั้งหมด', 'คลังหลัก', 'คลังสำรอง'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                    onChanged: (value) => setState(() => _selectedWarehouse = value!),
-                  ),
-                ),
-                SizedBox(width: 12),
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: _selectedShelf,
-                    decoration: InputDecoration(
-                      labelText: 'ชั้นวาง',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    ),
-                    items: ['ทั้งหมด', 'A1', 'A2', 'B1', 'B2', 'C1', 'C2', 'C3'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                    onChanged: (value) => setState(() => _selectedShelf = value!),
-                  ),
-                ),
-              ],
-            ),
+            SizedBox(height: 16),
+            _buildActionButtons(),
+            SizedBox(height: 16),
+            _buildProductList(),
           ],
         ),
       ),
@@ -99,18 +142,15 @@ class _ProductTabState extends State<ProductTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('🎯 จัดการข้อมูลสินค้า', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text('จัดการข้อมูลสินค้า', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             SizedBox(height: 12),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
-                _buildActionButton('📂 ประเภท', Colors.blue, () => _showCategoryDialog()),
-                _buildActionButton('⚖️ หน่วยนับ', Colors.teal, () => _showUnitDialog()),
-                _buildActionButton('💰 ราคาขาย', Colors.green, () => _showPriceDialog()),
-                _buildActionButton('📋 รายงาน', Colors.purple, () => _showReportDialog()),
-                _buildActionButton('➕ เพิ่มสินค้า', Colors.orange, () => _showAddProductDialog()),
-                _buildActionButton('🧹 เคลียร์วัตถุดิบ', Colors.red, () => _showClearMaterialDialog()),
+                _buildActionButton('ประเภท', Colors.blue, Icons.folder, () => _showCategoryDialog()),
+                _buildActionButton('หน่วยนับ', Colors.teal, Icons.scale, () => _showUnitDialog()),
+                _buildActionButton('เพิ่มสินค้า', Colors.orange, Icons.add_circle, () => _showAddProductDialog()),
               ],
             ),
           ],
@@ -119,20 +159,22 @@ class _ProductTabState extends State<ProductTab> {
     );
   }
 
-  Widget _buildActionButton(String label, Color color, VoidCallback onTap) {
-    return ElevatedButton(
+  Widget _buildActionButton(String label, Color color, IconData icon, VoidCallback onTap) {
+    return ElevatedButton.icon(
       onPressed: onTap,
+      icon: Icon(icon, size: 18),
+      label: Text(label),
       style: ElevatedButton.styleFrom(
         backgroundColor: color,
         foregroundColor: Colors.white,
         padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
-      child: Text(label),
     );
   }
 
   Widget _buildProductList() {
+    final filtered = _filteredProducts;
     return Card(
       elevation: 2,
       child: Padding(
@@ -140,26 +182,28 @@ class _ProductTabState extends State<ProductTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('📋 รายการสินค้า (${products.length} รายการ)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text('รายการสินค้า (${filtered.length} รายการ)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             SizedBox(height: 12),
-            ...products.map((product) => _buildProductItem(product)).toList(),
-            SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                IconButton(onPressed: () {}, icon: Icon(Icons.chevron_left)),
-                Text('หน้า 1 จาก 16'),
-                IconButton(onPressed: () {}, icon: Icon(Icons.chevron_right)),
-              ],
-            ),
+            if (filtered.isEmpty)
+              Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(child: Text('ไม่พบสินค้า', style: TextStyle(color: Colors.grey[600]))),
+              )
+            else
+              ...filtered.map((product) => _buildProductItem(product)).toList(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildProductItem(Map<String, String> product) {
-    Color statusColor = product['status'] == 'พร้อม' ? Colors.green : product['status'] == 'ใกล้หมด' ? Colors.orange : Colors.red;
+  Widget _buildProductItem(Map<String, dynamic> product) {
+    final status = _getProductStatus(product);
+    final statusColor = status == 'พร้อม' ? Colors.green : status == 'ใกล้หมด' ? Colors.orange : Colors.red;
+    final qty = (product['quantity'] as num?)?.toDouble() ?? 0;
+    final price = (product['price'] as num?)?.toDouble() ?? 0;
+    final unitAbbr = product['unit']?['abbreviation'] ?? '';
+    final shelfCode = product['shelf']?['code'] ?? '-';
 
     return Container(
       margin: EdgeInsets.only(bottom: 8),
@@ -178,13 +222,13 @@ class _ProductTabState extends State<ProductTab> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(product['name']!, style: TextStyle(fontWeight: FontWeight.w500)),
-                Text('฿${product['price']}/${product['unit']}', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                Text(product['name'] ?? '', style: TextStyle(fontWeight: FontWeight.w500)),
+                Text('฿${price.toStringAsFixed(0)}/$unitAbbr', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
               ],
             ),
           ),
-          Expanded(child: Text('${product['qty']}', style: TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
-          Expanded(child: Text(product['shelf']!, style: TextStyle(color: Colors.grey[600]), textAlign: TextAlign.center)),
+          Expanded(child: Text('${qty.toStringAsFixed(qty == qty.roundToDouble() ? 0 : 1)}', style: TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
+          Expanded(child: Text(shelfCode, style: TextStyle(color: Colors.grey[600]), textAlign: TextAlign.center)),
           Container(width: 8, height: 8, decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle)),
           SizedBox(width: 8),
           IconButton(icon: Icon(Icons.edit, size: 20), onPressed: () => _showEditProductDialog(product), padding: EdgeInsets.zero, constraints: BoxConstraints()),
@@ -195,183 +239,240 @@ class _ProductTabState extends State<ProductTab> {
 
   // Dialogs
   void _showCategoryDialog() {
+    final newCatController = TextEditingController();
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Row(children: [Icon(Icons.folder, color: Colors.blue), SizedBox(width: 8), Text('📂 จัดการประเภท')]),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(title: Text('🍔 อาหาร'), trailing: Text('45 รายการ')),
-            ListTile(title: Text('🥤 เครื่องดื่ม'), trailing: Text('28 รายการ')),
-            ListTile(title: Text('🍰 ของหวาน'), trailing: Text('18 รายการ')),
-            Divider(),
-            TextField(decoration: InputDecoration(labelText: 'เพิ่มประเภทใหม่', border: OutlineInputBorder())),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Row(children: [Icon(Icons.folder, color: Colors.blue), SizedBox(width: 8), Text('จัดการประเภท')]),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ..._categories.map((cat) {
+                  final count = _products.where((p) => p['category']?['id'] == cat['id']).length;
+                  return ListTile(title: Text(cat['name'] ?? ''), trailing: Text('$count รายการ'));
+                }).toList(),
+                Divider(),
+                TextField(controller: newCatController, decoration: InputDecoration(labelText: 'เพิ่มประเภทใหม่', border: OutlineInputBorder())),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: Text('ปิด')),
+            ElevatedButton(
+              onPressed: () async {
+                if (newCatController.text.trim().isEmpty) return;
+                final ok = await InventoryService.addCategory(newCatController.text.trim());
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  if (ok) {
+                    _loadData();
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เพิ่มประเภท ${newCatController.text} สำเร็จ'), backgroundColor: Colors.green));
+                  }
+                }
+              },
+              child: Text('บันทึก'),
+            ),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text('ปิด')),
-          ElevatedButton(onPressed: () => Navigator.pop(context), child: Text('บันทึก')),
-        ],
       ),
     );
   }
 
   void _showUnitDialog() {
+    final newUnitController = TextEditingController();
+    final newAbbrController = TextEditingController();
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Row(children: [Icon(Icons.scale, color: Colors.teal), SizedBox(width: 8), Text('⚖️ จัดการหน่วยนับ')]),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(title: Text('📦 ชิ้น'), trailing: Text('45 รายการ')),
-            ListTile(title: Text('🍾 ขวด'), trailing: Text('28 รายการ')),
-            ListTile(title: Text('🥄 กิโลกรัม'), trailing: Text('12 รายการ')),
-            Divider(),
-            TextField(decoration: InputDecoration(labelText: 'เพิ่มหน่วยใหม่', border: OutlineInputBorder())),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text('ปิด')),
-          ElevatedButton(onPressed: () => Navigator.pop(context), child: Text('บันทึก')),
-        ],
-      ),
-    );
-  }
-
-  void _showPriceDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(children: [Icon(Icons.attach_money, color: Colors.green), SizedBox(width: 8), Text('💰 จัดการราคาขาย')]),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            DropdownButtonFormField<String>(
-              decoration: InputDecoration(labelText: 'เลือกสินค้า', border: OutlineInputBorder()),
-              items: products.map((e) => DropdownMenuItem(value: e['name'], child: Text(e['name']!))).toList(),
-              onChanged: (value) {},
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Row(children: [Icon(Icons.scale, color: Colors.teal), SizedBox(width: 8), Text('จัดการหน่วยนับ')]),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ..._units.map((u) {
+                  final count = _products.where((p) => p['unit']?['id'] == u['id']).length;
+                  return ListTile(title: Text('${u['name']} (${u['abbreviation']})'), trailing: Text('$count รายการ'));
+                }).toList(),
+                Divider(),
+                TextField(controller: newUnitController, decoration: InputDecoration(labelText: 'ชื่อหน่วย', border: OutlineInputBorder())),
+                SizedBox(height: 8),
+                TextField(controller: newAbbrController, decoration: InputDecoration(labelText: 'ตัวย่อ', border: OutlineInputBorder())),
+              ],
             ),
-            SizedBox(height: 12),
-            TextField(decoration: InputDecoration(labelText: 'ราคาขาย (฿)', border: OutlineInputBorder())),
-            SizedBox(height: 12),
-            TextField(decoration: InputDecoration(labelText: 'ต้นทุน (฿)', border: OutlineInputBorder())),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: Text('ปิด')),
+            ElevatedButton(
+              onPressed: () async {
+                if (newUnitController.text.trim().isEmpty) return;
+                final ok = await InventoryService.addUnit(newUnitController.text.trim(), abbreviation: newAbbrController.text.trim().isEmpty ? null : newAbbrController.text.trim());
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  if (ok) {
+                    _loadData();
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เพิ่มหน่วย ${newUnitController.text} สำเร็จ'), backgroundColor: Colors.green));
+                  }
+                }
+              },
+              child: Text('บันทึก'),
+            ),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text('ยกเลิก')),
-          ElevatedButton(onPressed: () => Navigator.pop(context), child: Text('บันทึก')),
-        ],
-      ),
-    );
-  }
-
-  void _showReportDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(children: [Icon(Icons.analytics, color: Colors.purple), SizedBox(width: 8), Text('📋 รายงานสินค้า')]),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(leading: Icon(Icons.list), title: Text('รายการสินค้า'), onTap: () {}),
-            ListTile(leading: Icon(Icons.attach_money), title: Text('ราคาขาย'), onTap: () {}),
-            ListTile(leading: Icon(Icons.trending_down), title: Text('สต็อกต่ำ'), onTap: () {}),
-            ListTile(leading: Icon(Icons.error), title: Text('สินค้าหมด'), onTap: () {}),
-          ],
-        ),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text('ปิด'))],
       ),
     );
   }
 
   void _showAddProductDialog() {
+    final formKey = GlobalKey<FormState>();
+    final nameController = TextEditingController();
+    final priceController = TextEditingController();
+    final costController = TextEditingController();
+    final qtyController = TextEditingController(text: '0');
+    final minQtyController = TextEditingController(text: '0');
+    String? selectedCategoryId;
+    String? selectedUnitId;
+    String? selectedShelfId;
+    bool isLoading = false;
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Row(children: [Icon(Icons.add_circle, color: Colors.orange), SizedBox(width: 8), Text('➕ เพิ่มสินค้าใหม่')]),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(decoration: InputDecoration(labelText: 'ชื่อสินค้า', border: OutlineInputBorder())),
-              SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                decoration: InputDecoration(labelText: 'ประเภท', border: OutlineInputBorder()),
-                items: ['อาหาร', 'เครื่องดื่ม', 'ของหวาน'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                onChanged: (value) {},
-              ),
-              SizedBox(height: 12),
-              Row(
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Row(children: [Icon(Icons.add_circle, color: Colors.orange), SizedBox(width: 8), Text('เพิ่มสินค้าใหม่')]),
+          content: SingleChildScrollView(
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Expanded(child: TextField(decoration: InputDecoration(labelText: 'ราคาขาย', border: OutlineInputBorder()))),
-                  SizedBox(width: 12),
-                  Expanded(child: TextField(decoration: InputDecoration(labelText: 'ชั้นวาง', border: OutlineInputBorder()))),
+                  TextFormField(
+                    controller: nameController,
+                    decoration: InputDecoration(labelText: 'ชื่อสินค้า *', border: OutlineInputBorder()),
+                    validator: (v) => v?.trim().isEmpty == true ? 'กรุณากรอกชื่อสินค้า' : null,
+                  ),
+                  SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    decoration: InputDecoration(labelText: 'ประเภท *', border: OutlineInputBorder()),
+                    value: selectedCategoryId,
+                    items: _categories.map((c) => DropdownMenuItem(value: c['id'] as String, child: Text(c['name'] ?? ''))).toList(),
+                    onChanged: (v) => setDialogState(() => selectedCategoryId = v),
+                    validator: (v) => v == null ? 'กรุณาเลือกประเภท' : null,
+                  ),
+                  SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    decoration: InputDecoration(labelText: 'หน่วยนับ *', border: OutlineInputBorder()),
+                    value: selectedUnitId,
+                    items: _units.map((u) => DropdownMenuItem(value: u['id'] as String, child: Text('${u['name']} (${u['abbreviation']})'))).toList(),
+                    onChanged: (v) => setDialogState(() => selectedUnitId = v),
+                    validator: (v) => v == null ? 'กรุณาเลือกหน่วยนับ' : null,
+                  ),
+                  SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    decoration: InputDecoration(labelText: 'ชั้นวาง', border: OutlineInputBorder()),
+                    value: selectedShelfId,
+                    items: _shelves.map((s) => DropdownMenuItem(value: s['id'] as String, child: Text('${s['code']} (${s['warehouse']?['name'] ?? ''})' ))).toList(),
+                    onChanged: (v) => setDialogState(() => selectedShelfId = v),
+                  ),
+                  SizedBox(height: 12),
+                  Row(children: [
+                    Expanded(child: TextFormField(controller: priceController, decoration: InputDecoration(labelText: 'ราคาขาย *', border: OutlineInputBorder(), prefixText: '฿'), keyboardType: TextInputType.number, validator: (v) => v?.trim().isEmpty == true ? 'กรุณากรอก' : null)),
+                    SizedBox(width: 12),
+                    Expanded(child: TextFormField(controller: costController, decoration: InputDecoration(labelText: 'ต้นทุน', border: OutlineInputBorder(), prefixText: '฿'), keyboardType: TextInputType.number)),
+                  ]),
+                  SizedBox(height: 12),
+                  Row(children: [
+                    Expanded(child: TextFormField(controller: qtyController, decoration: InputDecoration(labelText: 'จำนวน', border: OutlineInputBorder()), keyboardType: TextInputType.number)),
+                    SizedBox(width: 12),
+                    Expanded(child: TextFormField(controller: minQtyController, decoration: InputDecoration(labelText: 'จำนวนขั้นต่ำ', border: OutlineInputBorder()), keyboardType: TextInputType.number)),
+                  ]),
                 ],
               ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text('ยกเลิก')),
-          ElevatedButton(onPressed: () => Navigator.pop(context), child: Text('บันทึก')),
-        ],
-      ),
-    );
-  }
-
-  void _showClearMaterialDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(children: [Icon(Icons.cleaning_services, color: Colors.red), SizedBox(width: 8), Text('🧹 เคลียร์วัตถุดิบ')]),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: EdgeInsets.all(12),
-              decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-              child: Text('รายการวัตถุดิบที่ต้องเคลียร์'),
             ),
-            SizedBox(height: 12),
-            ListTile(title: Text('🥛 นมสด'), subtitle: Text('10 ขวด - หมดอายุใน 2 วัน')),
-            ListTile(title: Text('🥩 เนื้อสด'), subtitle: Text('5 กก. - หมดอายุใน 3 วัน')),
-            Divider(),
-            TextField(decoration: InputDecoration(labelText: 'จำนวนที่เคลียร์', border: OutlineInputBorder())),
+          ),
+          actions: [
+            TextButton(onPressed: isLoading ? null : () => Navigator.pop(context), child: Text('ยกเลิก')),
+            ElevatedButton(
+              onPressed: isLoading ? null : () async {
+                if (formKey.currentState?.validate() != true) return;
+                setDialogState(() => isLoading = true);
+                final ok = await InventoryService.addProduct(
+                  name: nameController.text.trim(),
+                  categoryId: selectedCategoryId!,
+                  unitId: selectedUnitId!,
+                  shelfId: selectedShelfId,
+                  price: double.tryParse(priceController.text) ?? 0,
+                  cost: double.tryParse(costController.text) ?? 0,
+                  quantity: double.tryParse(qtyController.text) ?? 0,
+                  minQuantity: double.tryParse(minQtyController.text) ?? 0,
+                );
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  if (ok) {
+                    _loadData();
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เพิ่มสินค้า ${nameController.text} สำเร็จ'), backgroundColor: Colors.green));
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เกิดข้อผิดพลาด'), backgroundColor: Colors.red));
+                  }
+                }
+              },
+              child: isLoading ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text('บันทึก'),
+            ),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text('ยกเลิก')),
-          ElevatedButton(onPressed: () => Navigator.pop(context), style: ElevatedButton.styleFrom(backgroundColor: Colors.red), child: Text('เคลียร์')),
-        ],
       ),
     );
   }
 
-  void _showEditProductDialog(Map<String, String> product) {
+  void _showEditProductDialog(Map<String, dynamic> product) {
+    final nameController = TextEditingController(text: product['name'] ?? '');
+    final priceController = TextEditingController(text: '${(product['price'] as num?)?.toDouble() ?? 0}');
+    final qtyController = TextEditingController(text: '${(product['quantity'] as num?)?.toDouble() ?? 0}');
+    bool isLoading = false;
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('📝 แก้ไขสินค้า')]),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(decoration: InputDecoration(labelText: 'ชื่อสินค้า', border: OutlineInputBorder()), controller: TextEditingController(text: product['name'])),
-            SizedBox(height: 12),
-            Row(
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('แก้ไขสินค้า')]),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Expanded(child: TextField(decoration: InputDecoration(labelText: 'จำนวน', border: OutlineInputBorder()), controller: TextEditingController(text: product['qty']))),
-                SizedBox(width: 12),
-                Expanded(child: TextField(decoration: InputDecoration(labelText: 'ราคา', border: OutlineInputBorder()), controller: TextEditingController(text: product['price']))),
+                TextField(controller: nameController, decoration: InputDecoration(labelText: 'ชื่อสินค้า', border: OutlineInputBorder())),
+                SizedBox(height: 12),
+                Row(children: [
+                  Expanded(child: TextField(controller: qtyController, decoration: InputDecoration(labelText: 'จำนวน', border: OutlineInputBorder()), keyboardType: TextInputType.number)),
+                  SizedBox(width: 12),
+                  Expanded(child: TextField(controller: priceController, decoration: InputDecoration(labelText: 'ราคา', border: OutlineInputBorder()), keyboardType: TextInputType.number)),
+                ]),
               ],
             ),
+          ),
+          actions: [
+            TextButton(onPressed: isLoading ? null : () => Navigator.pop(context), child: Text('ยกเลิก')),
+            ElevatedButton(
+              onPressed: isLoading ? null : () async {
+                setDialogState(() => isLoading = true);
+                final ok = await InventoryService.updateProduct(product['id'], {
+                  'name': nameController.text.trim(),
+                  'quantity': double.tryParse(qtyController.text) ?? 0,
+                  'price': double.tryParse(priceController.text) ?? 0,
+                });
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  if (ok) {
+                    _loadData();
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('แก้ไขสินค้าสำเร็จ'), backgroundColor: Colors.green));
+                  }
+                }
+              },
+              child: isLoading ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text('บันทึก'),
+            ),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text('ยกเลิก')),
-          ElevatedButton(onPressed: () => Navigator.pop(context), child: Text('บันทึก')),
-        ],
       ),
     );
   }

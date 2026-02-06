@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'inventory/overview_tab.dart';
 import 'inventory/product_tab.dart';
 import 'inventory/adjustment_tab.dart';
+import 'inventory/recipe_tab.dart';
 
 class InventoryPage extends StatefulWidget {
   const InventoryPage({super.key});
@@ -16,7 +17,7 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
   }
 
   @override
@@ -43,9 +44,11 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
           indicatorColor: Colors.white,
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white70,
+          isScrollable: true,
           tabs: [
             Tab(icon: Icon(Icons.dashboard), text: 'สถิติ / รายงาน'),
             Tab(icon: Icon(Icons.inventory), text: 'จัดการสินค้า'),
+            Tab(icon: Icon(Icons.restaurant_menu), text: 'สูตรอาหาร'),
             Tab(icon: Icon(Icons.build), text: 'ปรับปรุงคลัง'),
           ],
         ),
@@ -55,6 +58,7 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
         children: [
           OverviewTab(),
           ProductTab(),
+          RecipeTab(),
           AdjustmentTab(),
         ],
       ),

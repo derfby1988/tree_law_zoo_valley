@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../services/inventory_service.dart';
+import 'inventory_filter_widget.dart';
 
 class AdjustmentTab extends StatefulWidget {
   const AdjustmentTab({super.key});
@@ -12,76 +14,99 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
   String _selectedWarehouse = 'ทั้งหมด';
   String _selectedShelf = 'ทั้งหมด';
 
-  final adjustments = [
-    {'product': 'แฮมเบอร์เกอร์', 'from': '98', 'to': '100', 'user': 'สมชาย', 'time': '10:30'},
-    {'product': 'โคคา-โคลา', 'from': '45', 'to': '50', 'user': 'มานี', 'time': '09:15'},
-    {'product': 'เค้กช็อกโกแลต', 'from': '5', 'to': '8', 'user': 'วิรัติ', 'time': '08:45'},
-  ];
+  List<Map<String, dynamic>> _adjustments = [];
+  List<Map<String, dynamic>> _products = [];
+  List<Map<String, dynamic>> _warehouses = [];
+  List<Map<String, dynamic>> _shelves = [];
+  bool _isLoading = true;
+  String? _errorMessage;
+
+  // ฟอร์มปรับปรุง
+  String? _selectedProductId;
+  final _newQtyController = TextEditingController();
+  final _reasonController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _newQtyController.dispose();
+    _reasonController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadData() async {
+    setState(() { _isLoading = true; _errorMessage = null; });
+    try {
+      final results = await Future.wait([
+        InventoryService.getAdjustments(limit: 20),
+        InventoryService.getProducts(),
+        InventoryService.getWarehouses(),
+        InventoryService.getShelves(),
+      ]);
+      setState(() {
+        _adjustments = results[0];
+        _products = results[1];
+        _warehouses = results[2];
+        _shelves = results[3];
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() { _errorMessage = 'ไม่สามารถโหลดข้อมูล: $e'; _isLoading = false; });
+    }
+  }
+
+  Map<String, dynamic>? get _selectedProduct {
+    if (_selectedProductId == null) return null;
+    return _products.where((p) => p['id'] == _selectedProductId).firstOrNull;
+  }
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildSearchAndFilter(),
-          SizedBox(height: 16),
-          _buildActionButtons(),
-          SizedBox(height: 16),
-          _buildAdjustmentForm(),
-          SizedBox(height: 16),
-          _buildRecentAdjustments(),
-        ],
-      ),
-    );
-  }
+    if (_isLoading) {
+      return Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()));
+    }
+    if (_errorMessage != null) {
+      return Center(child: Padding(padding: EdgeInsets.all(32), child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.error_outline, size: 48, color: Colors.red),
+        SizedBox(height: 8),
+        Text(_errorMessage!, style: TextStyle(color: Colors.red)),
+        SizedBox(height: 12),
+        ElevatedButton(onPressed: _loadData, child: Text('ลองใหม่')),
+      ])));
+    }
 
-  Widget _buildSearchAndFilter() {
-    return Card(
-      elevation: 2,
-      child: Padding(
-        padding: EdgeInsets.all(12),
+    final warehouseOptions = ['ทั้งหมด', ..._warehouses.map((w) => w['name'] as String)];
+    final shelfOptions = ['ทั้งหมด', ..._shelves.map((s) => s['code'] as String)];
+
+    return RefreshIndicator(
+      onRefresh: _loadData,
+      child: SingleChildScrollView(
+        physics: AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.all(16),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'ค้นหาสินค้า...',
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-              ),
+            InventoryFilterWidget(
+              searchController: _searchController,
+              selectedWarehouse: _selectedWarehouse,
+              selectedShelf: _selectedShelf,
+              onWarehouseChanged: (value) => setState(() => _selectedWarehouse = value!),
+              onShelfChanged: (value) => setState(() => _selectedShelf = value!),
+              warehouseOptions: warehouseOptions,
+              shelfOptions: shelfOptions,
             ),
-            SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: _selectedWarehouse,
-                    decoration: InputDecoration(
-                      labelText: 'คลังสินค้า',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    ),
-                    items: ['ทั้งหมด', 'คลังหลัก', 'คลังสำรอง'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                    onChanged: (value) => setState(() => _selectedWarehouse = value!),
-                  ),
-                ),
-                SizedBox(width: 12),
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: _selectedShelf,
-                    decoration: InputDecoration(
-                      labelText: 'ชั้นวาง',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    ),
-                    items: ['ทั้งหมด', 'A1', 'A2', 'B1', 'B2', 'C1', 'C2', 'C3'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                    onChanged: (value) => setState(() => _selectedShelf = value!),
-                  ),
-                ),
-              ],
-            ),
+            SizedBox(height: 16),
+            _buildActionButtons(),
+            SizedBox(height: 16),
+            _buildAdjustmentForm(),
+            SizedBox(height: 16),
+            _buildRecentAdjustments(),
           ],
         ),
       ),
@@ -96,21 +121,17 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('🎯 ดำเนินการคลังสินค้า', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text('ดำเนินการคลังสินค้า', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             SizedBox(height: 12),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
-                _buildActionButton('🏗️ กำหนดคลัง', Colors.indigo, () => _showWarehouseDialog()),
-                _buildActionButton('📋 ชั้นวาง', Colors.teal, () => _showShelfDialog()),
-                _buildActionButton('🛒 ซื้อสินค้า', Colors.green, () => _showPurchaseDialog()),
-                _buildActionButton('📤 ส่งคืน', Colors.orange, () => _showReturnDialog()),
-                _buildActionButton('🔢 ตรวจนับ', Colors.blue, () => _showCountDialog()),
-                _buildActionButton('🔄 โอนคลัง', Colors.purple, () => _showTransferDialog()),
-                _buildActionButton('📤 เบิกใช้', Colors.cyan, () => _showWithdrawDialog()),
-                _buildActionButton('❌ ตัดสินค้าเสีย', Colors.red, () => _showDamageDialog()),
-                _buildActionButton('📊 รายงาน', Colors.brown, () => _showReportDialog()),
+                _buildActionButton('กำหนดคลัง', Colors.indigo, Icons.warehouse, () => _showWarehouseDialog()),
+                _buildActionButton('ชั้นวาง', Colors.teal, Icons.shelves, () => _showShelfDialog()),
+                _buildActionButton('ซื้อสินค้า', Colors.green, Icons.shopping_cart, () => _showQuickAdjustDialog('purchase', 'ซื้อสินค้า', Colors.green)),
+                _buildActionButton('เบิกใช้', Colors.cyan, Icons.outbox, () => _showQuickAdjustDialog('withdraw', 'เบิกใช้สินค้า', Colors.cyan)),
+                _buildActionButton('ตัดสินค้าเสีย', Colors.red, Icons.delete_forever, () => _showQuickAdjustDialog('damage', 'ตัดสินค้าเสีย', Colors.red)),
               ],
             ),
           ],
@@ -119,20 +140,28 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
     );
   }
 
-  Widget _buildActionButton(String label, Color color, VoidCallback onTap) {
-    return ElevatedButton(
+  Widget _buildActionButton(String label, Color color, IconData icon, VoidCallback onTap) {
+    return ElevatedButton.icon(
       onPressed: onTap,
+      icon: Icon(icon, size: 18),
+      label: Text(label),
       style: ElevatedButton.styleFrom(
         backgroundColor: color,
         foregroundColor: Colors.white,
         padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
-      child: Text(label),
     );
   }
 
   Widget _buildAdjustmentForm() {
+    final product = _selectedProduct;
+    final currentQty = (product?['quantity'] as num?)?.toDouble() ?? 0;
+    final unitAbbr = product?['unit']?['abbreviation'] ?? '';
+    final shelfCode = product?['shelf']?['code'] ?? '-';
+    final now = DateTime.now();
+    final dateStr = '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
+
     return Card(
       elevation: 2,
       child: Padding(
@@ -140,50 +169,70 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('📝 ฟอร์มปรับปรุงคลังสินค้า', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text('ฟอร์มปรับปรุงคลังสินค้า', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             SizedBox(height: 16),
             DropdownButtonFormField<String>(
-              decoration: InputDecoration(labelText: '📦 เลือกสินค้า', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
-              items: ['แฮมเบอร์เกอร์', 'โคคา-โคลา', 'เค้กช็อกโกแลต'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-              onChanged: (value) {},
+              decoration: InputDecoration(labelText: 'เลือกสินค้า', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
+              value: _selectedProductId,
+              items: _products.map((p) => DropdownMenuItem(value: p['id'] as String, child: Text(p['name'] ?? ''))).toList(),
+              onChanged: (value) => setState(() { _selectedProductId = value; _newQtyController.clear(); }),
             ),
             SizedBox(height: 12),
             Row(
               children: [
-                Expanded(child: TextFormField(decoration: InputDecoration(labelText: '📍 ชั้นวาง', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))), initialValue: 'A1')),
+                Expanded(child: TextFormField(decoration: InputDecoration(labelText: 'ชั้นวาง', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))), initialValue: shelfCode, enabled: false)),
                 SizedBox(width: 12),
-                Expanded(child: TextFormField(decoration: InputDecoration(labelText: '📊 ปัจจุบัน', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))), initialValue: '98', enabled: false)),
+                Expanded(child: TextFormField(decoration: InputDecoration(labelText: 'ปัจจุบัน ($unitAbbr)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))), controller: TextEditingController(text: '${currentQty.toStringAsFixed(currentQty == currentQty.roundToDouble() ? 0 : 1)}'), enabled: false)),
               ],
             ),
             SizedBox(height: 12),
             Row(
               children: [
-                Expanded(child: TextFormField(decoration: InputDecoration(labelText: '📈 ปรับเป็น', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))), keyboardType: TextInputType.number)),
+                Expanded(child: TextFormField(controller: _newQtyController, decoration: InputDecoration(labelText: 'ปรับเป็น', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))), keyboardType: TextInputType.number)),
                 SizedBox(width: 12),
-                Expanded(child: TextFormField(decoration: InputDecoration(labelText: '📝 เหตุผล', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))))),
+                Expanded(child: TextFormField(controller: _reasonController, decoration: InputDecoration(labelText: 'เหตุผล', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))))),
               ],
             ),
             SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(child: TextFormField(decoration: InputDecoration(labelText: '📅 วันที่', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))), initialValue: '28/01/2026', enabled: false)),
-                SizedBox(width: 12),
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    decoration: InputDecoration(labelText: '👤 ผู้ดำเนินการ', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
-                    items: ['คุณสมชาย', 'คุณมานี', 'คุณวิรัติ'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                    onChanged: (value) {},
-                  ),
-                ),
-              ],
-            ),
+            TextFormField(decoration: InputDecoration(labelText: 'วันที่', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))), initialValue: dateStr, enabled: false),
             SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                OutlinedButton.icon(onPressed: () {}, icon: Icon(Icons.refresh), label: Text('รีเซ็ต')),
+                OutlinedButton.icon(
+                  onPressed: () => setState(() { _selectedProductId = null; _newQtyController.clear(); _reasonController.clear(); }),
+                  icon: Icon(Icons.refresh),
+                  label: Text('รีเซ็ต'),
+                ),
                 SizedBox(width: 12),
-                ElevatedButton.icon(onPressed: () {}, icon: Icon(Icons.save), label: Text('บันทึก'), style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white)),
+                ElevatedButton.icon(
+                  onPressed: _selectedProductId == null ? null : () async {
+                    final newQty = double.tryParse(_newQtyController.text);
+                    if (newQty == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('กรุณากรอกจำนวนที่ถูกต้อง'), backgroundColor: Colors.red));
+                      return;
+                    }
+                    final ok = await InventoryService.addAdjustment(
+                      productId: _selectedProductId!,
+                      type: 'adjust',
+                      quantityBefore: currentQty,
+                      quantityAfter: newQty,
+                      reason: _reasonController.text.trim().isEmpty ? null : _reasonController.text.trim(),
+                    );
+                    if (mounted) {
+                      if (ok) {
+                        _loadData();
+                        setState(() { _selectedProductId = null; _newQtyController.clear(); _reasonController.clear(); });
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('ปรับปรุงสำเร็จ'), backgroundColor: Colors.green));
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เกิดข้อผิดพลาด'), backgroundColor: Colors.red));
+                      }
+                    }
+                  },
+                  icon: Icon(Icons.save),
+                  label: Text('บันทึก'),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+                ),
               ],
             ),
           ],
@@ -200,290 +249,222 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('📋 ประวัติการปรับปรุงล่าสุด', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text('ประวัติการปรับปรุงล่าสุด', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             SizedBox(height: 12),
-            ...adjustments.map((adj) => Container(
-              margin: EdgeInsets.only(bottom: 8),
-              padding: EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.green.withOpacity(0.3)),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.check_circle, color: Colors.green, size: 20),
-                  SizedBox(width: 8),
-                  Expanded(child: Text('${adj['product']} ${adj['from']}→${adj['to']}')),
-                  Text('${adj['user']}', style: TextStyle(color: Colors.grey[600])),
-                  SizedBox(width: 8),
-                  Text('${adj['time']}', style: TextStyle(color: Colors.grey[500], fontSize: 12)),
-                ],
-              ),
-            )).toList(),
+            if (_adjustments.isEmpty)
+              Padding(padding: EdgeInsets.all(16), child: Center(child: Text('ไม่มีประวัติ', style: TextStyle(color: Colors.grey[600]))))
+            else
+              ..._adjustments.map((adj) {
+                final productName = adj['product']?['name'] ?? '-';
+                final qtyBefore = (adj['quantity_before'] as num?)?.toDouble() ?? 0;
+                final qtyAfter = (adj['quantity_after'] as num?)?.toDouble() ?? 0;
+                final change = (adj['quantity_change'] as num?)?.toDouble() ?? 0;
+                final type = adj['type'] ?? '';
+                final userName = adj['user_name'] ?? '-';
+                final createdAt = DateTime.tryParse(adj['created_at']?.toString() ?? '');
+                final timeStr = createdAt != null ? '${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}' : '';
+                final isPositive = change >= 0;
+                final color = isPositive ? Colors.green : Colors.red;
+                final typeLabel = _getTypeLabel(type);
+
+                return Container(
+                  margin: EdgeInsets.only(bottom: 8),
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: color.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(isPositive ? Icons.arrow_upward : Icons.arrow_downward, color: color, size: 20),
+                      SizedBox(width: 8),
+                      Expanded(child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('$productName ${qtyBefore.toStringAsFixed(0)}→${qtyAfter.toStringAsFixed(0)}', style: TextStyle(fontWeight: FontWeight.w500)),
+                          Text('$typeLabel ${adj['reason'] ?? ''}', style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+                        ],
+                      )),
+                      Text(userName, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                      SizedBox(width: 8),
+                      Text(timeStr, style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+                    ],
+                  ),
+                );
+              }).toList(),
           ],
         ),
       ),
     );
   }
 
+  String _getTypeLabel(String type) {
+    switch (type) {
+      case 'purchase': return 'ซื้อ';
+      case 'return': return 'ส่งคืน';
+      case 'count': return 'ตรวจนับ';
+      case 'transfer': return 'โอนคลัง';
+      case 'withdraw': return 'เบิกใช้';
+      case 'damage': return 'สินค้าเสีย';
+      case 'produce': return 'ผลิต';
+      case 'adjust': return 'ปรับปรุง';
+      default: return type;
+    }
+  }
+
   // Dialogs
   void _showWarehouseDialog() {
+    final nameController = TextEditingController();
+    final locationController = TextEditingController();
+    final managerController = TextEditingController();
+    bool isLoading = false;
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Row(children: [Icon(Icons.warehouse, color: Colors.indigo), SizedBox(width: 8), Text('🏗️ กำหนดคลัง')]),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(decoration: InputDecoration(labelText: 'ชื่อคลัง', border: OutlineInputBorder())),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Row(children: [Icon(Icons.warehouse, color: Colors.indigo), SizedBox(width: 8), Text('กำหนดคลัง')]),
+          content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+            if (_warehouses.isNotEmpty) ...[
+              ..._warehouses.map((w) => ListTile(title: Text(w['name'] ?? ''), subtitle: Text(w['location'] ?? ''))).toList(),
+              Divider(),
+            ],
+            TextField(controller: nameController, decoration: InputDecoration(labelText: 'ชื่อคลัง', border: OutlineInputBorder())),
             SizedBox(height: 12),
-            TextField(decoration: InputDecoration(labelText: 'ที่ตั้ง', border: OutlineInputBorder())),
+            TextField(controller: locationController, decoration: InputDecoration(labelText: 'ที่ตั้ง', border: OutlineInputBorder())),
             SizedBox(height: 12),
-            TextField(decoration: InputDecoration(labelText: 'ผู้รับผิดชอบ', border: OutlineInputBorder())),
+            TextField(controller: managerController, decoration: InputDecoration(labelText: 'ผู้รับผิดชอบ', border: OutlineInputBorder())),
+          ])),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: Text('ยกเลิก')),
+            ElevatedButton(
+              onPressed: isLoading ? null : () async {
+                if (nameController.text.trim().isEmpty) return;
+                setDialogState(() => isLoading = true);
+                final ok = await InventoryService.addWarehouse(name: nameController.text.trim(), location: locationController.text.trim(), manager: managerController.text.trim());
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  if (ok) { _loadData(); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เพิ่มคลังสำเร็จ'), backgroundColor: Colors.green)); }
+                }
+              },
+              child: isLoading ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text('บันทึก'),
+            ),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text('ยกเลิก')),
-          ElevatedButton(onPressed: () => Navigator.pop(context), child: Text('บันทึก')),
-        ],
       ),
     );
   }
 
   void _showShelfDialog() {
+    final codeController = TextEditingController();
+    final capacityController = TextEditingController();
+    String? selectedWarehouseId;
+    bool isLoading = false;
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Row(children: [Icon(Icons.shelves, color: Colors.teal), SizedBox(width: 8), Text('📋 จัดการชั้นวาง')]),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Row(children: [Icon(Icons.shelves, color: Colors.teal), SizedBox(width: 8), Text('จัดการชั้นวาง')]),
+          content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
             DropdownButtonFormField<String>(
               decoration: InputDecoration(labelText: 'เลือกคลัง', border: OutlineInputBorder()),
-              items: ['คลังหลัก', 'คลังสำรอง'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-              onChanged: (value) {},
+              items: _warehouses.map((w) => DropdownMenuItem(value: w['id'] as String, child: Text(w['name'] ?? ''))).toList(),
+              onChanged: (v) => setDialogState(() => selectedWarehouseId = v),
             ),
             SizedBox(height: 12),
-            TextField(decoration: InputDecoration(labelText: 'รหัสชั้น', border: OutlineInputBorder())),
+            TextField(controller: codeController, decoration: InputDecoration(labelText: 'รหัสชั้น', border: OutlineInputBorder())),
             SizedBox(height: 12),
-            TextField(decoration: InputDecoration(labelText: 'ความจุ', border: OutlineInputBorder())),
+            TextField(controller: capacityController, decoration: InputDecoration(labelText: 'ความจุ', border: OutlineInputBorder()), keyboardType: TextInputType.number),
+          ])),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: Text('ยกเลิก')),
+            ElevatedButton(
+              onPressed: isLoading ? null : () async {
+                if (selectedWarehouseId == null || codeController.text.trim().isEmpty) return;
+                setDialogState(() => isLoading = true);
+                final ok = await InventoryService.addShelf(warehouseId: selectedWarehouseId!, code: codeController.text.trim(), capacity: int.tryParse(capacityController.text) ?? 0);
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  if (ok) { _loadData(); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เพิ่มชั้นวางสำเร็จ'), backgroundColor: Colors.green)); }
+                }
+              },
+              child: isLoading ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text('บันทึก'),
+            ),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text('ยกเลิก')),
-          ElevatedButton(onPressed: () => Navigator.pop(context), child: Text('บันทึก')),
-        ],
       ),
     );
   }
 
-  void _showPurchaseDialog() {
+  void _showQuickAdjustDialog(String type, String title, Color color) {
+    String? selectedProductId;
+    final qtyController = TextEditingController();
+    final reasonController = TextEditingController();
+    bool isLoading = false;
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Row(children: [Icon(Icons.shopping_cart, color: Colors.green), SizedBox(width: 8), Text('🛒 ซื้อสินค้า')]),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final product = selectedProductId != null ? _products.where((p) => p['id'] == selectedProductId).firstOrNull : null;
+          final currentQty = (product?['quantity'] as num?)?.toDouble() ?? 0;
+
+          return AlertDialog(
+            title: Row(children: [Icon(Icons.edit, color: color), SizedBox(width: 8), Text(title)]),
+            content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
               DropdownButtonFormField<String>(
                 decoration: InputDecoration(labelText: 'เลือกสินค้า', border: OutlineInputBorder()),
-                items: ['แฮมเบอร์เกอร์', 'โคคา-โคลา'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                onChanged: (value) {},
+                items: _products.map((p) => DropdownMenuItem(value: p['id'] as String, child: Text(p['name'] ?? ''))).toList(),
+                onChanged: (v) => setDialogState(() => selectedProductId = v),
               ),
+              if (product != null) ...[
+                SizedBox(height: 8),
+                Text('คงเหลือ: ${currentQty.toStringAsFixed(0)} ${product['unit']?['abbreviation'] ?? ''}', style: TextStyle(color: Colors.grey[600])),
+              ],
               SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(child: TextField(decoration: InputDecoration(labelText: 'จำนวน', border: OutlineInputBorder()))),
-                  SizedBox(width: 12),
-                  Expanded(child: TextField(decoration: InputDecoration(labelText: 'ราคา/หน่วย', border: OutlineInputBorder()))),
-                ],
+              TextField(controller: qtyController, decoration: InputDecoration(labelText: 'จำนวน', border: OutlineInputBorder()), keyboardType: TextInputType.number),
+              SizedBox(height: 12),
+              TextField(controller: reasonController, decoration: InputDecoration(labelText: 'เหตุผล/หมายเหตุ', border: OutlineInputBorder())),
+            ])),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: Text('ยกเลิก')),
+              ElevatedButton(
+                onPressed: isLoading ? null : () async {
+                  if (selectedProductId == null) return;
+                  final qty = double.tryParse(qtyController.text);
+                  if (qty == null || qty <= 0) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('กรุณากรอกจำนวนที่ถูกต้อง'), backgroundColor: Colors.red));
+                    return;
+                  }
+                  setDialogState(() => isLoading = true);
+                  double newQty;
+                  if (type == 'purchase') {
+                    newQty = currentQty + qty;
+                  } else {
+                    newQty = currentQty - qty;
+                    if (newQty < 0) newQty = 0;
+                  }
+                  final ok = await InventoryService.addAdjustment(
+                    productId: selectedProductId!,
+                    type: type,
+                    quantityBefore: currentQty,
+                    quantityAfter: newQty,
+                    reason: reasonController.text.trim().isEmpty ? null : reasonController.text.trim(),
+                  );
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                    if (ok) { _loadData(); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$title สำเร็จ'), backgroundColor: Colors.green)); }
+                    else { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เกิดข้อผิดพลาด'), backgroundColor: Colors.red)); }
+                  }
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: color, foregroundColor: Colors.white),
+                child: isLoading ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text('บันทึก'),
               ),
-              SizedBox(height: 12),
-              TextField(decoration: InputDecoration(labelText: 'ผู้ขาย', border: OutlineInputBorder())),
             ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text('ยกเลิก')),
-          ElevatedButton(onPressed: () => Navigator.pop(context), child: Text('บันทึก')),
-        ],
-      ),
-    );
-  }
-
-  void _showReturnDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(children: [Icon(Icons.assignment_return, color: Colors.orange), SizedBox(width: 8), Text('📤 ส่งคืนสินค้า')]),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            DropdownButtonFormField<String>(
-              decoration: InputDecoration(labelText: 'เลือกสินค้า', border: OutlineInputBorder()),
-              items: ['แฮมเบอร์เกอร์', 'โคคา-โคลา'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-              onChanged: (value) {},
-            ),
-            SizedBox(height: 12),
-            TextField(decoration: InputDecoration(labelText: 'จำนวน', border: OutlineInputBorder())),
-            SizedBox(height: 12),
-            TextField(decoration: InputDecoration(labelText: 'เหตุผล', border: OutlineInputBorder())),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text('ยกเลิก')),
-          ElevatedButton(onPressed: () => Navigator.pop(context), child: Text('บันทึก')),
-        ],
-      ),
-    );
-  }
-
-  void _showCountDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(children: [Icon(Icons.calculate, color: Colors.blue), SizedBox(width: 8), Text('🔢 ตรวจนับสินค้า')]),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            DropdownButtonFormField<String>(
-              decoration: InputDecoration(labelText: 'เลือกสินค้า', border: OutlineInputBorder()),
-              items: ['แฮมเบอร์เกอร์', 'โคคา-โคลา'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-              onChanged: (value) {},
-            ),
-            SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(child: TextField(decoration: InputDecoration(labelText: 'ในระบบ', border: OutlineInputBorder()), enabled: false, controller: TextEditingController(text: '98'))),
-                SizedBox(width: 12),
-                Expanded(child: TextField(decoration: InputDecoration(labelText: 'จำนวนจริง', border: OutlineInputBorder()))),
-              ],
-            ),
-            SizedBox(height: 12),
-            TextField(decoration: InputDecoration(labelText: 'หมายเหตุ', border: OutlineInputBorder())),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text('ยกเลิก')),
-          ElevatedButton(onPressed: () => Navigator.pop(context), child: Text('บันทึก')),
-        ],
-      ),
-    );
-  }
-
-  void _showTransferDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(children: [Icon(Icons.swap_horiz, color: Colors.purple), SizedBox(width: 8), Text('🔄 โอนคลัง')]),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            DropdownButtonFormField<String>(
-              decoration: InputDecoration(labelText: 'เลือกสินค้า', border: OutlineInputBorder()),
-              items: ['แฮมเบอร์เกอร์', 'โคคา-โคลา'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-              onChanged: (value) {},
-            ),
-            SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(child: DropdownButtonFormField<String>(decoration: InputDecoration(labelText: 'จากคลัง', border: OutlineInputBorder()), items: ['คลังหลัก', 'คลังสำรอง'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(), onChanged: (value) {})),
-                SizedBox(width: 12),
-                Expanded(child: DropdownButtonFormField<String>(decoration: InputDecoration(labelText: 'ไปคลัง', border: OutlineInputBorder()), items: ['คลังหลัก', 'คลังสำรอง'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(), onChanged: (value) {})),
-              ],
-            ),
-            SizedBox(height: 12),
-            TextField(decoration: InputDecoration(labelText: 'จำนวน', border: OutlineInputBorder())),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text('ยกเลิก')),
-          ElevatedButton(onPressed: () => Navigator.pop(context), child: Text('บันทึก')),
-        ],
-      ),
-    );
-  }
-
-  void _showWithdrawDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(children: [Icon(Icons.outbox, color: Colors.cyan), SizedBox(width: 8), Text('📤 เบิกใช้สินค้า')]),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            DropdownButtonFormField<String>(
-              decoration: InputDecoration(labelText: 'เลือกสินค้า', border: OutlineInputBorder()),
-              items: ['แฮมเบอร์เกอร์', 'โคคา-โคลา'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-              onChanged: (value) {},
-            ),
-            SizedBox(height: 12),
-            TextField(decoration: InputDecoration(labelText: 'จำนวน', border: OutlineInputBorder())),
-            SizedBox(height: 12),
-            TextField(decoration: InputDecoration(labelText: 'แผนก', border: OutlineInputBorder())),
-            SizedBox(height: 12),
-            TextField(decoration: InputDecoration(labelText: 'วัตถุประสงค์', border: OutlineInputBorder())),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text('ยกเลิก')),
-          ElevatedButton(onPressed: () => Navigator.pop(context), child: Text('บันทึก')),
-        ],
-      ),
-    );
-  }
-
-  void _showDamageDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(children: [Icon(Icons.delete_forever, color: Colors.red), SizedBox(width: 8), Text('❌ ตัดสินค้าเสีย')]),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            DropdownButtonFormField<String>(
-              decoration: InputDecoration(labelText: 'เลือกสินค้า', border: OutlineInputBorder()),
-              items: ['แฮมเบอร์เกอร์', 'โคคา-โคลา'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-              onChanged: (value) {},
-            ),
-            SizedBox(height: 12),
-            TextField(decoration: InputDecoration(labelText: 'จำนวน', border: OutlineInputBorder())),
-            SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              decoration: InputDecoration(labelText: 'สาเหตุ', border: OutlineInputBorder()),
-              items: ['หมดอายุ', 'ชำรุด', 'สูญหาย', 'อื่นๆ'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-              onChanged: (value) {},
-            ),
-            SizedBox(height: 12),
-            TextField(decoration: InputDecoration(labelText: 'หมายเหตุ', border: OutlineInputBorder())),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text('ยกเลิก')),
-          ElevatedButton(onPressed: () => Navigator.pop(context), style: ElevatedButton.styleFrom(backgroundColor: Colors.red), child: Text('ตัดสินค้า')),
-        ],
-      ),
-    );
-  }
-
-  void _showReportDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(children: [Icon(Icons.analytics, color: Colors.brown), SizedBox(width: 8), Text('📊 รายงาน')]),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(leading: Icon(Icons.summarize), title: Text('สรุปประจำวัน'), onTap: () {}),
-            ListTile(leading: Icon(Icons.swap_horiz), title: Text('การเคลื่อนไหว'), onTap: () {}),
-            ListTile(leading: Icon(Icons.assignment_return), title: Text('การส่งคืน'), onTap: () {}),
-            ListTile(leading: Icon(Icons.delete), title: Text('สินค้าเสียหาย'), onTap: () {}),
-            ListTile(leading: Icon(Icons.account_balance_wallet), title: Text('มูลค่าคลัง'), onTap: () {}),
-          ],
-        ),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text('ปิด'))],
+          );
+        },
       ),
     );
   }
