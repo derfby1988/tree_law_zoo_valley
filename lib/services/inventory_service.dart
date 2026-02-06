@@ -1,4 +1,7 @@
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class InventoryService {
@@ -619,6 +622,278 @@ class InventoryService {
     } catch (e) {
       debugPrint('Error loading overview stats: $e');
       return {};
+    }
+  }
+
+  // =============================================
+  // Recipe Images
+  // =============================================
+
+  static const String _recipeBucket = 'recipe-images';
+  static const int _maxImageWidth = 800;
+  static const int _maxImageHeight = 800;
+  static const int _imageQuality = 70; // คุณภาพ 70% สมดุลระหว่างขนาดและความคมชัด
+
+  /// บีบอัดรูปภาพก่อนอัปโหลด
+  static Future<Uint8List?> compressImage(File file) async {
+    try {
+      final result = await FlutterImageCompress.compressWithFile(
+        file.absolute.path,
+        minWidth: _maxImageWidth,
+        minHeight: _maxImageHeight,
+        quality: _imageQuality,
+        format: CompressFormat.jpeg,
+      );
+      if (result != null) {
+        debugPrint('Image compressed: ${file.lengthSync()} -> ${result.length} bytes (${(result.length / file.lengthSync() * 100).toStringAsFixed(0)}%)');
+      }
+      return result;
+    } catch (e) {
+      debugPrint('Error compressing image: $e');
+      return null;
+    }
+  }
+
+  /// อัปโหลดรูปภาพสูตรอาหารไปยัง Supabase Storage
+  static Future<String?> uploadRecipeImage(File imageFile, String recipeId) async {
+    try {
+      // บีบอัดรูปภาพ
+      final compressed = await compressImage(imageFile);
+      if (compressed == null) return null;
+
+      final fileName = 'recipe_${recipeId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final path = 'recipes/$fileName';
+
+      await _client.storage.from(_recipeBucket).uploadBinary(
+        path,
+        compressed,
+        fileOptions: const FileOptions(
+          contentType: 'image/jpeg',
+          upsert: true,
+        ),
+      );
+
+      // สร้าง public URL
+      final publicUrl = _client.storage.from(_recipeBucket).getPublicUrl(path);
+      
+      // อัปเดต image_url ในตาราง recipes
+      await _client.from('inventory_recipes').update({
+        'image_url': publicUrl,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', recipeId);
+
+      debugPrint('Recipe image uploaded: $publicUrl');
+      return publicUrl;
+    } catch (e) {
+      debugPrint('Error uploading recipe image: $e');
+      return null;
+    }
+  }
+
+  /// ลบรูปภาพสูตรอาหารจาก Supabase Storage
+  static Future<bool> deleteRecipeImage(String recipeId, String imageUrl) async {
+    try {
+      // ดึง path จาก URL
+      final uri = Uri.parse(imageUrl);
+      final pathSegments = uri.pathSegments;
+      // URL format: .../storage/v1/object/public/recipe-images/recipes/filename.jpg
+      final bucketIndex = pathSegments.indexOf(_recipeBucket);
+      if (bucketIndex >= 0 && bucketIndex + 1 < pathSegments.length) {
+        final storagePath = pathSegments.sublist(bucketIndex + 1).join('/');
+        await _client.storage.from(_recipeBucket).remove([storagePath]);
+      }
+
+      // ลบ image_url ในตาราง recipes
+      await _client.from('inventory_recipes').update({
+        'image_url': null,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', recipeId);
+
+      debugPrint('Recipe image deleted for recipe: $recipeId');
+      return true;
+    } catch (e) {
+      debugPrint('Error deleting recipe image: $e');
+      return false;
+    }
+  }
+
+  /// อัปโหลดรูปภาพสูตรใหม่ (ใช้ตอนสร้างสูตรใหม่ ยังไม่มี recipeId)
+  static Future<String?> uploadRecipeImageTemp(File imageFile) async {
+    try {
+      final compressed = await compressImage(imageFile);
+      if (compressed == null) return null;
+
+      final fileName = 'recipe_temp_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final path = 'recipes/$fileName';
+
+      await _client.storage.from(_recipeBucket).uploadBinary(
+        path,
+        compressed,
+        fileOptions: const FileOptions(
+          contentType: 'image/jpeg',
+          upsert: true,
+        ),
+      );
+
+      final publicUrl = _client.storage.from(_recipeBucket).getPublicUrl(path);
+      debugPrint('Temp recipe image uploaded: $publicUrl');
+      return publicUrl;
+    } catch (e) {
+      debugPrint('Error uploading temp recipe image: $e');
+      return null;
+    }
+  }
+
+  /// ค้นหาวัตถุดิบตามชื่อ (ใช้สำหรับ autocomplete)
+  static Future<List<Map<String, dynamic>>> searchProductsByName(String query) async {
+    if (query.isEmpty) return [];
+    try {
+      final response = await _client
+          .from('inventory_products')
+          .select('id, name, unit:inventory_units(id, name, abbreviation)')
+          .ilike('name', '%$query%')
+          .eq('is_active', true)
+          .limit(10);
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error searching products: $e');
+      return [];
+    }
+  }
+
+  /// ดึงวัตถุดิบตามชื่อ (สำหรับตรวจสอบว่ามีอยู่แล้วหรือไม่)
+  static Future<Map<String, dynamic>?> getProductByName(String name) async {
+    try {
+      final response = await _client
+          .from('inventory_products')
+          .select('*, unit:inventory_units(id, name, abbreviation)')
+          .eq('name', name)
+          .eq('is_active', true)
+          .maybeSingle();
+      return response;
+    } catch (e) {
+      debugPrint('Error getting product by name: $e');
+      return null;
+    }
+  }
+
+  /// เพิ่มวัตถุดิบใหม่แบบง่าย (ใช้สำหรับสร้างวัตถุดิบใหม่จาก dialog สูตร)
+  static Future<Map<String, dynamic>?> addProductSimple({
+    required String name,
+    required String unitId,
+    String? shelfId,
+  }) async {
+    try {
+      // หา shelf แรกถ้าไม่ระบุ
+      String? targetShelfId = shelfId;
+      if (targetShelfId == null) {
+        final shelfResp = await _client
+            .from('inventory_shelves')
+            .select('id')
+            .eq('is_active', true)
+            .limit(1)
+            .maybeSingle();
+        if (shelfResp != null) {
+          targetShelfId = shelfResp['id'] as String;
+        }
+      }
+
+      // หาหมวดหมู่วัตถุดิบ
+      var categoryResp = await _client
+          .from('inventory_categories')
+          .select('id')
+          .eq('name', 'วัตถุดิบ')
+          .maybeSingle();
+      
+      // ถ้าไม่มีหมวด "วัตถุดิบ" ให้หาหมวดแรก
+      if (categoryResp == null) {
+        categoryResp = await _client
+            .from('inventory_categories')
+            .select('id')
+            .limit(1)
+            .maybeSingle();
+      }
+
+      final response = await _client.from('inventory_products').insert({
+        'name': name,
+        'category_id': categoryResp?['id'],
+        'unit_id': unitId,
+        'shelf_id': targetShelfId,
+        'quantity': 0,
+        'min_quantity': 0,
+        'price': 0,
+        'cost': 0,
+      }).select('id, name, unit:inventory_units(id, name, abbreviation)').single();
+
+      debugPrint('New product created from recipe: $name');
+      return response;
+    } catch (e) {
+      debugPrint('Error adding simple product: $e');
+      return null;
+    }
+  }
+
+  /// เพิ่มสูตรพร้อมส่วนผสม โดยจัดการวัตถุดิบใหม่ที่ยังไม่มีในระบบ
+  static Future<bool> addRecipeWithIngredientsAndImage({
+    required String name,
+    required String categoryId,
+    double yieldQuantity = 1,
+    String yieldUnit = 'ชิ้น',
+    double cost = 0,
+    double price = 0,
+    String? description,
+    String? imageUrl,
+    required List<Map<String, dynamic>> ingredients,
+    required List<Map<String, dynamic>> newIngredientsToCreate,
+  }) async {
+    try {
+      // สร้างวัตถุดิบใหม่ก่อนถ้ามี
+      final List<Map<String, dynamic>> finalIngredients = [];
+      for (final newIng in newIngredientsToCreate) {
+        final created = await addProductSimple(
+          name: newIng['name'],
+          unitId: newIng['unit_id'],
+        );
+        if (created != null) {
+          finalIngredients.add({
+            'product_id': created['id'],
+            'quantity': newIng['quantity'],
+            'unit_id': newIng['unit_id'],
+          });
+        }
+      }
+
+      // รวมกับวัตถุดิบที่มีอยู่แล้ว
+      finalIngredients.addAll(ingredients);
+
+      final recipeResponse = await _client.from('inventory_recipes').insert({
+        'name': name,
+        'category_id': categoryId,
+        'yield_quantity': yieldQuantity,
+        'yield_unit': yieldUnit,
+        'cost': cost,
+        'price': price,
+        'description': description,
+        'image_url': imageUrl,
+      }).select('id').single();
+
+      final recipeId = recipeResponse['id'] as String;
+
+      if (finalIngredients.isNotEmpty) {
+        final ingredientsData = finalIngredients.map((ing) => {
+          'recipe_id': recipeId,
+          'product_id': ing['product_id'],
+          'quantity': ing['quantity'],
+          'unit_id': ing['unit_id'],
+        }).toList();
+
+        await _client.from('inventory_recipe_ingredients').insert(ingredientsData);
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('Error adding recipe with ingredients and image: $e');
+      return false;
     }
   }
 }

@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS inventory_recipes (
   cost DOUBLE PRECISION DEFAULT 0,
   price DOUBLE PRECISION DEFAULT 0,
   description TEXT,
+  image_url TEXT,
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
@@ -303,3 +304,26 @@ CREATE POLICY "Allow update for anon" ON inventory_recipe_ingredients FOR UPDATE
 CREATE POLICY "Allow delete for anon" ON inventory_recipes FOR DELETE TO anon USING (true);
 CREATE POLICY "Allow delete for anon" ON inventory_recipe_ingredients FOR DELETE TO anon USING (true);
 CREATE POLICY "Allow delete for anon" ON inventory_products FOR DELETE TO anon USING (true);
+
+-- =============================================
+-- Storage Bucket สำหรับรูปสูตรอาหาร
+-- =============================================
+INSERT INTO storage.buckets (id, name, public) VALUES ('recipe-images', 'recipe-images', true)
+ON CONFLICT (id) DO NOTHING;
+
+CREATE POLICY "Allow authenticated upload recipe images" ON storage.objects
+  FOR INSERT TO authenticated WITH CHECK (bucket_id = 'recipe-images');
+CREATE POLICY "Allow authenticated update recipe images" ON storage.objects
+  FOR UPDATE TO authenticated USING (bucket_id = 'recipe-images');
+CREATE POLICY "Allow authenticated delete recipe images" ON storage.objects
+  FOR DELETE TO authenticated USING (bucket_id = 'recipe-images');
+CREATE POLICY "Allow public read recipe images" ON storage.objects
+  FOR SELECT TO public USING (bucket_id = 'recipe-images');
+
+-- anon policies สำหรับ guest mode
+CREATE POLICY "Allow anon upload recipe images" ON storage.objects
+  FOR INSERT TO anon WITH CHECK (bucket_id = 'recipe-images');
+CREATE POLICY "Allow anon update recipe images" ON storage.objects
+  FOR UPDATE TO anon USING (bucket_id = 'recipe-images');
+CREATE POLICY "Allow anon delete recipe images" ON storage.objects
+  FOR DELETE TO anon USING (bucket_id = 'recipe-images');

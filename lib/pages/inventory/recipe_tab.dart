@@ -1,4 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/inventory_service.dart';
 
 class RecipeTab extends StatefulWidget {
@@ -518,9 +522,18 @@ class _RecipeTabState extends State<RecipeTab> {
     bool isLoading = false;
     String? nameError;
     
-    // Ingredients state
-    List<Map<String, dynamic>> ingredients = []; // [{product_id, quantity, unit_id, product_name, unit_name}]
+    // Image state
+    File? selectedImageFile;
+    String? uploadedImageUrl;
+    bool isUploadingImage = false;
+
+    // Ingredients state - เปลี่ยนเป็น autocomplete
+    List<Map<String, dynamic>> ingredients = [];
+    List<Map<String, dynamic>> searchResults = [];
+    final ingredientSearchController = TextEditingController();
     String? selectedProductId;
+    String? selectedIngredientName;
+    bool? selectedIngredientIsNew;
     String? selectedIngredientUnit;
     final quantityController = TextEditingController();
 
@@ -555,32 +568,119 @@ class _RecipeTabState extends State<RecipeTab> {
           // เพิ่มวัตถุดิบในรายการ
           void addIngredient() {
             if (selectedProductId != null && quantityController.text.isNotEmpty && selectedIngredientUnit != null) {
-              final product = _products.firstWhere((p) => p['id'] == selectedProductId);
-              final unit = _units.firstWhere((u) => u['id'] == selectedIngredientUnit);
               final quantity = double.tryParse(quantityController.text) ?? 0;
               
               if (quantity > 0) {
+                final unit = _units.firstWhere((u) => u['id'] == selectedIngredientUnit);
                 setDialogState(() {
                   ingredients.add({
                     'product_id': selectedProductId,
+                    'product_name': selectedIngredientName ?? searchResults.firstWhere((p) => p['id'] == selectedProductId, orElse: () => {'name': ''})['name'],
                     'quantity': quantity,
                     'unit_id': selectedIngredientUnit,
-                    'product_name': product['name'],
                     'unit_name': unit['name'],
                     'unit_abbreviation': unit['abbreviation'],
+                    'is_new': selectedIngredientIsNew ?? false,
                   });
                   selectedProductId = null;
+                  selectedIngredientName = null;
+                  selectedIngredientIsNew = null;
                   selectedIngredientUnit = null;
                   quantityController.clear();
+                  ingredientSearchController.clear();
+                  searchResults = [];
                 });
               }
             }
+          }
+
+          // ฟังก์ชันค้นหาวัตถุดิบ
+          Future<void> searchProducts(String query) async {
+            if (query.length >= 1) {
+              final results = await InventoryService.searchProductsByName(query);
+              setDialogState(() {
+                searchResults = results;
+              });
+            } else {
+              setDialogState(() {
+                searchResults = [];
+              });
+            }
+          }
+
+          // เลือกวัตถุดิบจาก autocomplete
+          void onSelectIngredient(Map<String, dynamic> product) {
+            setDialogState(() {
+              selectedProductId = product['id'] as String;
+              selectedIngredientName = product['name'] as String;
+              selectedIngredientIsNew = false;
+              ingredientSearchController.text = product['name'] as String;
+              searchResults = [];
+              // Auto select unit if product has unit
+              if (product['unit'] != null && product['unit']['id'] != null) {
+                selectedIngredientUnit = product['unit']['id'] as String;
+              }
+            });
+          }
+
+          // เลือกวัตถุดิบใหม่ (ยังไม่มีในระบบ)
+          void onSelectNewIngredient(String name) {
+            setDialogState(() {
+              selectedProductId = null;
+              selectedIngredientName = name;
+              selectedIngredientIsNew = true;
+              ingredientSearchController.text = name;
+              searchResults = [];
+            });
           }
 
           // ลบวัตถุดิบ
           void removeIngredient(int index) {
             setDialogState(() {
               ingredients.removeAt(index);
+            });
+          }
+
+          // เลือกรูปภาพ
+          Future<void> pickImage(ImageSource source) async {
+            try {
+              final picker = ImagePicker();
+              final picked = await picker.pickImage(source: source, maxWidth: 1200, maxHeight: 1200);
+              if (picked != null) {
+                setDialogState(() {
+                  selectedImageFile = File(picked.path);
+                  isUploadingImage = true;
+                });
+                // อัปโหลดทันที
+                final url = await InventoryService.uploadRecipeImageTemp(File(picked.path));
+                setDialogState(() {
+                  uploadedImageUrl = url;
+                  isUploadingImage = false;
+                });
+              }
+            } catch (e) {
+              setDialogState(() => isUploadingImage = false);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('ไม่สามารถเลือกรูปภาพ: $e'), backgroundColor: Colors.red));
+              }
+            }
+          }
+
+          // ลบรูปภาพ
+          void removeImage() {
+            if (uploadedImageUrl != null) {
+              // ลบจาก storage
+              final uri = Uri.parse(uploadedImageUrl!);
+              final pathSegments = uri.pathSegments;
+              final bucketIndex = pathSegments.indexOf('recipe-images');
+              if (bucketIndex >= 0 && bucketIndex + 1 < pathSegments.length) {
+                final storagePath = pathSegments.sublist(bucketIndex + 1).join('/');
+                Supabase.instance.client.storage.from('recipe-images').remove([storagePath]);
+              }
+            }
+            setDialogState(() {
+              selectedImageFile = null;
+              uploadedImageUrl = null;
             });
           }
 
@@ -595,6 +695,81 @@ class _RecipeTabState extends State<RecipeTab> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // รูปภาพสูตร
+                      Container(
+                        width: double.infinity,
+                        height: 160,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey[300]!),
+                        ),
+                        child: isUploadingImage
+                          ? Center(child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                CircularProgressIndicator(strokeWidth: 2),
+                                SizedBox(height: 8),
+                                Text('กำลังบีบอัดและอัปโหลด...', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                              ],
+                            ))
+                          : selectedImageFile != null || uploadedImageUrl != null
+                            ? Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: uploadedImageUrl != null
+                                      ? CachedNetworkImage(
+                                          imageUrl: uploadedImageUrl!,
+                                          fit: BoxFit.cover,
+                                          placeholder: (_, __) => Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                                          errorWidget: (_, __, ___) => selectedImageFile != null
+                                            ? Image.file(selectedImageFile!, fit: BoxFit.cover)
+                                            : Icon(Icons.broken_image, size: 40, color: Colors.grey),
+                                        )
+                                      : Image.file(selectedImageFile!, fit: BoxFit.cover),
+                                  ),
+                                  // ปุ่มแก้ไข/ลบ
+                                  Positioned(
+                                    top: 4,
+                                    right: 4,
+                                    child: Row(
+                                      children: [
+                                        _buildImageActionButton(
+                                          icon: Icons.edit,
+                                          color: Colors.blue,
+                                          tooltip: 'เปลี่ยนรูป',
+                                          onTap: () => _showImageSourceDialog(context, pickImage),
+                                        ),
+                                        SizedBox(width: 4),
+                                        _buildImageActionButton(
+                                          icon: Icons.delete,
+                                          color: Colors.red,
+                                          tooltip: 'ลบรูป',
+                                          onTap: removeImage,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : InkWell(
+                                onTap: () => _showImageSourceDialog(context, pickImage),
+                                borderRadius: BorderRadius.circular(8),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.add_photo_alternate, size: 40, color: Colors.grey[400]),
+                                    SizedBox(height: 8),
+                                    Text('เพิ่มรูปภาพสูตร', style: TextStyle(color: Colors.grey[500], fontSize: 13)),
+                                    Text('(บีบอัดอัตโนมัติ)', style: TextStyle(color: Colors.grey[400], fontSize: 11)),
+                                  ],
+                                ),
+                              ),
+                      ),
+                      SizedBox(height: 12),
+
                       // ชื่อสูตร
                       TextFormField(
                         controller: nameController,
@@ -702,65 +877,186 @@ class _RecipeTabState extends State<RecipeTab> {
                             ),
                             SizedBox(height: 12),
                             
-                            // เพิ่มวัตถุดิบใหม่
-                            Row(
+                            // เพิ่มวัตถุดิบใหม่ - autocomplete
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Expanded(
-                                  flex: 3,
-                                  child: DropdownButtonFormField<String>(
-                                    decoration: InputDecoration(
-                                      labelText: 'วัตถุดิบ',
-                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-                                      isDense: true,
-                                      contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                                    ),
-                                    value: selectedProductId,
-                                    isExpanded: true,
-                                    items: _products.map((p) => DropdownMenuItem(
-                                      value: p['id'] as String,
-                                      child: Text(p['name'] ?? '', overflow: TextOverflow.ellipsis),
-                                    )).toList(),
-                                    onChanged: (v) => setDialogState(() => selectedProductId = v),
+                                // Autocomplete field
+                                TextFormField(
+                                  controller: ingredientSearchController,
+                                  decoration: InputDecoration(
+                                    labelText: 'ค้นหาวัตถุดิบ *',
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                                    isDense: true,
+                                    contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                    prefixIcon: Icon(Icons.search, size: 18),
+                                    suffixIcon: ingredientSearchController.text.isNotEmpty
+                                        ? IconButton(
+                                            icon: Icon(Icons.clear, size: 18),
+                                            onPressed: () {
+                                              ingredientSearchController.clear();
+                                              setDialogState(() {
+                                                searchResults = [];
+                                                selectedProductId = null;
+                                                selectedIngredientName = null;
+                                                selectedIngredientIsNew = null;
+                                              });
+                                            },
+                                          )
+                                        : null,
+                                    hintText: 'พิมพ์ชื่อวัตถุดิบ...',
                                   ),
+                                  onChanged: (value) => searchProducts(value),
                                 ),
-                                SizedBox(width: 8),
-                                Expanded(
-                                  flex: 2,
-                                  child: TextFormField(
-                                    controller: quantityController,
-                                    decoration: InputDecoration(
-                                      labelText: 'จำนวน',
-                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-                                      isDense: true,
-                                      contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                
+                                // Search results dropdown
+                                if (searchResults.isNotEmpty)
+                                  Container(
+                                    margin: EdgeInsets.only(top: 4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(color: Colors.grey[300]!),
+                                      boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
                                     ),
-                                    keyboardType: TextInputType.number,
-                                  ),
-                                ),
-                                SizedBox(width: 8),
-                                Expanded(
-                                  flex: 2,
-                                  child: DropdownButtonFormField<String>(
-                                    decoration: InputDecoration(
-                                      labelText: 'หน่วย',
-                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-                                      isDense: true,
-                                      contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                    constraints: BoxConstraints(maxHeight: 200),
+                                    child: ListView.builder(
+                                      shrinkWrap: true,
+                                      itemCount: searchResults.length,
+                                      itemBuilder: (context, index) {
+                                        final product = searchResults[index];
+                                        final unitName = product['unit']?['name'] ?? '';
+                                        return ListTile(
+                                          dense: true,
+                                          leading: Icon(Icons.inventory_2, size: 18, color: Colors.blue),
+                                          title: Text(product['name'] ?? '', style: TextStyle(fontSize: 13)),
+                                          subtitle: unitName.isNotEmpty ? Text(unitName, style: TextStyle(fontSize: 11, color: Colors.grey[600])) : null,
+                                          onTap: () => onSelectIngredient(product),
+                                        );
+                                      },
                                     ),
-                                    value: selectedIngredientUnit,
-                                    isExpanded: true,
-                                    items: _units.map((u) => DropdownMenuItem(
-                                      value: u['id'] as String,
-                                      child: Text(u['name'] ?? '', overflow: TextOverflow.ellipsis),
-                                    )).toList(),
-                                    onChanged: (v) => setDialogState(() => selectedIngredientUnit = v),
                                   ),
-                                ),
-                                SizedBox(width: 8),
-                                IconButton(
-                                  onPressed: addIngredient,
-                                  icon: Icon(Icons.add_circle, color: Colors.green),
-                                  tooltip: 'เพิ่มวัตถุดิบ',
+                                
+                                // Option to add new ingredient if not found
+                                if (ingredientSearchController.text.isNotEmpty && searchResults.isEmpty && selectedProductId == null)
+                                  Container(
+                                    margin: EdgeInsets.only(top: 4),
+                                    padding: EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.orange.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.add_circle_outline, color: Colors.orange, size: 18),
+                                        SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            '"${ingredientSearchController.text}" ยังไม่มีในระบบ',
+                                            style: TextStyle(fontSize: 12, color: Colors.orange[800]),
+                                          ),
+                                        ),
+                                        TextButton.icon(
+                                          onPressed: () => onSelectNewIngredient(ingredientSearchController.text),
+                                          icon: Icon(Icons.add, size: 16),
+                                          label: Text('ใช้ชื่อนี้', style: TextStyle(fontSize: 12)),
+                                          style: TextButton.styleFrom(
+                                            foregroundColor: Colors.orange,
+                                            padding: EdgeInsets.symmetric(horizontal: 8),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                
+                                // Selected ingredient indicator
+                                if (selectedIngredientName != null)
+                                  Container(
+                                    margin: EdgeInsets.only(top: 8),
+                                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: selectedIngredientIsNew == true ? Colors.orange.withOpacity(0.1) : Colors.green.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(
+                                        color: selectedIngredientIsNew == true ? Colors.orange.withOpacity(0.3) : Colors.green.withOpacity(0.3),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          selectedIngredientIsNew == true ? Icons.new_releases : Icons.check_circle,
+                                          size: 16,
+                                          color: selectedIngredientIsNew == true ? Colors.orange : Colors.green,
+                                        ),
+                                        SizedBox(width: 6),
+                                        Text(
+                                          selectedIngredientName!,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: selectedIngredientIsNew == true ? Colors.orange[800] : Colors.green[800],
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                        if (selectedIngredientIsNew == true)
+                                          Padding(
+                                            padding: EdgeInsets.only(left: 4),
+                                            child: Text(
+                                              '(ใหม่)',
+                                              style: TextStyle(fontSize: 11, color: Colors.orange[600]),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                
+                                SizedBox(height: 12),
+                                
+                                // Quantity and Unit row
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      flex: 2,
+                                      child: TextFormField(
+                                        controller: quantityController,
+                                        decoration: InputDecoration(
+                                          labelText: 'จำนวน *',
+                                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                                          isDense: true,
+                                          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                        ),
+                                        keyboardType: TextInputType.number,
+                                      ),
+                                    ),
+                                    SizedBox(width: 8),
+                                    Expanded(
+                                      flex: 3,
+                                      child: DropdownButtonFormField<String>(
+                                        decoration: InputDecoration(
+                                          labelText: 'หน่วย *',
+                                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                                          isDense: true,
+                                          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                        ),
+                                        value: selectedIngredientUnit,
+                                        isExpanded: true,
+                                        items: _units.map((u) => DropdownMenuItem(
+                                          value: u['id'] as String,
+                                          child: Text(u['name'] ?? '', overflow: TextOverflow.ellipsis),
+                                        )).toList(),
+                                        onChanged: (v) => setDialogState(() => selectedIngredientUnit = v),
+                                      ),
+                                    ),
+                                    SizedBox(width: 8),
+                                    IconButton(
+                                      onPressed: (selectedProductId != null || selectedIngredientIsNew == true) && quantityController.text.isNotEmpty && selectedIngredientUnit != null
+                                          ? addIngredient
+                                          : null,
+                                      icon: Icon(Icons.add_circle, color: Colors.green),
+                                      tooltip: 'เพิ่มวัตถุดิบ',
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -854,18 +1150,26 @@ class _RecipeTabState extends State<RecipeTab> {
                   }
 
                   // เตรียมข้อมูลวัตถุดิบสำหรับบันทึก
-                  final ingredientsData = ingredients.map((ing) => {
+                  final existingIngredients = ingredients.where((ing) => ing['is_new'] != true).map((ing) => {
                     'product_id': ing['product_id'],
                     'quantity': ing['quantity'],
                     'unit_id': ing['unit_id'],
                   }).toList();
+                  
+                  final newIngredientsToCreate = ingredients.where((ing) => ing['is_new'] == true).map((ing) => {
+                    'name': ing['product_name'],
+                    'quantity': ing['quantity'],
+                    'unit_id': ing['unit_id'],
+                  }).toList();
 
-                  final ok = await InventoryService.addRecipeWithIngredients(
+                  final ok = await InventoryService.addRecipeWithIngredientsAndImage(
                     name: nameController.text.trim(),
                     categoryId: selectedCategoryId!,
                     yieldUnit: selectedYieldUnit!,
                     description: descriptionController.text.trim().isEmpty ? null : descriptionController.text.trim(),
-                    ingredients: ingredientsData,
+                    imageUrl: uploadedImageUrl,
+                    ingredients: existingIngredients,
+                    newIngredientsToCreate: newIngredientsToCreate,
                   );
                   if (context.mounted) {
                     Navigator.pop(context);
@@ -884,6 +1188,54 @@ class _RecipeTabState extends State<RecipeTab> {
             ],
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildImageActionButton({
+    required IconData icon,
+    required Color color,
+    required String tooltip,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.black54,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: EdgeInsets.all(6),
+          child: Icon(icon, color: Colors.white, size: 18),
+        ),
+      ),
+    );
+  }
+
+  void _showImageSourceDialog(BuildContext context, Future<void> Function(ImageSource) pickImage) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: Icon(Icons.camera_alt, color: Colors.blue),
+              title: Text('ถ่ายรูป'),
+              onTap: () {
+                Navigator.pop(context);
+                pickImage(ImageSource.camera);
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.photo_library, color: Colors.green),
+              title: Text('เลือกจากคลังรูป'),
+              onTap: () {
+                Navigator.pop(context);
+                pickImage(ImageSource.gallery);
+              },
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -46,6 +46,7 @@ dependencies:
   
   # Image compression
   image: ^4.1.4
+  flutter_image_compress: ^2.1.0
   cached_network_image: ^3.4.1
   
   # PostgreSQL for local database
