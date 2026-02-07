@@ -535,7 +535,7 @@ class _RecipeTabState extends State<RecipeTab> {
     String? selectedIngredientName;
     bool? selectedIngredientIsNew;
     String? selectedIngredientUnit;
-    final quantityController = TextEditingController();
+    final quantityController = TextEditingController(text: '1');
 
     // เรียง categories ตามการใช้งานล่าสุดในสูตร
     List<Map<String, dynamic>> getSortedDialogCategories() {
@@ -564,6 +564,17 @@ class _RecipeTabState extends State<RecipeTab> {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
           final sortedCategories = getSortedDialogCategories();
+
+          // Initialize default unit to 'กรัม' on first build
+          if (selectedIngredientUnit == null) {
+            final gramUnit = _units.firstWhere(
+              (u) => (u['name'] as String?) == 'กรัม',
+              orElse: () => {},
+            );
+            if (gramUnit.isNotEmpty) {
+              selectedIngredientUnit = gramUnit['id'] as String?;
+            }
+          }
 
           // เพิ่มวัตถุดิบในรายการ
           void addIngredient() {
@@ -881,32 +892,47 @@ class _RecipeTabState extends State<RecipeTab> {
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                // Autocomplete field
-                                TextFormField(
-                                  controller: ingredientSearchController,
-                                  decoration: InputDecoration(
-                                    labelText: 'ค้นหาวัตถุดิบ *',
-                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-                                    isDense: true,
-                                    contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                                    prefixIcon: Icon(Icons.search, size: 18),
-                                    suffixIcon: ingredientSearchController.text.isNotEmpty
-                                        ? IconButton(
-                                            icon: Icon(Icons.clear, size: 18),
-                                            onPressed: () {
-                                              ingredientSearchController.clear();
-                                              setDialogState(() {
-                                                searchResults = [];
-                                                selectedProductId = null;
-                                                selectedIngredientName = null;
-                                                selectedIngredientIsNew = null;
-                                              });
-                                            },
-                                          )
-                                        : null,
-                                    hintText: 'พิมพ์ชื่อวัตถุดิบ...',
-                                  ),
-                                  onChanged: (value) => searchProducts(value),
+                                // Autocomplete field + Add button
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      child: TextFormField(
+                                        controller: ingredientSearchController,
+                                        decoration: InputDecoration(
+                                          labelText: 'ค้นหาวัตถุดิบ *',
+                                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                                          isDense: true,
+                                          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                          prefixIcon: Icon(Icons.search, size: 18),
+                                          suffixIcon: ingredientSearchController.text.isNotEmpty
+                                              ? IconButton(
+                                                  icon: Icon(Icons.clear, size: 18),
+                                                  onPressed: () {
+                                                    ingredientSearchController.clear();
+                                                    setDialogState(() {
+                                                      searchResults = [];
+                                                      selectedProductId = null;
+                                                      selectedIngredientName = null;
+                                                      selectedIngredientIsNew = null;
+                                                    });
+                                                  },
+                                                )
+                                              : null,
+                                          hintText: 'พิมพ์ชื่อวัตถุดิบ...',
+                                        ),
+                                        onChanged: (value) => searchProducts(value),
+                                      ),
+                                    ),
+                                    SizedBox(width: 8),
+                                    IconButton(
+                                      onPressed: (selectedProductId != null || selectedIngredientIsNew == true) && quantityController.text.isNotEmpty && selectedIngredientUnit != null
+                                          ? addIngredient
+                                          : null,
+                                      icon: Icon(Icons.add_circle, color: Colors.green),
+                                      tooltip: 'เพิ่มวัตถุดิบ',
+                                    ),
+                                  ],
                                 ),
                                 
                                 // Search results dropdown
@@ -1016,17 +1042,81 @@ class _RecipeTabState extends State<RecipeTab> {
                                 // Quantity and Unit row
                                 Row(
                                   children: [
-                                    Expanded(
-                                      flex: 2,
-                                      child: TextFormField(
-                                        controller: quantityController,
-                                        decoration: InputDecoration(
-                                          labelText: 'จำนวน *',
-                                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-                                          isDense: true,
-                                          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                                        ),
-                                        keyboardType: TextInputType.number,
+                                    // Stepper จำนวน
+                                    Container(
+                                      width: 120,
+                                      decoration: BoxDecoration(
+                                        color: Color(0xFFF0F4F8),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          // ปุ่มลบ
+                                          Material(
+                                            color: Colors.transparent,
+                                            borderRadius: BorderRadius.horizontal(left: Radius.circular(8)),
+                                            child: InkWell(
+                                              onTap: () {
+                                                final current = double.tryParse(quantityController.text) ?? 0;
+                                                if (current > 0) {
+                                                  setDialogState(() {
+                                                    quantityController.text = (current - 1).toStringAsFixed(current == current.toInt() ? 0 : 1);
+                                                  });
+                                                }
+                                              },
+                                              borderRadius: BorderRadius.horizontal(left: Radius.circular(8)),
+                                              child: Container(
+                                                width: 36,
+                                                height: 40,
+                                                alignment: Alignment.center,
+                                                child: Icon(Icons.remove, size: 18, color: Colors.grey[700]),
+                                              ),
+                                            ),
+                                          ),
+                                          // ตัวเลข
+                                          Expanded(
+                                            child: TextFormField(
+                                              controller: quantityController,
+                                              textAlign: TextAlign.center,
+                                              decoration: InputDecoration(
+                                                isDense: true,
+                                                border: InputBorder.none,
+                                                contentPadding: EdgeInsets.zero,
+                                              ),
+                                              keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                                              onChanged: (value) {
+                                                if (value.isEmpty) {
+                                                  quantityController.text = '1';
+                                                  quantityController.selection = TextSelection.fromPosition(
+                                                    TextPosition(offset: quantityController.text.length),
+                                                  );
+                                                }
+                                              },
+                                            ),
+                                          ),
+                                          // ปุ่มบวก
+                                          Material(
+                                            color: Colors.transparent,
+                                            borderRadius: BorderRadius.horizontal(right: Radius.circular(8)),
+                                            child: InkWell(
+                                              onTap: () {
+                                                final current = double.tryParse(quantityController.text) ?? 0;
+                                                setDialogState(() {
+                                                  quantityController.text = (current + 1).toStringAsFixed(current == current.toInt() ? 0 : 1);
+                                                });
+                                              },
+                                              borderRadius: BorderRadius.horizontal(right: Radius.circular(8)),
+                                              child: Container(
+                                                width: 36,
+                                                height: 40,
+                                                alignment: Alignment.center,
+                                                child: Icon(Icons.add, size: 18, color: Colors.grey[700]),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
                                     SizedBox(width: 8),
@@ -1047,14 +1137,6 @@ class _RecipeTabState extends State<RecipeTab> {
                                         )).toList(),
                                         onChanged: (v) => setDialogState(() => selectedIngredientUnit = v),
                                       ),
-                                    ),
-                                    SizedBox(width: 8),
-                                    IconButton(
-                                      onPressed: (selectedProductId != null || selectedIngredientIsNew == true) && quantityController.text.isNotEmpty && selectedIngredientUnit != null
-                                          ? addIngredient
-                                          : null,
-                                      icon: Icon(Icons.add_circle, color: Colors.green),
-                                      tooltip: 'เพิ่มวัตถุดิบ',
                                     ),
                                   ],
                                 ),
