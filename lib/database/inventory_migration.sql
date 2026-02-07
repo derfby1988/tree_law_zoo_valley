@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS inventory_units (
 -- 5. ตารางสินค้า (Products)
 CREATE TABLE IF NOT EXISTS inventory_products (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
+  name TEXT NOT NULL UNIQUE,
   category_id UUID REFERENCES inventory_categories(id),
   unit_id UUID REFERENCES inventory_units(id),
   shelf_id UUID REFERENCES inventory_shelves(id),
@@ -327,3 +327,9 @@ CREATE POLICY "Allow anon update recipe images" ON storage.objects
   FOR UPDATE TO anon USING (bucket_id = 'recipe-images');
 CREATE POLICY "Allow anon delete recipe images" ON storage.objects
   FOR DELETE TO anon USING (bucket_id = 'recipe-images');
+
+-- =============================================
+-- Fix: Add unique constraint for existing tables
+-- =============================================
+-- รันคำสั่งนี้หากตาราง inventory_products มีอยู่แล้วและไม่มี unique constraint
+ALTER TABLE inventory_products ADD CONSTRAINT IF NOT EXISTS inventory_products_name_unique UNIQUE (name);

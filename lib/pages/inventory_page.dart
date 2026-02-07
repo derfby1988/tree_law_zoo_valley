@@ -37,7 +37,21 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
             Text('คลังสินค้า', style: TextStyle(color: Colors.white)),
           ],
         ),
-        backgroundColor: Color(0xFF2E7D32),
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFF3B82F6), // น้ำเงินกลาง
+                Color(0xFF1E3A8A), // น้ำเงินเข้ม
+                
+              ],
+            ),
+          ),
+        ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         iconTheme: IconThemeData(color: Colors.white),
         bottom: TabBar(
           controller: _tabController,
@@ -48,8 +62,8 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
           tabs: [
             Tab(icon: Icon(Icons.dashboard), text: 'สถิติ / รายงาน'),
             Tab(icon: Icon(Icons.inventory), text: 'จัดการสินค้า'),
-            Tab(icon: Icon(Icons.restaurant_menu), text: 'สูตรอาหาร'),
             Tab(icon: Icon(Icons.build), text: 'ปรับปรุงคลัง'),
+            Tab(icon: Icon(Icons.restaurant_menu), text: 'สูตรอาหาร'),
           ],
         ),
       ),
@@ -58,8 +72,8 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
         children: [
           OverviewTab(),
           ProductTab(),
-          RecipeTab(),
           AdjustmentTab(),
+          RecipeTab(),
         ],
       ),
     );

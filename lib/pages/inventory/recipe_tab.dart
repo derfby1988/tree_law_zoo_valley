@@ -518,7 +518,7 @@ class _RecipeTabState extends State<RecipeTab> {
     final nameController = TextEditingController();
     final descriptionController = TextEditingController();
     String? selectedCategoryId;
-    String? selectedYieldUnit = 'กรัม';  // Default หน่วยนับ
+    String? selectedYieldUnit = 'จาน';  // Default หน่วยนับ
     bool isLoading = false;
     String? nameError;
     
