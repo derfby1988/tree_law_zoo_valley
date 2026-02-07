@@ -17,10 +17,26 @@ class SupabaseService {
   // Authentication methods
   static Future<AuthResponse> signInWithEmail(String email, String password) async {
     try {
-      return await client.auth.signInWithPassword(
+      final response = await client.auth.signInWithPassword(
         email: email,
         password: password,
       );
+      
+      // Check if user is blocked (is_active = false)
+      if (response.user != null) {
+        final userData = await client
+            .from('users')
+            .select('is_active')
+            .eq('id', response.user!.id)
+            .maybeSingle();
+        
+        if (userData != null && userData['is_active'] == false) {
+          await client.auth.signOut();
+          throw Exception('User account has been disabled. Please contact administrator.');
+        }
+      }
+      
+      return response;
     } catch (e) {
       // ถ้าเป็น email_not_confirmed ให้ลอง sign up อีกครั้งเพื่อ trigger confirmation
       if (e.toString().contains('email_not_confirmed')) {

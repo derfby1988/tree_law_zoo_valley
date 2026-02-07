@@ -17,6 +17,7 @@ import 'widgets/drawer_clippers.dart';
 import 'pages/inventory_page.dart';
 import 'pages/user_groups_page.dart';
 import 'pages/user_permissions_page.dart';
+import 'services/permission_service.dart';
 
 // Helper function to validate email or phone
 bool isValidEmailOrPhone(String input) {
@@ -523,17 +524,18 @@ class _MyHomePageState extends State<MyHomePage> {
                       Navigator.pop(context);
                     },
                   ),
-                  ListTile(
-                    title: Text('คลังสินค้า', style: TextStyle(color: Colors.white)),
-                    leading: Icon(Icons.inventory, color: Colors.white),
-                    onTap: () {
-                      Navigator.pop(context);
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const InventoryPage()),
-                      );
-                    },
-                  ),
+                  if (PermissionService.canAccessPageSync('inventory'))
+                    ListTile(
+                      title: Text('คลังสินค้า', style: TextStyle(color: Colors.white)),
+                      leading: Icon(Icons.inventory, color: Colors.white),
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const InventoryPage()),
+                        );
+                      },
+                    ),
                   ListTile(
                     title: Text('คูปอง/โปรโมชั่น', style: TextStyle(color: Colors.white)),
                     leading: Icon(Icons.inventory, color: Colors.white),
@@ -594,17 +596,18 @@ class _MyHomePageState extends State<MyHomePage> {
                       Navigator.pop(context);
                     },
                   ),
+                  if (PermissionService.canAccessPageSync('user_groups'))
                                     ListTile(
-                    title: Text('ข้อมูลพนักงาน', style: TextStyle(color: Colors.white)),
-                    leading: Icon(Icons.person, color: Colors.white),
-                    onTap: () {
-                      Navigator.pop(context);
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const UserGroupsPage()),
-                      );
-                    },
-                  ),
+                      title: Text('ข้อมูลพนักงาน', style: TextStyle(color: Colors.white)),
+                      leading: Icon(Icons.person, color: Colors.white),
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const UserGroupsPage()),
+                        );
+                      },
+                    ),
                   ListTile(
                     title: Text('ประวัติการเข้าระบบ', style: TextStyle(color: Colors.white)),
                     leading: Icon(Icons.history, color: Colors.white),
@@ -1039,17 +1042,21 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-  // ✅ Menu Buttons แยกตาม mode
+  // ✅ Menu Buttons แยกตาม mode + permission check
   List<Widget> _buildMenuButtons() {
     final menuItems = [
-      {'icon': Icons.restaurant, 'title': 'สั่งอาหาร', 'guestAllowed': true},
-      {'icon': Icons.table_restaurant, 'title': 'จองโต๊ะ', 'guestAllowed': true},
-      {'icon': Icons.bed, 'title': 'จองที่พัก', 'guestAllowed': true},
-      {'icon': Icons.history, 'title': 'ติดตามคิว / ข้อมูลการจอง (โต๊ะ/ที่พัก)', 'guestAllowed': false},
-      {'icon': Icons.storage, 'title': 'Database Test', 'guestAllowed': false},
+      {'icon': Icons.restaurant, 'title': 'สั่งอาหาร', 'guestAllowed': true, 'pageId': 'restaurant_menu'},
+      {'icon': Icons.table_restaurant, 'title': 'จองโต๊ะ', 'guestAllowed': true, 'pageId': 'table_booking'},
+      {'icon': Icons.bed, 'title': 'จองที่พัก', 'guestAllowed': true, 'pageId': 'room_booking'},
+      {'icon': Icons.history, 'title': 'ติดตามคิว / ข้อมูลการจอง (โต๊ะ/ที่พัก)', 'guestAllowed': false, 'pageId': ''},
+      {'icon': Icons.storage, 'title': 'Database Test', 'guestAllowed': false, 'pageId': ''},
     ];
 
-    return menuItems.map((item) {
+    return menuItems.where((item) {
+      final pageId = item['pageId'] as String;
+      if (pageId.isEmpty) return true;
+      return PermissionService.canAccessPageSync(pageId);
+    }).map((item) {
       final bool isAllowed = widget.isGuestMode ? item['guestAllowed'] as bool : true;
       
       return _buildMenuButton(
@@ -1421,6 +1428,8 @@ class _LoginPageState extends State<LoginPage> {
       debugPrint('Response user: ${response.user?.email}');
 
       if (response.user != null) {
+        // โหลดสิทธิ์หลัง login สำเร็จ
+        await PermissionService.loadPermissions(forceRefresh: true);
         // Login successful - navigate based on return flags
         if (widget.returnToMenu) {
           // กลับไปหน้าเมนู
@@ -1651,13 +1660,16 @@ class _LoginPageState extends State<LoginPage> {
                         const SizedBox(height: 20),
                         
                         // Register link
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
+                        Wrap(
+                          alignment: WrapAlignment.center,
+                          crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
                             const Text(
-                              'หากยังไม่เคยลงทะเบียน กรุณา  ',
+                              'หากยังไม่เคยลงทะเบียน กรุณา',
                               style: TextStyle(color: Colors.grey),
+                              softWrap: true,
                             ),
+                            const SizedBox(width: 6),
                             GestureDetector(
                               onTap: () {
                                 Navigator.of(context).push(
@@ -1672,6 +1684,7 @@ class _LoginPageState extends State<LoginPage> {
                                   color: Colors.green[600],
                                   fontWeight: FontWeight.bold,
                                 ),
+                                softWrap: true,
                               ),
                             ),
                           ],

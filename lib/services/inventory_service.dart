@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:image/image.dart' as img;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class InventoryService {
@@ -864,16 +864,22 @@ class InventoryService {
   /// บีบอัดรูปภาพก่อนอัปโหลด
   static Future<Uint8List?> compressImage(File file) async {
     try {
-      final result = await FlutterImageCompress.compressWithFile(
-        file.absolute.path,
-        minWidth: _maxImageWidth,
-        minHeight: _maxImageHeight,
-        quality: _imageQuality,
-        format: CompressFormat.jpeg,
-      );
-      if (result != null) {
-        debugPrint('Image compressed: ${file.lengthSync()} -> ${result.length} bytes (${(result.length / file.lengthSync() * 100).toStringAsFixed(0)}%)');
+      final bytes = await file.readAsBytes();
+      final original = img.decodeImage(bytes);
+      if (original == null) return null;
+
+      // Resize if larger than max dimensions
+      img.Image resized = original;
+      if (original.width > _maxImageWidth || original.height > _maxImageHeight) {
+        resized = img.copyResize(
+          original,
+          width: original.width > original.height ? _maxImageWidth : null,
+          height: original.height >= original.width ? _maxImageHeight : null,
+        );
       }
+
+      final result = Uint8List.fromList(img.encodeJpg(resized, quality: _imageQuality));
+      debugPrint('Image compressed: ${bytes.length} -> ${result.length} bytes (${(result.length / bytes.length * 100).toStringAsFixed(0)}%)');
       return result;
     } catch (e) {
       debugPrint('Error compressing image: $e');

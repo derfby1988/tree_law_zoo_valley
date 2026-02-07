@@ -377,34 +377,35 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 24),
                 if (_errorMessage != null)
                   Padding(
-                    padding: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.only(top: 16),
                     child: Text(
                       _errorMessage!,
                       style: TextStyle(color: Colors.red, fontSize: 14),
                     ),
                   ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: Text('ยกเลิก'),
-                    ),
-                    const SizedBox(width: 12),
-                    GlassButton(
-                      text: 'สร้างกลุ่ม',
-                      onPressed: _isCreating ? null : _createUserGroup,
-                      backgroundColor: Color(0xFF2E7D32),
-                      icon: Icons.group_add,
-                    ),
-                  ],
-                ),
               ],
             ),
           ),
+          actions: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text('ยกเลิก'),
+                ),
+                const SizedBox(width: 12),
+                GlassButton(
+                  text: 'สร้างกลุ่ม',
+                  onPressed: _isCreating ? null : _createUserGroup,
+                  backgroundColor: Color(0xFF2E7D32),
+                  icon: Icons.group_add,
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/inventory_service.dart';
+import '../../services/permission_service.dart';
 
 class RecipeTab extends StatefulWidget {
   const RecipeTab({super.key});
@@ -198,16 +199,17 @@ class _RecipeTabState extends State<RecipeTab> {
                             ),
                           ),
                           SizedBox(width: 8),
-                          IconButton(
-                            onPressed: () => _showManageCategoriesDialog(),
-                            icon: Icon(Icons.settings, size: 20),
-                            tooltip: 'จัดการประเภท',
-                            style: IconButton.styleFrom(
-                              backgroundColor: Colors.grey[200],
-                              padding: EdgeInsets.all(10),
+                          if (PermissionService.canAccessActionSync('inventory_recipe_category'))
+                            IconButton(
+                              onPressed: () => _showManageCategoriesDialog(),
+                              icon: Icon(Icons.settings, size: 20),
+                              tooltip: 'จัดการประเภท',
+                              style: IconButton.styleFrom(
+                                backgroundColor: Colors.grey[200],
+                                padding: EdgeInsets.all(10),
+                              ),
                             ),
-                          ),
-                          SizedBox(width: 8),
+                          if (PermissionService.canAccessActionSync('inventory_recipe_add')) ...[                          SizedBox(width: 8),
                           if (isNarrow)
                             IconButton(
                               onPressed: () => _showAddRecipeDialog(),
@@ -230,6 +232,7 @@ class _RecipeTabState extends State<RecipeTab> {
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                               ),
                             ),
+                          ],
                         ],
                       ),
                     ),
@@ -393,17 +396,20 @@ class _RecipeTabState extends State<RecipeTab> {
                 SizedBox(height: 12),
                 Row(
                   children: [
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: canProduce ? () => _showProduceDialog(recipe) : null,
-                        icon: Icon(Icons.play_arrow),
-                        label: Text('ผลิตสินค้า'),
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, padding: EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+                    if (PermissionService.canAccessActionSync('inventory_recipe_produce'))
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: canProduce ? () => _showProduceDialog(recipe) : null,
+                          icon: Icon(Icons.play_arrow),
+                          label: Text('ผลิตสินค้า'),
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, padding: EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+                        ),
                       ),
-                    ),
                     SizedBox(width: 8),
-                    IconButton(onPressed: () => _showEditRecipeDialog(recipe), icon: Icon(Icons.edit, color: Colors.blue), tooltip: 'แก้ไขสูตร'),
-                    IconButton(onPressed: () => _showDeleteConfirmDialog(recipe), icon: Icon(Icons.delete, color: Colors.red), tooltip: 'ลบสูตร'),
+                    if (PermissionService.canAccessActionSync('inventory_recipe_edit'))
+                      IconButton(onPressed: () => _showEditRecipeDialog(recipe), icon: Icon(Icons.edit, color: Colors.blue), tooltip: 'แก้ไขสูตร'),
+                    if (PermissionService.canAccessActionSync('inventory_recipe_delete'))
+                      IconButton(onPressed: () => _showDeleteConfirmDialog(recipe), icon: Icon(Icons.delete, color: Colors.red), tooltip: 'ลบสูตร'),
                   ],
                 ),
               ],

@@ -19,6 +19,62 @@ final List<Map<String, dynamic>> _systemPages = [
   {'id': 'settings', 'name': 'ตั้งค่า', 'button': 'ตั้งค่า', 'icon': Icons.settings},
 ];
 
+/// รายการ Tab ทั้งหมดในแต่ละหน้า
+final List<Map<String, dynamic>> _systemTabs = [
+  // คลังสินค้า (inventory) - 4 tabs
+  {'id': 'inventory_overview', 'page_id': 'inventory', 'name': 'สถิติ / รายงาน', 'icon': Icons.dashboard},
+  {'id': 'inventory_products', 'page_id': 'inventory', 'name': 'จัดการสินค้า', 'icon': Icons.inventory},
+  {'id': 'inventory_adjustment', 'page_id': 'inventory', 'name': 'ปรับปรุงคลัง', 'icon': Icons.build},
+  {'id': 'inventory_recipe', 'page_id': 'inventory', 'name': 'สูตรอาหาร', 'icon': Icons.restaurant_menu},
+  // จองโต๊ะ (table_booking)
+  {'id': 'table_booking_main', 'page_id': 'table_booking', 'name': 'จองโต๊ะ', 'icon': Icons.table_restaurant},
+  // จองห้อง (room_booking)
+  {'id': 'room_booking_main', 'page_id': 'room_booking', 'name': 'จองห้อง', 'icon': Icons.meeting_room},
+  // เมนูร้านอาหาร (restaurant_menu)
+  {'id': 'restaurant_menu_main', 'page_id': 'restaurant_menu', 'name': 'เมนูอาหาร', 'icon': Icons.restaurant_menu},
+  // จัดการผู้ใช้ (user_management)
+  {'id': 'user_management_main', 'page_id': 'user_management', 'name': 'รายชื่อผู้ใช้', 'icon': Icons.people},
+  // สิทธิ์ผู้ใช้ (user_permissions)
+  {'id': 'user_permissions_main', 'page_id': 'user_permissions', 'name': 'กำหนดสิทธิ์', 'icon': Icons.security},
+  // กลุ่มผู้ใช้ (user_groups)
+  {'id': 'user_groups_main', 'page_id': 'user_groups', 'name': 'จัดการกลุ่ม', 'icon': Icons.group_work},
+];
+
+/// รายการ Action/ปุ่มทั้งหมดในแต่ละ Tab
+final List<Map<String, dynamic>> _systemActions = [
+  // Tab: จัดการสินค้า (inventory_products)
+  {'id': 'inventory_products_category', 'tab_id': 'inventory_products', 'name': 'จัดการประเภท', 'icon': Icons.folder},
+  {'id': 'inventory_products_unit', 'tab_id': 'inventory_products', 'name': 'จัดการหน่วยนับ', 'icon': Icons.scale},
+  {'id': 'inventory_products_add', 'tab_id': 'inventory_products', 'name': 'เพิ่มสินค้า', 'icon': Icons.add_circle},
+  {'id': 'inventory_products_edit', 'tab_id': 'inventory_products', 'name': 'แก้ไขสินค้า', 'icon': Icons.edit},
+  {'id': 'inventory_products_delete', 'tab_id': 'inventory_products', 'name': 'ลบสินค้า', 'icon': Icons.delete},
+  // Tab: ปรับปรุงคลัง (inventory_adjustment)
+  {'id': 'inventory_adjustment_shelf', 'tab_id': 'inventory_adjustment', 'name': 'จัดการชั้นวาง', 'icon': Icons.shelves},
+  {'id': 'inventory_adjustment_purchase', 'tab_id': 'inventory_adjustment', 'name': 'ซื้อสินค้า', 'icon': Icons.shopping_cart},
+  {'id': 'inventory_adjustment_withdraw', 'tab_id': 'inventory_adjustment', 'name': 'เบิกใช้', 'icon': Icons.outbox},
+  {'id': 'inventory_adjustment_damage', 'tab_id': 'inventory_adjustment', 'name': 'ตัดสินค้าเสีย', 'icon': Icons.delete_forever},
+  {'id': 'inventory_adjustment_count', 'tab_id': 'inventory_adjustment', 'name': 'ตรวจนับสต๊อก', 'icon': Icons.inventory_2},
+  {'id': 'inventory_adjustment_warehouse_add', 'tab_id': 'inventory_adjustment', 'name': 'เพิ่มคลังสินค้า', 'icon': Icons.add_business},
+  {'id': 'inventory_adjustment_warehouse_edit', 'tab_id': 'inventory_adjustment', 'name': 'แก้ไขคลังสินค้า', 'icon': Icons.edit},
+  {'id': 'inventory_adjustment_warehouse_delete', 'tab_id': 'inventory_adjustment', 'name': 'ลบคลังสินค้า', 'icon': Icons.delete},
+  // Tab: สูตรอาหาร (inventory_recipe)
+  {'id': 'inventory_recipe_add', 'tab_id': 'inventory_recipe', 'name': 'เพิ่มสูตร', 'icon': Icons.add},
+  {'id': 'inventory_recipe_edit', 'tab_id': 'inventory_recipe', 'name': 'แก้ไขสูตร', 'icon': Icons.edit},
+  {'id': 'inventory_recipe_delete', 'tab_id': 'inventory_recipe', 'name': 'ลบสูตร', 'icon': Icons.delete},
+  {'id': 'inventory_recipe_produce', 'tab_id': 'inventory_recipe', 'name': 'ผลิตสินค้า', 'icon': Icons.play_arrow},
+  {'id': 'inventory_recipe_category', 'tab_id': 'inventory_recipe', 'name': 'จัดการประเภทสูตร', 'icon': Icons.settings},
+  // Tab: จองโต๊ะ (table_booking_main)
+  {'id': 'table_booking_book', 'tab_id': 'table_booking_main', 'name': 'จองโต๊ะ', 'icon': Icons.book_online},
+  // Tab: จองห้อง (room_booking_main)
+  {'id': 'room_booking_book', 'tab_id': 'room_booking_main', 'name': 'จองห้อง', 'icon': Icons.book_online},
+  // Tab: เมนูอาหาร (restaurant_menu_main)
+  {'id': 'restaurant_menu_order', 'tab_id': 'restaurant_menu_main', 'name': 'สั่งอาหาร', 'icon': Icons.shopping_cart},
+  // Tab: จัดการกลุ่ม (user_groups_main)
+  {'id': 'user_groups_create', 'tab_id': 'user_groups_main', 'name': 'สร้างกลุ่ม', 'icon': Icons.group_add},
+  {'id': 'user_groups_edit', 'tab_id': 'user_groups_main', 'name': 'แก้ไขกลุ่ม', 'icon': Icons.edit},
+  {'id': 'user_groups_delete', 'tab_id': 'user_groups_main', 'name': 'ลบกลุ่ม', 'icon': Icons.delete},
+];
+
 class UserPermissionsPage extends StatefulWidget {
   final Map<String, dynamic>? initialGroup;
   
@@ -28,15 +84,19 @@ class UserPermissionsPage extends StatefulWidget {
   State<UserPermissionsPage> createState() => _UserPermissionsPageState();
 }
 
-class _UserPermissionsPageState extends State<UserPermissionsPage> {
+class _UserPermissionsPageState extends State<UserPermissionsPage> with SingleTickerProviderStateMixin {
   bool _isLoading = false;
   String? _errorMessage;
   List<Map<String, dynamic>> _users = [];
   List<Map<String, dynamic>> _userGroups = [];
   List<Map<String, dynamic>> _permissions = [];
   List<Map<String, dynamic>> _pagePermissions = [];
+  List<Map<String, dynamic>> _tabPermissions = [];
+  List<Map<String, dynamic>> _actionPermissions = [];
   Map<String, dynamic>? _selectedGroup;
   String? _updatingPageId; // Track which page is being updated
+  String? _updatingTabId;
+  String? _updatingActionId;
   
   // Search controllers
   final TextEditingController _groupSearchController = TextEditingController();
@@ -73,25 +133,71 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
           .from('user_group_members')
           .select('*');
 
-      // โหลดข้อมูลผู้ใช้ (สำหรับแสดงในกลุ่ม)
-      final usersResponse = await SupabaseService.client
-          .from('user_profiles')
-          .select('*')
-          .eq('is_active', true)
-          .order('full_name', ascending: true);
+      // โหลดข้อมูลผู้ใช้ (สำหรับแสดงในกลุ่ม) - ใช้ public.users เป็นหลัก
+      List<dynamic> usersResponse = [];
+      try {
+        usersResponse = await SupabaseService.client
+            .from('users')
+            .select('id, full_name, email, username, avatar_url, is_active')
+            .order('full_name', ascending: true);
+      } catch (_) {}
+      // Fallback: ถ้า public.users อ่านไม่ได้ ลอง user_profiles
+      if (usersResponse.isEmpty) {
+        try {
+          usersResponse = await SupabaseService.client
+              .from('user_profiles')
+              .select('*')
+              .eq('is_active', true)
+              .order('full_name', ascending: true);
+        } catch (_) {
+          usersResponse = [];
+        }
+      }
+      print('📋 Loaded ${usersResponse.length} users');
 
       // โหลดข้อมูลสิทธิ์การเข้าถึงหน้า (group_page_permissions)
       final pagePermissionsResponse = await SupabaseService.client
           .from('group_page_permissions')
           .select('*');
 
+      // โหลดข้อมูลสิทธิ์ Tab
+      List<dynamic> tabPermissionsResponse = [];
+      try {
+        tabPermissionsResponse = await SupabaseService.client
+            .from('group_tab_permissions')
+            .select('*');
+      } catch (_) {}
+
+      // โหลดข้อมูลสิทธิ์ Action/ปุ่ม
+      List<dynamic> actionPermissionsResponse = [];
+      try {
+        actionPermissionsResponse = await SupabaseService.client
+            .from('group_action_permissions')
+            .select('*');
+      } catch (_) {}
+
       final loadedGroups = List<Map<String, dynamic>>.from(groupsResponse);
+      final loadedUsers = List<Map<String, dynamic>>.from(usersResponse)
+          .map((u) {
+            // Normalize: many schemas use user_profiles.user_id as the auth user id.
+            final userId = u['user_id']?.toString();
+            if (userId != null && userId.isNotEmpty) {
+              return {
+                ...u,
+                'id': userId,
+              };
+            }
+            return u;
+          })
+          .toList();
       
       setState(() {
         _userGroups = loadedGroups;
         _permissions = List<Map<String, dynamic>>.from(permissionsResponse);
         _pagePermissions = List<Map<String, dynamic>>.from(pagePermissionsResponse);
-        _users = List<Map<String, dynamic>>.from(usersResponse);
+        _tabPermissions = List<Map<String, dynamic>>.from(tabPermissionsResponse);
+        _actionPermissions = List<Map<String, dynamic>>.from(actionPermissionsResponse);
+        _users = loadedUsers;
         
         // ถ้ามี initialGroup ให้เลือกกลุ่มนั้นอัตโนมัติ
         if (widget.initialGroup != null) {
@@ -103,12 +209,99 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
         
         _isLoading = false;
       });
+
     } catch (e) {
       setState(() {
         _errorMessage = 'ไม่สามารถโหลดข้อมูล: $e';
         _isLoading = false;
       });
     }
+  }
+
+  Future<void> _toggleMemberActive(String groupId, String userId, bool isActive) async {
+    try {
+      await SupabaseService.client.rpc('toggle_user_active', params: {
+        'p_user_id': userId,
+        'p_is_active': isActive,
+      });
+    } catch (e) {
+      print('⚠️ Toggle user is_active failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('ไม่สามารถอัปเดตสถานะผู้ใช้: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchGroupMembersViaRpc(String groupId) async {
+    try {
+      final response = await SupabaseService.client
+          .rpc('get_group_members', params: {'p_group_id': groupId});
+      return List<Map<String, dynamic>>.from(response ?? []);
+    } catch (e) {
+      print('⚠️ RPC get_group_members failed: $e');
+      // Fallback: ดึงจาก _permissions + _users
+      final groupUserIds = _permissions
+          .where((p) => p['group_id'] == groupId)
+          .map((p) => p['user_id'].toString())
+          .toSet();
+      final matched = _users
+          .where((u) => groupUserIds.contains(u['id'].toString()))
+          .toList();
+      if (matched.isNotEmpty) return matched;
+      // Fallback สุดท้าย: ลองดึงจาก users/user_profiles
+      return _fetchUsersByIdsFromUsersTable(groupUserIds);
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchUsersByIdsFromUsersTable(Set<String> userIds) async {
+    if (userIds.isEmpty) return [];
+
+    // 1) Try public.users
+    try {
+      final response = await SupabaseService.client
+          .from('users')
+          .select('id, full_name, email, username')
+          .inFilter('id', userIds.toList());
+      final rows = List<Map<String, dynamic>>.from(response);
+      if (rows.isNotEmpty) return rows;
+    } catch (_) {}
+
+    // 2) Fallback: try user_profiles (common schema: user_id)
+    try {
+      final response = await SupabaseService.client
+          .from('user_profiles')
+          .select('user_id, full_name, email')
+          .inFilter('user_id', userIds.toList());
+      final rows = List<Map<String, dynamic>>.from(response)
+          .map((u) => {
+                ...u,
+                'id': (u['user_id'] ?? '').toString(),
+              })
+          .toList();
+      if (rows.isNotEmpty) return rows;
+    } catch (_) {}
+
+    // 3) Fallback: some schemas store membership using user_profiles.id (profile PK)
+    try {
+      final response = await SupabaseService.client
+          .from('user_profiles')
+          .select('id, user_id, full_name, email')
+          .inFilter('id', userIds.toList());
+      final rows = List<Map<String, dynamic>>.from(response)
+          .map((u) => {
+                ...u,
+                'id': (u['id'] ?? '').toString(),
+              })
+          .toList();
+      if (rows.isNotEmpty) return rows;
+    } catch (_) {}
+
+    return [];
   }
 
   Future<void> _updateGroupUsers(String groupId, List<String> userIds) async {
@@ -291,15 +484,7 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
       _selectedGroup = group;
     });
 
-    // หาผู้ใช้ที่อยู่ในกลุ่มนี้
-    final groupUserIds = _permissions
-        .where((p) => p['group_id'] == group['id'])
-        .map((p) => p['user_id'].toString())
-        .toSet();
-
-    final groupUsers = _users
-        .where((u) => groupUserIds.contains(u['id'].toString()))
-        .toList();
+    final groupId = group['id'] as String;
 
     showDialog(
       context: context,
@@ -352,59 +537,94 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
             ),
             const SizedBox(height: 20),
 
-            // Users List
-            Text(
-              'ผู้ใช้ที่มีสิทธิ์ในกลุ่มนี้ (${groupUsers.length} คน):',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
-            ),
-            const SizedBox(height: 12),
+            // Users List - ใช้ RPC get_group_members เพื่อ bypass RLS
+            FutureBuilder<List<Map<String, dynamic>>>(
+              future: _fetchGroupMembersViaRpc(groupId),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(child: CupertinoActivityIndicator()),
+                  );
+                }
 
-            Container(
-              constraints: BoxConstraints(maxHeight: 300),
-              child: groupUsers.isEmpty
-                  ? Center(
-                      child: Column(
-                        children: [
-                          Icon(
-                            Icons.person_off,
-                            size: 48,
-                            color: Colors.grey[400],
+                final members = snapshot.data ?? [];
+
+                return StatefulBuilder(
+                  builder: (context, setDialogState) {
+                    return Column(
+                      children: [
+                        Text(
+                          'ผู้ใช้ที่มีสิทธิ์ในกลุ่มนี้ (${members.length} คน):',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'ยังไม่มีผู้ใช้ในกลุ่มนี้',
-                            style: TextStyle(
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: groupUsers.length,
-                      itemBuilder: (context, index) {
-                        final user = groupUsers[index];
-                        return ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: Color(0xFF2E7D32).withOpacity(0.1),
-                            child: Text(
-                              (user['full_name'] ?? 'U')[0].toUpperCase(),
-                              style: TextStyle(
-                                color: Color(0xFF2E7D32),
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                          title: Text(user['full_name'] ?? 'ไม่ระบุชื่อ'),
-                          subtitle: Text(user['email'] ?? ''),
-                          trailing: Icon(Icons.person, color: Color(0xFF2E7D32)),
-                        );
-                      },
-                    ),
+                        ),
+                        const SizedBox(height: 12),
+                        Container(
+                          constraints: BoxConstraints(maxHeight: 300),
+                          child: members.isEmpty
+                              ? Center(
+                                  child: Column(
+                                    children: [
+                                      Icon(Icons.person_off, size: 48, color: Colors.grey[400]),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'ยังไม่มีผู้ใช้ในกลุ่มนี้',
+                                        style: TextStyle(color: Colors.grey[600]),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : ListView.builder(
+                                  shrinkWrap: true,
+                                  itemCount: members.length,
+                                  itemBuilder: (context, index) {
+                                    final user = members[index];
+                                    final displayName = (user['full_name'] ?? user['username'] ?? 'ไม่ระบุชื่อ').toString();
+                                    final displayEmail = (user['email'] ?? '').toString();
+                                    final isActive = user['is_active'] == true;
+                                    return ListTile(
+                                      dense: true,
+                                      contentPadding: EdgeInsets.symmetric(horizontal: 4),
+                                      title: Text(
+                                        displayName,
+                                        style: TextStyle(
+                                          color: isActive ? Colors.black87 : Colors.grey,
+                                          decoration: isActive ? null : TextDecoration.lineThrough,
+                                        ),
+                                      ),
+                                      subtitle: Text(
+                                        displayEmail,
+                                        style: TextStyle(
+                                          color: isActive ? Colors.grey[600] : Colors.grey[400],
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                      trailing: Switch(
+                                        value: isActive,
+                                        activeColor: Color(0xFF2E7D32),
+                                        onChanged: (val) async {
+                                          setDialogState(() {
+                                            members[index] = {...user, 'is_active': val};
+                                          });
+                                          await _toggleMemberActive(
+                                            groupId,
+                                            user['user_id'].toString(),
+                                            val,
+                                          );
+                                        },
+                                      ),
+                                    );
+                                  },
+                                ),
+                        ),
+                      ],
+                    );
+                  },
+                );
+              },
             ),
             const SizedBox(height: 20),
 
@@ -586,6 +806,8 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
             .delete()
             .eq('group_id', groupId)
             .eq('page_id', pageId);
+        // Cascade: ปิดหน้า → ปิด tab + action ทั้งหมดในหน้านั้น
+        await _cascadeDisablePage(groupId, pageId);
       }
 
       // Update local state
@@ -625,6 +847,196 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
       );
     }
   }
+  /// Toggle tab permission immediately
+  Future<void> _toggleTabPermission(String groupId, String tabId, bool enable) async {
+    setState(() {
+      _updatingTabId = tabId;
+    });
+    
+    try {
+      final currentUser = Supabase.instance.client.auth.currentUser;
+      if (currentUser == null) throw Exception('ไม่พบข้อมูลผู้ใช้');
+
+      if (enable) {
+        await SupabaseService.client.from('group_tab_permissions').insert({
+          'group_id': groupId,
+          'tab_id': tabId,
+          'can_access': true,
+          'assigned_by': currentUser.id,
+          'assigned_at': DateTime.now().toIso8601String(),
+        });
+        setState(() {
+          _tabPermissions.add({
+            'group_id': groupId,
+            'tab_id': tabId,
+            'can_access': true,
+          });
+        });
+      } else {
+        // Cascade: ปิด tab → ปิด action ทั้งหมดใน tab นั้น
+        final actionsInTab = _systemActions
+            .where((a) => a['tab_id'] == tabId)
+            .map((a) => a['id'] as String)
+            .toList();
+        
+        await SupabaseService.client
+            .from('group_tab_permissions')
+            .delete()
+            .eq('group_id', groupId)
+            .eq('tab_id', tabId);
+
+        // ลบ action permissions ที่อยู่ใน tab นี้
+        for (final actionId in actionsInTab) {
+          await SupabaseService.client
+              .from('group_action_permissions')
+              .delete()
+              .eq('group_id', groupId)
+              .eq('action_id', actionId);
+        }
+
+        setState(() {
+          _tabPermissions.removeWhere(
+            (p) => p['group_id'] == groupId && p['tab_id'] == tabId,
+          );
+          _actionPermissions.removeWhere(
+            (p) => p['group_id'] == groupId && actionsInTab.contains(p['action_id']),
+          );
+        });
+      }
+
+      setState(() {
+        _updatingTabId = null;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(enable ? 'เปิดใช้งาน Tab สำเร็จ' : 'ปิดใช้งาน Tab สำเร็จ'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 1),
+        ),
+      );
+    } catch (e) {
+      setState(() {
+        _updatingTabId = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('ไม่สามารถอัปเดตสิทธิ์ Tab: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Toggle action permission immediately
+  Future<void> _toggleActionPermission(String groupId, String actionId, bool enable) async {
+    setState(() {
+      _updatingActionId = actionId;
+    });
+    
+    try {
+      final currentUser = Supabase.instance.client.auth.currentUser;
+      if (currentUser == null) throw Exception('ไม่พบข้อมูลผู้ใช้');
+
+      if (enable) {
+        await SupabaseService.client.from('group_action_permissions').insert({
+          'group_id': groupId,
+          'action_id': actionId,
+          'can_access': true,
+          'assigned_by': currentUser.id,
+          'assigned_at': DateTime.now().toIso8601String(),
+        });
+        setState(() {
+          _actionPermissions.add({
+            'group_id': groupId,
+            'action_id': actionId,
+            'can_access': true,
+          });
+        });
+      } else {
+        await SupabaseService.client
+            .from('group_action_permissions')
+            .delete()
+            .eq('group_id', groupId)
+            .eq('action_id', actionId);
+        setState(() {
+          _actionPermissions.removeWhere(
+            (p) => p['group_id'] == groupId && p['action_id'] == actionId,
+          );
+        });
+      }
+
+      setState(() {
+        _updatingActionId = null;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(enable ? 'เปิดใช้งานปุ่มสำเร็จ' : 'ปิดใช้งานปุ่มสำเร็จ'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 1),
+        ),
+      );
+    } catch (e) {
+      setState(() {
+        _updatingActionId = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('ไม่สามารถอัปเดตสิทธิ์ปุ่ม: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Cascade: ปิดหน้า → ปิด tab ทั้งหมด → ปิด action ทั้งหมด
+  Future<void> _cascadeDisablePage(String groupId, String pageId) async {
+    final tabsInPage = _systemTabs
+        .where((t) => t['page_id'] == pageId)
+        .map((t) => t['id'] as String)
+        .toList();
+
+    for (final tabId in tabsInPage) {
+      // ลบ tab permission
+      try {
+        await SupabaseService.client
+            .from('group_tab_permissions')
+            .delete()
+            .eq('group_id', groupId)
+            .eq('tab_id', tabId);
+      } catch (_) {}
+
+      // ลบ action permissions ใน tab
+      final actionsInTab = _systemActions
+          .where((a) => a['tab_id'] == tabId)
+          .map((a) => a['id'] as String)
+          .toList();
+      for (final actionId in actionsInTab) {
+        try {
+          await SupabaseService.client
+              .from('group_action_permissions')
+              .delete()
+              .eq('group_id', groupId)
+              .eq('action_id', actionId);
+        } catch (_) {}
+      }
+    }
+
+    setState(() {
+      _tabPermissions.removeWhere(
+        (p) => p['group_id'] == groupId && tabsInPage.contains(p['tab_id']),
+      );
+      final allActionsInPage = _systemActions
+          .where((a) => tabsInPage.contains(a['tab_id']))
+          .map((a) => a['id'] as String)
+          .toSet();
+      _actionPermissions.removeWhere(
+        (p) => p['group_id'] == groupId && allActionsInPage.contains(p['action_id']),
+      );
+    });
+  }
+
   /// ใช้ตาราง group_page_permissions
   Future<void> _updatePagePermissions(String groupId, List<String> pageIds) async {
     try {
@@ -693,105 +1105,65 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
             ],
           ),
         ),
-        child: Column(
-          children: [
-            // Header Section
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.fromLTRB(20, 20, 20, 16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 10,
-                    offset: Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Expanded(
+        child: _isLoading
+            ? _buildSkeletonLoader()
+            : _errorMessage != null
+                ? Center(
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text(
-                          'บทบาทและสิทธิ์',
-                          style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF2E7D32),
-                          ),
+                        Icon(
+                          Icons.error_outline,
+                          size: 64,
+                          color: Colors.red[400],
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 16),
                         Text(
-                          'จัดการบทบาทและกำหนดสิทธิ์การเข้าถึง',
+                          _errorMessage!,
                           style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[600],
+                            fontSize: 16,
+                            color: Colors.red[600],
                           ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 16),
+                        GlassButton(
+                          text: 'ลองใหม่',
+                          onPressed: _loadData,
+                          backgroundColor: Color(0xFF2E7D32),
                         ),
                       ],
                     ),
-                  ),
-                  ElevatedButton.icon(
-                    onPressed: widget.initialGroup == null
-                        ? () => _showGroupPermissionDialog(
-                            _userGroups.isNotEmpty ? _userGroups.first : {},
-                          )
-                        : null,
-                    icon: Icon(Icons.add, size: 18),
-                    label: Text('เพิ่มบทบาท'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Color(0xFF8E24AA),
-                      foregroundColor: Colors.white,
-                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      elevation: 0,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Content Section
-            Expanded(
-              child: _isLoading
-                  ? _buildSkeletonLoader()
-                  : _errorMessage != null
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.error_outline,
-                                size: 64,
-                                color: Colors.red[400],
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                _errorMessage!,
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: Colors.red[600],
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                              const SizedBox(height: 16),
-                              GlassButton(
-                                text: 'ลองใหม่',
-                                onPressed: _loadData,
-                                backgroundColor: Color(0xFF2E7D32),
-                              ),
-                            ],
+                  )
+                : DraggableScrollableSheet(
+                    initialChildSize: 1.0,
+                    minChildSize: 0.9,
+                    maxChildSize: 1.0,
+                    expand: true,
+                    builder: (context, scrollController) {
+                      return Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.vertical(
+                            top: Radius.circular(20),
                           ),
-                        )
-                      : _buildGroupsTab(),
-            ),
-          ],
-        ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 20,
+                              offset: Offset(0, -5),
+                            ),
+                          ],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.vertical(
+                            top: Radius.circular(20),
+                          ),
+                          child: _buildGroupsTab(scrollController),
+                        ),
+                      );
+                    },
+                  ),
       ),
     );
   }
@@ -983,7 +1355,7 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
     );
   }
 
-  Widget _buildGroupsTab() {
+  Widget _buildGroupsTab(ScrollController scrollController) {
     // If initialGroup is provided, show only that group
     List<Map<String, dynamic>> filteredGroups;
     if (widget.initialGroup != null) {
@@ -996,6 +1368,33 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
         final description = (group['group_description'] ?? '').toLowerCase();
         return groupName.contains(searchLower) || description.contains(searchLower);
       }).toList();
+    }
+
+    // Single group view: make the content scrollable to avoid bottom overflow on small screens.
+    if (widget.initialGroup != null) {
+      return ListView(
+        controller: scrollController,
+        padding: EdgeInsets.zero,
+        children: [
+          if (filteredGroups.isNotEmpty)
+            Padding(
+              padding: EdgeInsets.fromLTRB(20, 12, 20, 12),
+              child: _buildGroupCard(filteredGroups.first),
+            ),
+          if (filteredGroups.isNotEmpty)
+            _buildPagePermissionsSection(filteredGroups.first),
+          if (filteredGroups.isEmpty)
+            Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(
+                child: Text(
+                  'ไม่พบกลุ่มผู้ใช้',
+                  style: TextStyle(color: Colors.grey[600]),
+                ),
+              ),
+            ),
+        ],
+      );
     }
 
     return Column(
@@ -1043,27 +1442,10 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
               ),
             ),
           ),
-        // Results count
-        if (filteredGroups.isNotEmpty)
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              children: [
-                Text(
-                  'พบ ${filteredGroups.length} กลุ่ม',
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        const SizedBox(height: 8),
-        // Group Cards Grid
-        Expanded(
-          child: filteredGroups.isEmpty
-              ? Center(
+        // Group Cards Grid - Fixed position, no scroll
+        filteredGroups.isEmpty
+            ? Expanded(
+                child: Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -1084,48 +1466,54 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
                       ),
                     ],
                   ),
-                )
-              : LayoutBuilder(
-                  builder: (context, constraints) {
-                    final width = constraints.maxWidth;
-                    final crossAxisCount = width >= 1000
-                        ? 3
-                        : width >= 720
-                            ? 2
-                            : 1;
-                    return GridView.builder(
-                      padding: EdgeInsets.fromLTRB(20, 4, 20, 20),
-                      itemCount: filteredGroups.length,
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: crossAxisCount,
-                        crossAxisSpacing: 16,
-                        mainAxisSpacing: 16,
-                        childAspectRatio: crossAxisCount == 1 ? 1.8 : 1.5,
-                      ),
-                      itemBuilder: (context, index) {
-                        final group = filteredGroups[index];
-                        return _buildGroupCard(group);
-                      },
-                    );
-                  },
                 ),
-        ),
-        // Page Permissions Section - show when viewing single group
-        if (widget.initialGroup != null && filteredGroups.isNotEmpty)
-          _buildPagePermissionsSection(filteredGroups.first),
+              )
+            : LayoutBuilder(
+                builder: (context, constraints) {
+                  final width = constraints.maxWidth;
+                  final crossAxisCount = width >= 1000
+                      ? 3
+                      : width >= 720
+                          ? 2
+                          : 1;
+                  final cardWidth = (width - (20 * 2) - ((crossAxisCount - 1) * 16)) / crossAxisCount;
+                  
+                  return Padding(
+                    padding: EdgeInsets.fromLTRB(20, 12, 20, 20),
+                    child: Wrap(
+                      spacing: 16,
+                      runSpacing: 16,
+                      children: filteredGroups.map((group) {
+                        return SizedBox(
+                          width: cardWidth,
+                          child: _buildGroupCard(group),
+                        );
+                      }).toList(),
+                    ),
+                  );
+                },
+              ),
       ],
     );
   }
 
   Widget _buildPagePermissionsSection(Map<String, dynamic> group) {
     final groupColor = _hexToColor(group['color']);
+    final groupId = group['id'] as String;
     
-    // โหลดสิทธิ์ปัจจุบันของกลุ่มจาก _pagePermissions
-    final groupPagePermissions = _pagePermissions
-        .where((p) => p['group_id'] == group['id'] && p['can_access'] == true)
+    // สิทธิ์ปัจจุบัน
+    final enabledPages = _pagePermissions
+        .where((p) => p['group_id'] == groupId && p['can_access'] == true)
         .map((p) => p['page_id'] as String)
-        .toList();
-    final selectedPages = Set<String>.from(groupPagePermissions);
+        .toSet();
+    final enabledTabs = _tabPermissions
+        .where((p) => p['group_id'] == groupId && p['can_access'] == true)
+        .map((p) => p['tab_id'] as String)
+        .toSet();
+    final enabledActions = _actionPermissions
+        .where((p) => p['group_id'] == groupId && p['can_access'] == true)
+        .map((p) => p['action_id'] as String)
+        .toSet();
 
     return Container(
       margin: EdgeInsets.fromLTRB(20, 0, 20, 20),
@@ -1154,7 +1542,7 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'สิทธิ์การเข้าถึงหน้า',
+                      'สิทธิ์การเข้าถึง',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
@@ -1162,7 +1550,7 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
                       ),
                     ),
                     Text(
-                      'เลือกหน้าที่กลุ่มนี้สามารถเข้าถึงได้',
+                      'กำหนดสิทธิ์ หน้า → Tab → ปุ่ม (บันทึกอัตโนมัติ)',
                       style: TextStyle(
                         color: Colors.grey[600],
                         fontSize: 12,
@@ -1173,72 +1561,213 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           
-          // Page List with Checkboxes
-          Container(
-            constraints: BoxConstraints(maxHeight: 400),
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: _systemPages.length,
-              itemBuilder: (context, index) {
-                final page = _systemPages[index];
-                final hasPermission = selectedPages.contains(page['id']);
-                final isUpdating = _updatingPageId == page['id'];
-                
-                return SwitchListTile(
-                  value: hasPermission,
-                  activeColor: groupColor,
-                  onChanged: isUpdating ? null : (value) async {
-                    await _togglePagePermission(
-                      group['id'],
-                      page['id'] as String,
-                      value,
-                    );
-                  },
-                  title: Text(
-                    page['name'] as String,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w500,
-                      fontSize: 14,
-                    ),
-                  ),
-                  subtitle: Text(
-                    'ปุ่ม: ${page['button']}',
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 12,
-                    ),
-                  ),
-                  secondary: isUpdating
-                    ? SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CupertinoActivityIndicator(
-                          color: groupColor,
+          // 3-Level ExpansionTile: Page → Tab → Action
+          ..._systemPages.map((page) {
+            final pageId = page['id'] as String;
+            final hasPagePerm = enabledPages.contains(pageId);
+            final isPageUpdating = _updatingPageId == pageId;
+            final tabsForPage = _systemTabs.where((t) => t['page_id'] == pageId).toList();
+
+            // นับจำนวน tab/action ที่เปิดอยู่
+            final enabledTabCount = tabsForPage.where((t) => enabledTabs.contains(t['id'])).length;
+            final totalActionCount = _systemActions.where((a) => tabsForPage.any((t) => t['id'] == a['tab_id'])).length;
+            final enabledActionCount = _systemActions.where((a) => tabsForPage.any((t) => t['id'] == a['tab_id']) && enabledActions.contains(a['id'])).length;
+
+            return Container(
+              margin: EdgeInsets.only(bottom: 4),
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: hasPagePerm ? groupColor.withOpacity(0.3) : Colors.grey[300]!,
+                ),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Theme(
+                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  leading: isPageUpdating
+                      ? SizedBox(
+                          width: 24, height: 24,
+                          child: CupertinoActivityIndicator(color: groupColor),
+                        )
+                      : Icon(
+                          page['icon'] as IconData,
+                          color: hasPagePerm ? groupColor : Colors.grey[400],
                         ),
-                      )
-                    : Icon(
-                        page['icon'] as IconData,
-                        color: hasPermission ? groupColor : Colors.grey[400],
+                  title: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          page['name'] as String,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                            color: hasPagePerm ? Colors.grey[800] : Colors.grey[500],
+                          ),
+                        ),
                       ),
-                );
-              },
-            ),
-          ),
-          // บันทึกอัตโนมัติเมื่อ toggle - ไม่ต้องกดปุ่มบันทึก
-          // แสดงข้อความแจ้งเตือนการบันทึกอัตโนมัติ
+                      if (hasPagePerm && tabsForPage.isNotEmpty)
+                        Container(
+                          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: groupColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            '$enabledTabCount/${tabsForPage.length} tab · $enabledActionCount/$totalActionCount ปุ่ม',
+                            style: TextStyle(fontSize: 10, color: groupColor),
+                          ),
+                        ),
+                    ],
+                  ),
+                  trailing: Switch(
+                    value: hasPagePerm,
+                    activeColor: groupColor,
+                    onChanged: isPageUpdating ? null : (value) async {
+                      await _togglePagePermission(groupId, pageId, value);
+                    },
+                  ),
+                  children: [
+                    if (hasPagePerm && tabsForPage.isNotEmpty)
+                      ...tabsForPage.map((tab) {
+                        final tabId = tab['id'] as String;
+                        final hasTabPerm = enabledTabs.contains(tabId);
+                        final isTabUpdating = _updatingTabId == tabId;
+                        final actionsForTab = _systemActions.where((a) => a['tab_id'] == tabId).toList();
+
+                        return Container(
+                          margin: EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: hasTabPerm ? groupColor.withOpacity(0.04) : Colors.grey[50],
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: hasTabPerm ? groupColor.withOpacity(0.15) : Colors.grey[200]!,
+                            ),
+                          ),
+                          child: Theme(
+                            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                            child: ExpansionTile(
+                              leading: isTabUpdating
+                                  ? SizedBox(
+                                      width: 20, height: 20,
+                                      child: CupertinoActivityIndicator(color: groupColor),
+                                    )
+                                  : Icon(
+                                      tab['icon'] as IconData,
+                                      size: 20,
+                                      color: hasTabPerm ? groupColor : Colors.grey[400],
+                                    ),
+                              title: Text(
+                                tab['name'] as String,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 13,
+                                  color: hasTabPerm ? Colors.grey[800] : Colors.grey[500],
+                                ),
+                              ),
+                              trailing: SizedBox(
+                                height: 32,
+                                child: FittedBox(
+                                  child: Switch(
+                                    value: hasTabPerm,
+                                    activeColor: groupColor,
+                                    onChanged: isTabUpdating ? null : (value) async {
+                                      await _toggleTabPermission(groupId, tabId, value);
+                                    },
+                                  ),
+                                ),
+                              ),
+                              children: [
+                                if (hasTabPerm && actionsForTab.isNotEmpty)
+                                  ...actionsForTab.map((action) {
+                                    final actionId = action['id'] as String;
+                                    final hasActionPerm = enabledActions.contains(actionId);
+                                    final isActionUpdating = _updatingActionId == actionId;
+
+                                    return Padding(
+                                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 1),
+                                      child: Row(
+                                        children: [
+                                          isActionUpdating
+                                              ? SizedBox(
+                                                  width: 18, height: 18,
+                                                  child: CupertinoActivityIndicator(color: groupColor),
+                                                )
+                                              : Icon(
+                                                  action['icon'] as IconData,
+                                                  size: 18,
+                                                  color: hasActionPerm ? groupColor : Colors.grey[400],
+                                                ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Text(
+                                              action['name'] as String,
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: hasActionPerm ? Colors.grey[800] : Colors.grey[500],
+                                              ),
+                                            ),
+                                          ),
+                                          SizedBox(
+                                            height: 28,
+                                            child: FittedBox(
+                                              child: Switch(
+                                                value: hasActionPerm,
+                                                activeColor: groupColor,
+                                                onChanged: isActionUpdating ? null : (value) async {
+                                                  await _toggleActionPermission(groupId, actionId, value);
+                                                },
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  }),
+                                if (hasTabPerm && actionsForTab.isEmpty)
+                                  Padding(
+                                    padding: EdgeInsets.all(12),
+                                    child: Text(
+                                      'ไม่มีปุ่มที่กำหนดสิทธิ์ได้',
+                                      style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                                    ),
+                                  ),
+                                const SizedBox(height: 4),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
+                    if (hasPagePerm && tabsForPage.isEmpty)
+                      Padding(
+                        padding: EdgeInsets.all(12),
+                        child: Text(
+                          'ไม่มี Tab ที่กำหนดสิทธิ์ได้',
+                          style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                        ),
+                      ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              ),
+            );
+          }),
+          
+          // Auto-save info
           Container(
             padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
               children: [
                 Icon(Icons.info_outline, size: 16, color: Colors.grey[600]),
                 const SizedBox(width: 8),
-                Text(
-                  'เปิด/ปิดสิทธิ์จะบันทึกอัตโนมัติ',
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                    fontSize: 12,
+                Expanded(
+                  child: Text(
+                    'เปิด/ปิดสิทธิ์จะบันทึกอัตโนมัติ · ปิดหน้า→ปิด Tab ทั้งหมด · ปิด Tab→ปิดปุ่มทั้งหมด',
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 11,
+                    ),
                   ),
                 ),
               ],
@@ -1254,21 +1783,9 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
     final memberCount = _permissions
         .where((p) => p['group_id'] == group['id'])
         .length;
-    
-    // หารายละเอียดผู้ใช้ (อาจว่างถ้า user_profiles ถูก RLS บล็อก)
-    final groupUserIds = _permissions
-        .where((p) => p['group_id'] == group['id'])
-        .map((p) => p['user_id'].toString())
-        .toSet();
-    final groupUsers = _users
-        .where((u) => groupUserIds.contains(u['id'].toString()))
-        .toList();
 
     final groupColor = _hexToColor(group['color']);
     final headerColor = _darkenColor(groupColor, 0.15);
-    final userItems = groupUsers
-        .map((user) => (user['full_name'] ?? user['email'] ?? 'ไม่ระบุชื่อ').toString())
-        .toList();
 
     return Container(
       decoration: BoxDecoration(
@@ -1345,7 +1862,7 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
           ),
           Padding(
             padding: EdgeInsets.symmetric(horizontal: 16),
-            child: userItems.isEmpty
+            child: memberCount == 0
                 ? Row(
                     children: [
                       Icon(Icons.info_outline, size: 16, color: Colors.grey[500]),
@@ -1356,38 +1873,65 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> {
                       ),
                     ],
                   )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      ...userItems
-                          .take(3)
-                          .map(
-                            (item) => Padding(
-                              padding: EdgeInsets.only(bottom: 6),
-                              child: Row(
-                                children: [
-                                  Icon(Icons.check_circle, color: groupColor, size: 14),
-                                  const SizedBox(width: 6),
-                                  Expanded(
-                                    child: Text(
-                                      item,
-                                      style: TextStyle(fontSize: 12, color: Colors.grey[700]),
-                                    ),
+                : FutureBuilder<List<Map<String, dynamic>>>(
+                    future: _fetchGroupMembersViaRpc(group['id'] as String),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return Padding(
+                          padding: EdgeInsets.symmetric(vertical: 4),
+                          child: CupertinoActivityIndicator(radius: 8),
+                        );
+                      }
+                      final members = snapshot.data ?? [];
+                      if (members.isEmpty) {
+                        return Row(
+                          children: [
+                            Icon(Icons.info_outline, size: 16, color: Colors.grey[500]),
+                            const SizedBox(width: 6),
+                            Text(
+                              '$memberCount ผู้ใช้',
+                              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                            ),
+                          ],
+                        );
+                      }
+                      final userItems = members
+                          .map((u) => (u['full_name'] ?? u['username'] ?? u['email'] ?? 'ไม่ระบุชื่อ').toString())
+                          .toList();
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ...userItems
+                              .take(3)
+                              .map(
+                                (item) => Padding(
+                                  padding: EdgeInsets.only(bottom: 6),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.check_circle, color: groupColor, size: 14),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          item,
+                                          style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ],
+                                ),
+                              )
+                              .toList(),
+                          if (userItems.length > 3)
+                            Padding(
+                              padding: EdgeInsets.only(top: 2),
+                              child: Text(
+                                '+${userItems.length - 3} คนเพิ่มเติม',
+                                style: TextStyle(fontSize: 11, color: Colors.grey[600]),
                               ),
                             ),
-                          )
-                          .toList(),
-                      if (userItems.length > 3)
-                        Padding(
-                          padding: EdgeInsets.only(top: 2),
-                          child: Text(
-                            '+${userItems.length - 3} คนเพิ่มเติม',
-                            style: TextStyle(fontSize: 11, color: Colors.grey[600]),
-                          ),
-                        ),
-                    ],
+                        ],
+                      );
+                    },
                   ),
           ),
           Padding(

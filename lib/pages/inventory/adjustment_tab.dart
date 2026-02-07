@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/inventory_service.dart';
+import '../../services/permission_service.dart';
 import 'inventory_filter_widget.dart';
 
 class AdjustmentTab extends StatefulWidget {
@@ -115,11 +116,16 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                _buildActionButton('ชั้นวาง', Colors.teal, Icons.shelves, () => _showShelfDialog()),
-                _buildActionButton('ซื้อสินค้า', Colors.green, Icons.shopping_cart, () => _showQuickAdjustDialog('purchase', 'ซื้อสินค้า', Colors.green)),
-                _buildActionButton('เบิกใช้', Colors.cyan, Icons.outbox, () => _showQuickAdjustDialog('withdraw', 'เบิกใช้สินค้า', Colors.cyan)),
-                _buildActionButton('ตัดสินค้าเสีย', Colors.red, Icons.delete_forever, () => _showQuickAdjustDialog('damage', 'ตัดสินค้าเสีย', Colors.red)),
-                _buildActionButton('ตรวจนับสต๊อก', Colors.orange, Icons.inventory_2, () => _showQuickAdjustDialog('count', 'ตรวจนับสต๊อก', Colors.orange)),
+                if (PermissionService.canAccessActionSync('inventory_adjustment_shelf'))
+                  _buildActionButton('ชั้นวาง', Colors.teal, Icons.shelves, () => _showShelfDialog()),
+                if (PermissionService.canAccessActionSync('inventory_adjustment_purchase'))
+                  _buildActionButton('ซื้อสินค้า', Colors.green, Icons.shopping_cart, () => _showQuickAdjustDialog('purchase', 'ซื้อสินค้า', Colors.green)),
+                if (PermissionService.canAccessActionSync('inventory_adjustment_withdraw'))
+                  _buildActionButton('เบิกใช้', Colors.cyan, Icons.outbox, () => _showQuickAdjustDialog('withdraw', 'เบิกใช้สินค้า', Colors.cyan)),
+                if (PermissionService.canAccessActionSync('inventory_adjustment_damage'))
+                  _buildActionButton('ตัดสินค้าเสีย', Colors.red, Icons.delete_forever, () => _showQuickAdjustDialog('damage', 'ตัดสินค้าเสีย', Colors.red)),
+                if (PermissionService.canAccessActionSync('inventory_adjustment_count'))
+                  _buildActionButton('ตรวจนับสต๊อก', Colors.orange, Icons.inventory_2, () => _showQuickAdjustDialog('count', 'ตรวจนับสต๊อก', Colors.orange)),
               ],
             ),
           ],
@@ -140,16 +146,17 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text('รายการคลัง', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                ElevatedButton.icon(
-                  onPressed: () => _showWarehouseDialog(),
-                  icon: Icon(Icons.add, size: 18),
-                  label: Text('เพิ่มคลัง'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.indigo,
-                    foregroundColor: Colors.white,
-                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                if (PermissionService.canAccessActionSync('inventory_adjustment_warehouse_add'))
+                  ElevatedButton.icon(
+                    onPressed: () => _showWarehouseDialog(),
+                    icon: Icon(Icons.add, size: 18),
+                    label: Text('เพิ่มคลัง'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.indigo,
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    ),
                   ),
-                ),
               ],
             ),
             SizedBox(height: 12),
@@ -261,23 +268,25 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
                 }
               },
               itemBuilder: (context) => [
-                PopupMenuItem(
-                  value: 'edit',
-                  child: Row(
-                    children: [
-                      Icon(Icons.edit, color: Colors.blue, size: 18),
-                      SizedBox(width: 8),
-                      Text('แก้ไข'),
-                    ],
+                if (PermissionService.canAccessActionSync('inventory_adjustment_warehouse_edit'))
+                  PopupMenuItem(
+                    value: 'edit',
+                    child: Row(
+                      children: [
+                        Icon(Icons.edit, color: Colors.blue, size: 18),
+                        SizedBox(width: 8),
+                        Expanded(child: Text('แก้ไข')),
+                      ],
+                    ),
                   ),
-                ),
-                PopupMenuItem(
-                  value: 'delete',
-                  child: Row(
-                    children: [
+                if (PermissionService.canAccessActionSync('inventory_adjustment_warehouse_delete'))
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: Row(
+                      children: [
                       Icon(Icons.delete, color: Colors.red, size: 18),
                       SizedBox(width: 8),
-                      Text('ลบ'),
+                      Expanded(child: Text('ลบ')),
                     ],
                   ),
                 ),
@@ -440,9 +449,9 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
                           Text('$typeLabel ${adj['reason'] ?? ''}', style: TextStyle(fontSize: 11, color: Colors.grey[600])),
                         ],
                       )),
-                      Text(userName, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                      Flexible(child: Text(userName, style: TextStyle(color: Colors.grey[600], fontSize: 12), overflow: TextOverflow.ellipsis)),
                       SizedBox(width: 8),
-                      Text(timeStr, style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+                      Flexible(child: Text(timeStr, style: TextStyle(color: Colors.grey[500], fontSize: 12), overflow: TextOverflow.ellipsis)),
                     ],
                   ),
                 );
@@ -480,7 +489,7 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: Row(children: [Icon(Icons.warehouse, color: Colors.indigo), SizedBox(width: 8), Text('กำหนดคลัง')]),
+          title: Row(children: [Icon(Icons.warehouse, color: Colors.indigo), SizedBox(width: 8), Expanded(child: Text('กำหนดคลัง'))]),
           content: SingleChildScrollView(
             child: Form(
               child: Column(
@@ -578,7 +587,7 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('แก้ไขคลัง')]),
+          title: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Expanded(child: Text('แก้ไขคลัง'))]),
           content: SingleChildScrollView(
             child: Form(
               child: Column(
@@ -676,7 +685,7 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
-          title: Row(children: [Icon(Icons.warning, color: Colors.orange), SizedBox(width: 8), Text('ไม่สามารถลบได้')]),
+          title: Row(children: [Icon(Icons.warning, color: Colors.orange), SizedBox(width: 8), Expanded(child: Text('ไม่สามารถลบได้'))]),
           content: Text('คลัง "$name" มีชั้นวางอยู่ $shelfCount รายการ\n\nกรุณาลบชั้นวางทั้งหมดในคลังก่อนลบคลัง'),
           actions: [
             ElevatedButton(
@@ -694,7 +703,7 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Row(children: [Icon(Icons.warning, color: Colors.red), SizedBox(width: 8), Text('ลบคลัง')]),
+        title: Row(children: [Icon(Icons.warning, color: Colors.red), SizedBox(width: 8), Expanded(child: Text('ลบคลัง'))]),
         content: Text('คุณต้องการลบคลัง "$name" ใช่หรือไม่?\n\nหมายเหตุ: การลบคลังไม่สามารถเรียกคืนได้'),
         actions: [
           OutlinedButton(
@@ -740,7 +749,7 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
             : <Map<String, dynamic>>[];
 
           return AlertDialog(
-          title: Row(children: [Icon(Icons.shelves, color: Colors.teal), SizedBox(width: 8), Text('กำหนดชั้นวาง')]),
+          title: Row(children: [Icon(Icons.shelves, color: Colors.teal), SizedBox(width: 8), Expanded(child: Text('กำหนดชั้นวาง'))]),
           content: SingleChildScrollView(
             child: Form(
               child: Column(
@@ -807,9 +816,17 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
                                 margin: EdgeInsets.only(bottom: 4),
                                 child: Row(
                                   children: [
-                                    Expanded(child: Text(shelfName)),
+                                    Expanded(
+                                      child: Text(shelfName, overflow: TextOverflow.ellipsis),
+                                    ),
                                     if (hasProducts)
-                                      Text('($productCount สินค้า)', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                                      Padding(
+                                        padding: EdgeInsets.only(left: 4),
+                                        child: Text(' ($productCount สินค้า)', 
+                                          style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
                                     // Move shelf button - available for all shelves
                                     IconButton(
                                       icon: Icon(Icons.move_up, color: Colors.blue, size: 20),
@@ -837,7 +854,7 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
                                             showDialog(
                                               context: context,
                                               builder: (context) => AlertDialog(
-                                                title: Row(children: [Icon(Icons.warning, color: Colors.orange), SizedBox(width: 8), Text('ไม่สามารถลบได้')]),
+                                                title: Row(children: [Icon(Icons.warning, color: Colors.orange), SizedBox(width: 8), Expanded(child: Text('ไม่สามารถลบได้'))]),
                                                 content: Text('ชั้นวาง "$shelfName" มีสินค้าจัดอยู่ $productCount รายการ\n\nกรุณาย้ายสินค้าออกจากชั้นวางก่อนลบ'),
                                                 actions: [
                                                   ElevatedButton(
@@ -997,7 +1014,7 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
       builder: (context) => StatefulBuilder(
         builder: (context, setMoveDialogState) {
           return AlertDialog(
-            title: Row(children: [Icon(Icons.move_up, color: Colors.blue), SizedBox(width: 8), Text('ย้ายชั้นวาง')]),
+            title: Row(children: [Icon(Icons.move_up, color: Colors.blue), SizedBox(width: 8), Expanded(child: Text('ย้ายชั้นวาง'))]),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -1124,7 +1141,7 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
           final currentQty = (product?['quantity'] as num?)?.toDouble() ?? 0;
 
           return AlertDialog(
-            title: Row(children: [Icon(Icons.edit, color: color), SizedBox(width: 8), Text(title)]),
+            title: Row(children: [Icon(Icons.edit, color: color), SizedBox(width: 8), Expanded(child: Text(title))]),
             content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
               DropdownButtonFormField<String>(
                 decoration: InputDecoration(labelText: 'เลือกสินค้า', border: OutlineInputBorder()),

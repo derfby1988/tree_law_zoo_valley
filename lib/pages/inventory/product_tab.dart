@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/inventory_service.dart';
+import '../../services/permission_service.dart';
 import 'inventory_filter_widget.dart';
 
 class ProductTab extends StatefulWidget {
@@ -148,9 +149,12 @@ class _ProductTabState extends State<ProductTab> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                _buildActionButton('ประเภท', Colors.blue, Icons.folder, () => _showCategoryDialog()),
-                _buildActionButton('หน่วยนับ', Colors.teal, Icons.scale, () => _showUnitDialog()),
-                _buildActionButton('เพิ่มสินค้า', Colors.orange, Icons.add_circle, () => _showAddProductDialog()),
+                if (PermissionService.canAccessActionSync('inventory_products_category'))
+                  _buildActionButton('ประเภท', Colors.blue, Icons.folder, () => _showCategoryDialog()),
+                if (PermissionService.canAccessActionSync('inventory_products_unit'))
+                  _buildActionButton('หน่วยนับ', Colors.teal, Icons.scale, () => _showUnitDialog()),
+                if (PermissionService.canAccessActionSync('inventory_products_add'))
+                  _buildActionButton('เพิ่มสินค้า', Colors.orange, Icons.add_circle, () => _showAddProductDialog()),
               ],
             ),
           ],

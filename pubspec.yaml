@@ -42,15 +42,11 @@ dependencies:
   image_picker: ^1.0.4
   
   # File picker for web support
-  file_picker: ^6.1.1
+  file_picker: ^8.0.0
   
   # Image compression
   image: ^4.1.4
-  flutter_image_compress: ^2.1.0
   cached_network_image: ^3.4.1
-  
-  # PostgreSQL for local database
-  postgres: ^3.1.0
   
   # Environment configuration
   flutter_dotenv: ^5.1.0
