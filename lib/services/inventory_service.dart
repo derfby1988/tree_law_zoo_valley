@@ -82,7 +82,103 @@ class InventoryService {
   }
 
   // =============================================
-  // Categories
+  // Recipe Categories (ประเภทสูตรอาหาร - แยกจากสินค้า)
+  // =============================================
+
+  static Future<List<Map<String, dynamic>>> getRecipeCategories() async {
+    try {
+      final response = await _client
+          .from('inventory_recipe_categories')
+          .select('*')
+          .eq('is_active', true)
+          .order('name');
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error loading recipe categories: $e');
+      return [];
+    }
+  }
+
+  static Future<bool> addRecipeCategory({
+    required String name,
+    String? description,
+    String? color,
+    String? icon,
+  }) async {
+    try {
+      await _client.from('inventory_recipe_categories').insert({
+        'name': name,
+        'description': description,
+        'color': color ?? '#2196F3',
+        'icon': icon ?? 'restaurant',
+      });
+      return true;
+    } catch (e) {
+      debugPrint('Error adding recipe category: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> updateRecipeCategory(String id, Map<String, dynamic> data) async {
+    try {
+      data['updated_at'] = DateTime.now().toIso8601String();
+      await _client.from('inventory_recipe_categories').update(data).eq('id', id);
+      return true;
+    } catch (e) {
+      debugPrint('Error updating recipe category: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> deleteRecipeCategory(String id) async {
+    try {
+      await _client.from('inventory_recipe_categories').update({'is_active': false}).eq('id', id);
+      return true;
+    } catch (e) {
+      debugPrint('Error deleting recipe category: $e');
+      return false;
+    }
+  }
+
+  /// ดึงประเภทสูตรอาหารเรียงตามการใช้งานล่าสุด
+  static Future<List<Map<String, dynamic>>> getRecipeCategoriesSortedByUsage() async {
+    try {
+      final categories = await getRecipeCategories();
+      final recipes = await _client
+          .from('inventory_recipes')
+          .select('recipe_category_id, updated_at')
+          .eq('is_active', true)
+          .order('updated_at', ascending: false);
+      
+      final usageMap = <String, String>{};
+      for (final r in recipes) {
+        final catId = r['recipe_category_id'] as String? ?? '';
+        if (catId.isNotEmpty && !usageMap.containsKey(catId)) {
+          usageMap[catId] = r['updated_at']?.toString() ?? '';
+        }
+      }
+      
+      categories.sort((a, b) {
+        final aId = a['id'] as String? ?? '';
+        final bId = b['id'] as String? ?? '';
+        final aUsage = usageMap[aId];
+        final bUsage = usageMap[bId];
+        
+        if (aUsage != null && bUsage != null) return bUsage.compareTo(aUsage);
+        if (aUsage != null) return -1;
+        if (bUsage != null) return 1;
+        return (a['name'] as String? ?? '').compareTo(b['name'] as String? ?? '');
+      });
+      
+      return categories;
+    } catch (e) {
+      debugPrint('Error loading recipe categories sorted by usage: $e');
+      return [];
+    }
+  }
+
+  // =============================================
+  // Categories (ประเภทสินค้า/วัตถุดิบ - ใช้กับ inventory_products เท่านั้น)
   // =============================================
 
   static Future<List<Map<String, dynamic>>> getCategories() async {
@@ -149,12 +245,57 @@ class InventoryService {
     try {
       final response = await _client
           .from('inventory_warehouses')
-          .select('*')
+          .select('id, name, location, manager, is_active')
           .eq('is_active', true)
           .order('name');
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
       debugPrint('Error loading warehouses: $e');
+      return [];
+    }
+  }
+
+  /// ดึงคลังเรียงตามการใช้งานล่าสุด (จากการเพิ่ม/แก้ไขชั้นวาง)
+  static Future<List<Map<String, dynamic>>> getWarehousesSortedByUsage() async {
+    try {
+      final warehouses = await getWarehouses();
+      
+      // ดึงชั้นวางเรียงตาม updated_at ล่าสุด
+      final shelves = await _client
+          .from('inventory_shelves')
+          .select('warehouse_id, updated_at')
+          .eq('is_active', true)
+          .order('updated_at', ascending: false);
+      
+      // สร้าง map ของ warehouse_id -> latest usage timestamp
+      final usageMap = <String, String>{};
+      for (final s in shelves) {
+        final whId = s['warehouse_id'] as String? ?? '';
+        if (whId.isNotEmpty && !usageMap.containsKey(whId)) {
+          usageMap[whId] = s['updated_at']?.toString() ?? '';
+        }
+      }
+      
+      // เรียง: คลังที่ใช้ล่าสุดก่อน, ที่ไม่เคยใช้ตามหลัง (เรียงตามชื่อ)
+      warehouses.sort((a, b) {
+        final aId = a['id'] as String? ?? '';
+        final bId = b['id'] as String? ?? '';
+        final aUsage = usageMap[aId];
+        final bUsage = usageMap[bId];
+        
+        if (aUsage != null && bUsage != null) {
+          return bUsage.compareTo(aUsage); // ล่าสุดก่อน
+        } else if (aUsage != null) {
+          return -1; // a ใช้แล้ว อยู่ก่อน
+        } else if (bUsage != null) {
+          return 1; // b ใช้แล้ว อยู่ก่อน
+        }
+        return (a['name'] as String? ?? '').compareTo(b['name'] as String? ?? '');
+      });
+      
+      return warehouses;
+    } catch (e) {
+      debugPrint('Error loading warehouses sorted by usage: $e');
       return [];
     }
   }
@@ -169,6 +310,44 @@ class InventoryService {
       return true;
     } catch (e) {
       debugPrint('Error adding warehouse: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> updateWarehouse({required String id, required String name, String? location, String? manager}) async {
+    try {
+      await _client.from('inventory_warehouses').update({
+        'name': name,
+        'location': location,
+        'manager': manager,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', id);
+      return true;
+    } catch (e) {
+      debugPrint('Error updating warehouse: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> deleteWarehouse(String id) async {
+    try {
+      // Check if warehouse has shelves
+      final shelves = await _client
+          .from('inventory_shelves')
+          .select('id')
+          .eq('warehouse_id', id)
+          .eq('is_active', true)
+          .limit(1);
+      
+      if ((shelves as List).isNotEmpty) {
+        debugPrint('Cannot delete warehouse: has active shelves');
+        return false;
+      }
+
+      await _client.from('inventory_warehouses').delete().eq('id', id);
+      return true;
+    } catch (e) {
+      debugPrint('Error deleting warehouse: $e');
       return false;
     }
   }
@@ -204,6 +383,54 @@ class InventoryService {
     }
   }
 
+  static Future<bool> deleteShelf(String id) async {
+    try {
+      // Check if shelf has products
+      final products = await _client
+          .from('inventory_products')
+          .select('id')
+          .eq('shelf_id', id)
+          .eq('is_active', true)
+          .limit(1);
+      
+      if ((products as List).isNotEmpty) {
+        debugPrint('Cannot delete shelf: has products');
+        return false;
+      }
+
+      await _client.from('inventory_shelves').delete().eq('id', id);
+      return true;
+    } catch (e) {
+      debugPrint('Error deleting shelf: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> updateShelf({
+    required String id,
+    String? warehouseId,
+    String? code,
+    int? capacity,
+  }) async {
+    try {
+      final data = <String, dynamic>{};
+      if (warehouseId != null) data['warehouse_id'] = warehouseId;
+      if (code != null) data['code'] = code;
+      if (capacity != null) data['capacity'] = capacity;
+
+      debugPrint('Updating shelf: id=$id, data=$data');
+
+      final response = await _client.from('inventory_shelves').update(data).eq('id', id).select().single();
+      
+      debugPrint('Update response: $response');
+      return true;
+    } catch (e) {
+      debugPrint('Error updating shelf: $e');
+      debugPrint('Error type: ${e.runtimeType}');
+      return false;
+    }
+  }
+
   // =============================================
   // Recipes
   // =============================================
@@ -214,7 +441,7 @@ class InventoryService {
           .from('inventory_recipes')
           .select('''
             *,
-            category:inventory_categories(id, name),
+            category:inventory_recipe_categories(id, name, color, icon),
             ingredients:inventory_recipe_ingredients(
               id,
               quantity,
@@ -232,7 +459,7 @@ class InventoryService {
 
   static Future<bool> addRecipe({
     required String name,
-    required String categoryId,
+    required String recipeCategoryId,
     double yieldQuantity = 1,
     String yieldUnit = 'ชิ้น',
     double cost = 0,
@@ -242,7 +469,7 @@ class InventoryService {
     try {
       await _client.from('inventory_recipes').insert({
         'name': name,
-        'category_id': categoryId,
+        'recipe_category_id': recipeCategoryId,
         'yield_quantity': yieldQuantity,
         'yield_unit': yieldUnit,
         'cost': cost,
@@ -259,7 +486,7 @@ class InventoryService {
   /// เพิ่มสูตรพร้อมส่วนผสม
   static Future<bool> addRecipeWithIngredients({
     required String name,
-    required String categoryId,
+    required String recipeCategoryId,
     double yieldQuantity = 1,
     String yieldUnit = 'ชิ้น',
     double cost = 0,
@@ -271,7 +498,7 @@ class InventoryService {
       // 1. เพิ่มสูตร
       final recipeResponse = await _client.from('inventory_recipes').insert({
         'name': name,
-        'category_id': categoryId,
+        'recipe_category_id': recipeCategoryId,
         'yield_quantity': yieldQuantity,
         'yield_unit': yieldUnit,
         'cost': cost,
@@ -750,7 +977,7 @@ class InventoryService {
     try {
       final response = await _client
           .from('inventory_products')
-          .select('id, name, unit:inventory_units(id, name, abbreviation)')
+          .select('id, name, unit:inventory_units(id, name, abbreviation), category:inventory_categories(id, name)')
           .ilike('name', '%$query%')
           .eq('is_active', true)
           .limit(10);
@@ -868,7 +1095,7 @@ class InventoryService {
 
       final recipeResponse = await _client.from('inventory_recipes').insert({
         'name': name,
-        'category_id': categoryId,
+        'recipe_category_id': categoryId,
         'yield_quantity': yieldQuantity,
         'yield_unit': yieldUnit,
         'cost': cost,

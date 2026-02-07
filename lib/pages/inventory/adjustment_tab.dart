@@ -92,21 +92,9 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            InventoryFilterWidget(
-              searchController: _searchController,
-              selectedWarehouse: _selectedWarehouse,
-              selectedShelf: _selectedShelf,
-              onWarehouseChanged: (value) => setState(() => _selectedWarehouse = value!),
-              onShelfChanged: (value) => setState(() => _selectedShelf = value!),
-              warehouseOptions: warehouseOptions,
-              shelfOptions: shelfOptions,
-            ),
-            SizedBox(height: 16),
             _buildActionButtons(),
             SizedBox(height: 16),
-            _buildAdjustmentForm(),
-            SizedBox(height: 16),
-            _buildRecentAdjustments(),
+            _buildWarehouseList(),
           ],
         ),
       ),
@@ -127,17 +115,183 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                _buildActionButton('กำหนดคลัง', Colors.indigo, Icons.warehouse, () => _showWarehouseDialog()),
                 _buildActionButton('ชั้นวาง', Colors.teal, Icons.shelves, () => _showShelfDialog()),
                 _buildActionButton('ซื้อสินค้า', Colors.green, Icons.shopping_cart, () => _showQuickAdjustDialog('purchase', 'ซื้อสินค้า', Colors.green)),
                 _buildActionButton('เบิกใช้', Colors.cyan, Icons.outbox, () => _showQuickAdjustDialog('withdraw', 'เบิกใช้สินค้า', Colors.cyan)),
                 _buildActionButton('ตัดสินค้าเสีย', Colors.red, Icons.delete_forever, () => _showQuickAdjustDialog('damage', 'ตัดสินค้าเสีย', Colors.red)),
+                _buildActionButton('ตรวจนับสต๊อก', Colors.orange, Icons.inventory_2, () => _showQuickAdjustDialog('count', 'ตรวจนับสต๊อก', Colors.orange)),
               ],
             ),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildWarehouseList() {
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('รายการคลัง', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                ElevatedButton.icon(
+                  onPressed: () => _showWarehouseDialog(),
+                  icon: Icon(Icons.add, size: 18),
+                  label: Text('เพิ่มคลัง'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.indigo,
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 12),
+            if (_warehouses.isEmpty)
+              Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(child: Text('ไม่มีคลัง', style: TextStyle(color: Colors.grey[600]))),
+              )
+            else
+              Column(
+                children: [
+                  // Header
+                  Container(
+                    padding: EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[200],
+                      borderRadius: BorderRadius.only(topLeft: Radius.circular(8), topRight: Radius.circular(8)),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(flex: 2, child: Text('ชื่อคลัง', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                        Expanded(flex: 2, child: Text('ที่อยู่', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                        SizedBox(width: 40, child: Text('จัดการ', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                      ],
+                    ),
+                  ),
+                  // Reorderable List with Scrollbar if > 5 items
+                  Container(
+                    constraints: _warehouses.length > 5 ? BoxConstraints(maxHeight: 5 * 48) : null, // Approx 5 rows height
+                    child: Scrollbar(
+                      thumbVisibility: _warehouses.length > 5,
+                      child: SingleChildScrollView(
+                        physics: _warehouses.length > 5 ? AlwaysScrollableScrollPhysics() : NeverScrollableScrollPhysics(),
+                        child: Column(
+                          children: List.generate(_warehouses.length, (index) {
+                            final warehouse = _warehouses[index];
+                            final name = warehouse['name'] ?? '';
+                            final location = warehouse['location'] ?? '';
+                            final id = warehouse['id'] as String?;
+
+                            return LongPressDraggable<Map<String, dynamic>>(
+                              data: warehouse,
+                              onDragStarted: () {},
+                              onDragEnd: (_) {},
+                              feedback: Material(
+                                elevation: 4,
+                                child: Container(
+                                  width: MediaQuery.of(context).size.width - 64,
+                                  padding: EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+                                  color: Colors.grey[100],
+                                  child: Text(name, style: TextStyle(fontWeight: FontWeight.w500)),
+                                ),
+                              ),
+                              childWhenDragging: Opacity(
+                                opacity: 0.3,
+                                child: _buildWarehouseRow(name, location, id),
+                              ),
+                              child: DragTarget<Map<String, dynamic>>(
+                                onAccept: (draggedWarehouse) async {
+                                  final oldIndex = _warehouses.indexWhere((w) => w['id'] == draggedWarehouse['id']);
+                                  final newIndex = index;
+                                  if (oldIndex != newIndex && oldIndex != -1) {
+                                    setState(() {
+                                      final item = _warehouses.removeAt(oldIndex);
+                                      _warehouses.insert(newIndex, item);
+                                    });
+                                    // Save new order
+                                    await _saveWarehouseOrder();
+                                  }
+                                },
+                                builder: (context, candidateData, rejectedData) {
+                                  return _buildWarehouseRow(name, location, id);
+                                },
+                              ),
+                            );
+                          }),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWarehouseRow(String name, String location, String? id) {
+    return Container(
+      padding: EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Colors.grey[300]!)),
+      ),
+      child: Row(
+        children: [
+          Expanded(flex: 2, child: Text(name)),
+          Expanded(flex: 2, child: Text(location, style: TextStyle(color: Colors.grey[600]))),
+          SizedBox(
+            width: 40,
+            child: PopupMenuButton<String>(
+              icon: Icon(Icons.more_vert, color: Colors.grey[600], size: 20),
+              onSelected: (value) {
+                if (value == 'edit') {
+                  _showEditWarehouseDialog(id, name, location);
+                } else if (value == 'delete') {
+                  _showDeleteWarehouseDialog(id, name);
+                }
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 'edit',
+                  child: Row(
+                    children: [
+                      Icon(Icons.edit, color: Colors.blue, size: 18),
+                      SizedBox(width: 8),
+                      Text('แก้ไข'),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete, color: Colors.red, size: 18),
+                      SizedBox(width: 8),
+                      Text('ลบ'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _saveWarehouseOrder() async {
+    // TODO: Implement order saving via InventoryService
+    // For now, just save locally
   }
 
   Widget _buildActionButton(String label, Color color, IconData icon, VoidCallback onTap) {
@@ -317,38 +471,93 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
   void _showWarehouseDialog() {
     final nameController = TextEditingController();
     final locationController = TextEditingController();
-    final managerController = TextEditingController();
     bool isLoading = false;
+
+    // Thai character regex
+    final thaiRegex = RegExp(r'^[\u0E00-\u0E7F0-9\s]+$');
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: Row(children: [Icon(Icons.warehouse, color: Colors.indigo), SizedBox(width: 8), Text('กำหนดคลัง')]),
-          content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-            if (_warehouses.isNotEmpty) ...[
-              ..._warehouses.map((w) => ListTile(title: Text(w['name'] ?? ''), subtitle: Text(w['location'] ?? ''))).toList(),
-              Divider(),
-            ],
-            TextField(controller: nameController, decoration: InputDecoration(labelText: 'ชื่อคลัง', border: OutlineInputBorder())),
-            SizedBox(height: 12),
-            TextField(controller: locationController, decoration: InputDecoration(labelText: 'ที่ตั้ง', border: OutlineInputBorder())),
-            SizedBox(height: 12),
-            TextField(controller: managerController, decoration: InputDecoration(labelText: 'ผู้รับผิดชอบ', border: OutlineInputBorder())),
-          ])),
+          content: SingleChildScrollView(
+            child: Form(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextFormField(
+                    controller: nameController,
+                    decoration: InputDecoration(
+                      labelText: 'ชื่อคลัง *',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    ),
+                    validator: (v) {
+                      if (v?.trim().isEmpty == true) return 'กรุณากรอกชื่อคลัง';
+                      if (!thaiRegex.hasMatch(v!.trim())) return 'กรุณาใช้ภาษาไทยเท่านั้น';
+                      return null;
+                    },
+                  ),
+                  SizedBox(height: 16),
+                  TextFormField(
+                    controller: locationController,
+                    decoration: InputDecoration(
+                      labelText: 'ที่ตั้ง',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: Text('ยกเลิก')),
+            OutlinedButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('ยกเลิก'),
+              style: OutlinedButton.styleFrom(
+                padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
+            ),
             ElevatedButton(
               onPressed: isLoading ? null : () async {
-                if (nameController.text.trim().isEmpty) return;
+                final name = nameController.text.trim();
+                if (name.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('กรุณากรอกชื่อคลัง'), backgroundColor: Colors.red));
+                  return;
+                }
+                // Check Thai characters
+                if (!thaiRegex.hasMatch(name)) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('ชื่อคลังต้องเป็นภาษาไทยเท่านั้น'), backgroundColor: Colors.red));
+                  return;
+                }
+                // Check duplicate name
+                final isDuplicate = _warehouses.any((w) => (w['name'] as String?)?.trim() == name);
+                if (isDuplicate) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('ชื่อคลังนี้มีอยู่แล้ว'), backgroundColor: Colors.red));
+                  return;
+                }
                 setDialogState(() => isLoading = true);
-                final ok = await InventoryService.addWarehouse(name: nameController.text.trim(), location: locationController.text.trim(), manager: managerController.text.trim());
+                final ok = await InventoryService.addWarehouse(
+                  name: name,
+                  location: locationController.text.trim(),
+                );
                 if (context.mounted) {
                   Navigator.pop(context);
-                  if (ok) { _loadData(); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เพิ่มคลังสำเร็จ'), backgroundColor: Colors.green)); }
+                  if (ok) {
+                    _loadData();
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เพิ่มคลังสำเร็จ'), backgroundColor: Colors.green));
+                  }
                 }
               },
               child: isLoading ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text('บันทึก'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.indigo,
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
             ),
           ],
         ),
@@ -356,44 +565,547 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
     );
   }
 
-  void _showShelfDialog() {
-    final codeController = TextEditingController();
-    final capacityController = TextEditingController();
-    String? selectedWarehouseId;
+  void _showEditWarehouseDialog(String? id, String currentName, String currentLocation) {
+    if (id == null) return;
+    final nameController = TextEditingController(text: currentName);
+    final locationController = TextEditingController(text: currentLocation);
     bool isLoading = false;
+
+    // Thai character regex
+    final thaiRegex = RegExp(r'^[\u0E00-\u0E7F0-9\s]+$');
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: Row(children: [Icon(Icons.shelves, color: Colors.teal), SizedBox(width: 8), Text('จัดการชั้นวาง')]),
-          content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-            DropdownButtonFormField<String>(
-              decoration: InputDecoration(labelText: 'เลือกคลัง', border: OutlineInputBorder()),
-              items: _warehouses.map((w) => DropdownMenuItem(value: w['id'] as String, child: Text(w['name'] ?? ''))).toList(),
-              onChanged: (v) => setDialogState(() => selectedWarehouseId = v),
+          title: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('แก้ไขคลัง')]),
+          content: SingleChildScrollView(
+            child: Form(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextFormField(
+                    controller: nameController,
+                    decoration: InputDecoration(
+                      labelText: 'ชื่อคลัง *',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    ),
+                  ),
+                  SizedBox(height: 16),
+                  TextFormField(
+                    controller: locationController,
+                    decoration: InputDecoration(
+                      labelText: 'ที่ตั้ง',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            SizedBox(height: 12),
-            TextField(controller: codeController, decoration: InputDecoration(labelText: 'รหัสชั้น', border: OutlineInputBorder())),
-            SizedBox(height: 12),
-            TextField(controller: capacityController, decoration: InputDecoration(labelText: 'ความจุ', border: OutlineInputBorder()), keyboardType: TextInputType.number),
-          ])),
+          ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: Text('ยกเลิก')),
+            OutlinedButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('ยกเลิก'),
+              style: OutlinedButton.styleFrom(
+                padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
+            ),
             ElevatedButton(
               onPressed: isLoading ? null : () async {
-                if (selectedWarehouseId == null || codeController.text.trim().isEmpty) return;
+                final name = nameController.text.trim();
+                if (name.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('กรุณากรอกชื่อคลัง'), backgroundColor: Colors.red));
+                  return;
+                }
+                // Check Thai characters
+                if (!thaiRegex.hasMatch(name)) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('ชื่อคลังต้องเป็นภาษาไทยเท่านั้น'), backgroundColor: Colors.red));
+                  return;
+                }
+                // Check duplicate name (excluding current)
+                final isDuplicate = _warehouses.any((w) => 
+                  (w['name'] as String?)?.trim() == name && 
+                  w['id'] != id
+                );
+                if (isDuplicate) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('ชื่อคลังนี้มีอยู่แล้ว'), backgroundColor: Colors.red));
+                  return;
+                }
                 setDialogState(() => isLoading = true);
-                final ok = await InventoryService.addShelf(warehouseId: selectedWarehouseId!, code: codeController.text.trim(), capacity: int.tryParse(capacityController.text) ?? 0);
+                final ok = await InventoryService.updateWarehouse(
+                  id: id,
+                  name: name,
+                  location: locationController.text.trim(),
+                );
                 if (context.mounted) {
                   Navigator.pop(context);
-                  if (ok) { _loadData(); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เพิ่มชั้นวางสำเร็จ'), backgroundColor: Colors.green)); }
+                  if (ok) {
+                    _loadData();
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('แก้ไขคลังสำเร็จ'), backgroundColor: Colors.green));
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เกิดข้อผิดพลาด'), backgroundColor: Colors.red));
+                  }
                 }
               },
               child: isLoading ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text('บันทึก'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showDeleteWarehouseDialog(String? id, String name) {
+    if (id == null) return;
+    
+    // Check if warehouse has shelves
+    final warehouseShelves = _shelves.where((s) => s['warehouse_id'] == id).toList();
+    final shelfCount = warehouseShelves.length;
+    
+    if (shelfCount > 0) {
+      // Show warning that warehouse has shelves
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Row(children: [Icon(Icons.warning, color: Colors.orange), SizedBox(width: 8), Text('ไม่สามารถลบได้')]),
+          content: Text('คลัง "$name" มีชั้นวางอยู่ $shelfCount รายการ\n\nกรุณาลบชั้นวางทั้งหมดในคลังก่อนลบคลัง'),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white),
+              child: Text('เข้าใจแล้ว'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    
+    // No shelves, show delete confirmation
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(children: [Icon(Icons.warning, color: Colors.red), SizedBox(width: 8), Text('ลบคลัง')]),
+        content: Text('คุณต้องการลบคลัง "$name" ใช่หรือไม่?\n\nหมายเหตุ: การลบคลังไม่สามารถเรียกคืนได้'),
+        actions: [
+          OutlinedButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('ยกเลิก'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final ok = await InventoryService.deleteWarehouse(id);
+              if (context.mounted) {
+                Navigator.pop(context);
+                if (ok) {
+                  _loadData();
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('ลบคลังสำเร็จ'), backgroundColor: Colors.green));
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('ไม่สามารถลบคลังได้'), backgroundColor: Colors.red));
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            child: Text('ลบ'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showShelfDialog() {
+    final nameController = TextEditingController();
+    String? selectedWarehouseId;
+    bool isLoading = false;
+
+    // Thai character regex
+    final thaiRegex = RegExp(r'^[\u0E00-\u0E7F0-9\s]+$');
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          // Get shelves for selected warehouse
+          final warehouseShelves = selectedWarehouseId != null 
+            ? _shelves.where((s) => s['warehouse_id'] == selectedWarehouseId).toList()
+            : <Map<String, dynamic>>[];
+
+          return AlertDialog(
+          title: Row(children: [Icon(Icons.shelves, color: Colors.teal), SizedBox(width: 8), Text('กำหนดชั้นวาง')]),
+          content: SingleChildScrollView(
+            child: Form(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  DropdownButtonFormField<String>(
+                    decoration: InputDecoration(
+                      labelText: 'เลือกคลัง *',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    ),
+                    value: selectedWarehouseId,
+                    items: _warehouses.map((w) {
+                      final id = w['id'] as String?;
+                      final name = w['name'] as String? ?? 'ไม่มีชื่อ';
+                      if (id == null) return null;
+                      return DropdownMenuItem(value: id, child: Text(name));
+                    }).where((item) => item != null).cast<DropdownMenuItem<String>>().toList(),
+                    onChanged: _warehouses.isEmpty 
+                      ? null
+                      : (v) {
+                          if (v != null && v.isNotEmpty) {
+                            setDialogState(() => selectedWarehouseId = v);
+                          }
+                        },
+                    validator: (v) => v == null || v.isEmpty ? 'กรุณาเลือกคลัง' : null,
+                  ),
+                  SizedBox(height: 16),
+                  TextFormField(
+                    controller: nameController,
+                    decoration: InputDecoration(
+                      labelText: 'ชื่อชั้นวาง *',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    ),
+                  ),
+                  // Show existing shelves if any
+                  if (warehouseShelves.isNotEmpty) ...[
+                    SizedBox(height: 16),
+                    Divider(),
+                    Text('ชั้นวางที่มีอยู่', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    SizedBox(height: 8),
+                    Container(
+                      constraints: warehouseShelves.length > 5 ? BoxConstraints(maxHeight: 5 * 48) : null,
+                      child: Scrollbar(
+                        thumbVisibility: warehouseShelves.length > 5,
+                        child: SingleChildScrollView(
+                          physics: warehouseShelves.length > 5 ? AlwaysScrollableScrollPhysics() : NeverScrollableScrollPhysics(),
+                          child: Column(
+                            children: warehouseShelves.map((shelf) {
+                              final shelfName = shelf['name'] ?? shelf['code'] ?? '';
+                              final shelfId = shelf['id'] as String?;
+                              // Check if shelf has products
+                              final productCount = _products.where((p) => p['shelf_id'] == shelfId).length;
+                              final hasProducts = productCount > 0;
+
+                              return Container(
+                                padding: EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[100],
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                margin: EdgeInsets.only(bottom: 4),
+                                child: Row(
+                                  children: [
+                                    Expanded(child: Text(shelfName)),
+                                    if (hasProducts)
+                                      Text('($productCount สินค้า)', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                                    // Move shelf button - available for all shelves
+                                    IconButton(
+                                      icon: Icon(Icons.move_up, color: Colors.blue, size: 20),
+                                      onPressed: () => _showMoveShelfDialog(
+                                        shelfId: shelfId,
+                                        shelfName: shelfName,
+                                        currentWarehouseId: selectedWarehouseId,
+                                        onMoved: () async {
+                                          await _loadData();
+                                          setDialogState(() {});
+                                        },
+                                      ),
+                                      padding: EdgeInsets.zero,
+                                      constraints: BoxConstraints(minWidth: 32, minHeight: 32),
+                                      tooltip: 'ย้ายชั้นวาง',
+                                    ),
+                                    if (!hasProducts)
+                                      IconButton(
+                                        icon: Icon(Icons.delete, color: Colors.red, size: 20),
+                                        onPressed: () async {
+                                          // Check if shelf has products first
+                                          final productCount = _products.where((p) => p['shelf_id'] == shelfId).length;
+                                          if (productCount > 0) {
+                                            // Show warning that shelf has products
+                                            showDialog(
+                                              context: context,
+                                              builder: (context) => AlertDialog(
+                                                title: Row(children: [Icon(Icons.warning, color: Colors.orange), SizedBox(width: 8), Text('ไม่สามารถลบได้')]),
+                                                content: Text('ชั้นวาง "$shelfName" มีสินค้าจัดอยู่ $productCount รายการ\n\nกรุณาย้ายสินค้าออกจากชั้นวางก่อนลบ'),
+                                                actions: [
+                                                  ElevatedButton(
+                                                    onPressed: () => Navigator.pop(context),
+                                                    style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white),
+                                                    child: Text('เข้าใจแล้ว'),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                            return;
+                                          }
+
+                                          // No products, show delete confirmation
+                                          final confirm = await showDialog<bool>(
+                                            context: context,
+                                            builder: (context) => AlertDialog(
+                                              title: Text('ลบชั้นวาง'),
+                                              content: Text('ต้องการลบชั้นวาง "$shelfName" ใช่หรือไม่?'),
+                                              actions: [
+                                                OutlinedButton(
+                                                  onPressed: () => Navigator.pop(context, false),
+                                                  child: Text('ยกเลิก'),
+                                                ),
+                                                ElevatedButton(
+                                                  onPressed: () => Navigator.pop(context, true),
+                                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                                                  child: Text('ลบ'),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                          if (confirm == true && shelfId != null) {
+                                            final ok = await InventoryService.deleteShelf(shelfId);
+                                            if (context.mounted) {
+                                              if (ok) {
+                                                await _loadData();
+                                                setDialogState(() {});
+                                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('ลบชั้นวางสำเร็จ'), backgroundColor: Colors.green));
+                                                // Check if no more shelves in this warehouse and close dialog
+                                                final remainingShelves = _shelves.where((s) => s['warehouse_id'] == selectedWarehouseId).toList();
+                                                if (remainingShelves.isEmpty) {
+                                                  Navigator.pop(context);
+                                                }
+                                              } else {
+                                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('ไม่สามารถลบชั้นวางได้'), backgroundColor: Colors.red));
+                                              }
+                                            }
+                                          }
+                                        },
+                                        padding: EdgeInsets.zero,
+                                        constraints: BoxConstraints(minWidth: 32, minHeight: 32),
+                                      ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            OutlinedButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('ยกเลิก'),
+              style: OutlinedButton.styleFrom(
+                padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: isLoading ? null : () async {
+                if (selectedWarehouseId == null || selectedWarehouseId!.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('กรุณาเลือกคลัง'), backgroundColor: Colors.red));
+                  return;
+                }
+                final name = nameController.text.trim();
+                if (name.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('กรุณากรอกชื่อชั้นวาง'), backgroundColor: Colors.red));
+                  return;
+                }
+                // Check Thai characters for shelf name
+                if (!thaiRegex.hasMatch(name)) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('ชื่อชั้นวางต้องเป็นภาษาไทยเท่านั้น'), backgroundColor: Colors.red));
+                  return;
+                }
+                // Check duplicate shelf name in same warehouse
+                final isDuplicate = _shelves.any((s) => 
+                  (s['code'] as String?)?.trim() == name &&
+                  (s['warehouse_id'] as String?) == selectedWarehouseId
+                );
+                if (isDuplicate) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('ชื่อชั้นวางนี้มีอยู่แล้วในคลังนี้'), backgroundColor: Colors.red));
+                  return;
+                }
+                setDialogState(() => isLoading = true);
+                try {
+                  final ok = await InventoryService.addShelf(
+                    warehouseId: selectedWarehouseId!,
+                    code: name,
+                    capacity: 0,
+                  );
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                    if (ok) {
+                      _loadData();
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เพิ่มชั้นวางสำเร็จ'), backgroundColor: Colors.green));
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เกิดข้อผิดพลาดในการบันทึก กรุณาลองใหม่'), backgroundColor: Colors.red));
+                    }
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    setDialogState(() => isLoading = false);
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เกิดข้อผิดพลาด: $e'), backgroundColor: Colors.red));
+                  }
+                }
+              },
+              child: isLoading ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text('บันทึก'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.teal,
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
+            ),
+          ],
+        );
+        },
+      ),
+    );
+  }
+
+  void _showMoveShelfDialog({
+    required String? shelfId,
+    required String shelfName,
+    required String? currentWarehouseId,
+    required VoidCallback onMoved,
+  }) {
+    if (shelfId == null || currentWarehouseId == null) return;
+
+    final nameController = TextEditingController(text: shelfName);
+    String? selectedDestinationWarehouseId;
+    bool isLoading = false;
+
+    // Thai character regex
+    final thaiRegex = RegExp(r'^[\u0E00-\u0E7F0-9\s]+$');
+
+    // Get other warehouses (exclude current)
+    final otherWarehouses = _warehouses.where((w) => w['id'] != currentWarehouseId).toList();
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setMoveDialogState) {
+          return AlertDialog(
+            title: Row(children: [Icon(Icons.move_up, color: Colors.blue), SizedBox(width: 8), Text('ย้ายชั้นวาง')]),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('ชั้นวาง: $shelfName', style: TextStyle(fontWeight: FontWeight.bold)),
+                  SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    decoration: InputDecoration(
+                      labelText: 'เลือกคลังปลายทาง *',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    ),
+                    value: selectedDestinationWarehouseId,
+                    items: otherWarehouses.map((w) {
+                      final id = w['id'] as String?;
+                      final name = w['name'] as String? ?? 'ไม่มีชื่อ';
+                      if (id == null) return null;
+                      return DropdownMenuItem(value: id, child: Text(name));
+                    }).where((item) => item != null).cast<DropdownMenuItem<String>>().toList(),
+                    onChanged: otherWarehouses.isEmpty
+                      ? null
+                      : (v) {
+                          if (v != null && v.isNotEmpty) {
+                            setMoveDialogState(() => selectedDestinationWarehouseId = v);
+                          }
+                        },
+                    validator: (v) => v == null || v.isEmpty ? 'กรุณาเลือกคลังปลายทาง' : null,
+                  ),
+                  if (otherWarehouses.isEmpty)
+                    Padding(
+                      padding: EdgeInsets.only(top: 8),
+                      child: Text('ไม่มีคลังอื่นที่สามารถย้ายไปได้', style: TextStyle(color: Colors.orange, fontSize: 12)),
+                    ),
+                  SizedBox(height: 16),
+                  TextFormField(
+                    controller: nameController,
+                    decoration: InputDecoration(
+                      labelText: 'ชื่อชั้นวาง (เปลี่ยนได้ถ้าต้องการ)',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      helperText: 'หากชื่อซ้ำในคลังปลายทาง ต้องเปลี่ยนชื่อ',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              OutlinedButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('ยกเลิก'),
+              ),
+              ElevatedButton(
+                onPressed: isLoading || otherWarehouses.isEmpty || selectedDestinationWarehouseId == null
+                  ? null
+                  : () async {
+                      final newName = nameController.text.trim();
+                      if (newName.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('กรุณากรอกชื่อชั้นวาง'), backgroundColor: Colors.red));
+                        return;
+                      }
+                      // Check Thai characters
+                      if (!thaiRegex.hasMatch(newName)) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('ชื่อชั้นวางต้องเป็นภาษาไทยเท่านั้น'), backgroundColor: Colors.red));
+                        return;
+                      }
+                      // Check duplicate shelf name in destination warehouse
+                      final isDuplicate = _shelves.any((s) =>
+                        (s['code'] as String?)?.trim() == newName &&
+                        (s['warehouse_id'] as String?) == selectedDestinationWarehouseId
+                      );
+                      if (isDuplicate) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('ชื่อชั้นวางนี้มีอยู่แล้วในคลังปลายทาง กรุณาเปลี่ยนชื่อ'), backgroundColor: Colors.red));
+                        return;
+                      }
+
+                      setMoveDialogState(() => isLoading = true);
+                      try {
+                        final ok = await InventoryService.updateShelf(
+                          id: shelfId,
+                          warehouseId: selectedDestinationWarehouseId!,
+                          code: newName,
+                        );
+                        if (context.mounted) {
+                          Navigator.pop(context);
+                          if (ok) {
+                            onMoved();
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('ย้ายชั้นวางสำเร็จ'), backgroundColor: Colors.green));
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('ไม่สามารถย้ายชั้นวางได้'), backgroundColor: Colors.red));
+                          }
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          setMoveDialogState(() => isLoading = false);
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เกิดข้อผิดพลาด: $e'), backgroundColor: Colors.red));
+                        }
+                      }
+                    },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                ),
+                child: isLoading ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text('ย้าย'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
