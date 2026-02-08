@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/inventory_service.dart';
 import '../../services/permission_service.dart';
+import '../../utils/permission_helpers.dart';
 import 'inventory_filter_widget.dart';
 
 class ProductTab extends StatefulWidget {
@@ -150,11 +151,11 @@ class _ProductTabState extends State<ProductTab> {
               runSpacing: 8,
               children: [
                 if (PermissionService.canAccessActionSync('inventory_products_category'))
-                  _buildActionButton('ประเภท', Colors.blue, Icons.folder, () => _showCategoryDialog()),
+                  _buildActionButton('ประเภท', Colors.blue, Icons.folder, () => checkPermissionAndExecute(context, 'inventory_products_category', 'จัดการประเภท', () => _showCategoryDialog())),
                 if (PermissionService.canAccessActionSync('inventory_products_unit'))
-                  _buildActionButton('หน่วยนับ', Colors.teal, Icons.scale, () => _showUnitDialog()),
+                  _buildActionButton('หน่วยนับ', Colors.teal, Icons.scale, () => checkPermissionAndExecute(context, 'inventory_products_unit', 'จัดการหน่วยนับ', () => _showUnitDialog())),
                 if (PermissionService.canAccessActionSync('inventory_products_add'))
-                  _buildActionButton('เพิ่มสินค้า', Colors.orange, Icons.add_circle, () => _showAddProductDialog()),
+                  _buildActionButton('เพิ่มสินค้า', Colors.orange, Icons.add_circle, () => checkPermissionAndExecute(context, 'inventory_products_add', 'เพิ่มสินค้า', () => _showAddProductDialog())),
               ],
             ),
           ],
@@ -235,7 +236,7 @@ class _ProductTabState extends State<ProductTab> {
           Expanded(child: Text(shelfCode, style: TextStyle(color: Colors.grey[600]), textAlign: TextAlign.center)),
           Container(width: 8, height: 8, decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle)),
           SizedBox(width: 8),
-          IconButton(icon: Icon(Icons.edit, size: 20), onPressed: () => _showEditProductDialog(product), padding: EdgeInsets.zero, constraints: BoxConstraints()),
+          IconButton(icon: Icon(Icons.edit, size: 20), onPressed: () => checkPermissionAndExecute(context, 'inventory_products_edit', 'แก้ไขสินค้า', () => _showEditProductDialog(product)), padding: EdgeInsets.zero, constraints: BoxConstraints()),
         ],
       ),
     );

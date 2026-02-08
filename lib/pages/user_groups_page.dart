@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
+import '../utils/permission_helpers.dart';
 import '../widgets/glass_dialog.dart';
 import '../widgets/glass_button.dart';
 import 'user_permissions_page.dart';
@@ -503,7 +504,7 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
                   text: 'ลบกลุ่ม',
                   onPressed: () {
                     Navigator.of(context).pop();
-                    _deleteUserGroup(group['id']);
+                    checkPermissionAndExecute(context, 'user_groups_delete', 'ลบกลุ่ม', () => _deleteUserGroup(group['id']));
                   },
                   backgroundColor: Colors.red,
                   icon: Icons.delete,
@@ -708,7 +709,7 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
                     const SizedBox(width: 12),
                     GlassButton(
                       text: 'บันทึก',
-                      onPressed: () => _updateUserGroup(group['id']),
+                      onPressed: () => checkPermissionAndExecute(context, 'user_groups_edit', 'แก้ไขกลุ่ม', () => _updateUserGroup(group['id'])),
                       backgroundColor: Color(0xFF2E7D32),
                       icon: Icons.save,
                     ),

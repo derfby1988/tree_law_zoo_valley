@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/inventory_service.dart';
 import '../../services/permission_service.dart';
+import '../../utils/permission_helpers.dart';
 
 class RecipeTab extends StatefulWidget {
   const RecipeTab({super.key});
@@ -399,7 +400,7 @@ class _RecipeTabState extends State<RecipeTab> {
                     if (PermissionService.canAccessActionSync('inventory_recipe_produce'))
                       Expanded(
                         child: ElevatedButton.icon(
-                          onPressed: canProduce ? () => _showProduceDialog(recipe) : null,
+                          onPressed: canProduce ? () => checkPermissionAndExecute(context, 'inventory_recipe_produce', 'ผลิตสินค้า', () => _showProduceDialog(recipe)) : null,
                           icon: Icon(Icons.play_arrow),
                           label: Text('ผลิตสินค้า'),
                           style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, padding: EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
@@ -407,9 +408,9 @@ class _RecipeTabState extends State<RecipeTab> {
                       ),
                     SizedBox(width: 8),
                     if (PermissionService.canAccessActionSync('inventory_recipe_edit'))
-                      IconButton(onPressed: () => _showEditRecipeDialog(recipe), icon: Icon(Icons.edit, color: Colors.blue), tooltip: 'แก้ไขสูตร'),
+                      IconButton(onPressed: () => checkPermissionAndExecute(context, 'inventory_recipe_edit', 'แก้ไขสูตร', () => _showEditRecipeDialog(recipe)), icon: Icon(Icons.edit, color: Colors.blue), tooltip: 'แก้ไขสูตร'),
                     if (PermissionService.canAccessActionSync('inventory_recipe_delete'))
-                      IconButton(onPressed: () => _showDeleteConfirmDialog(recipe), icon: Icon(Icons.delete, color: Colors.red), tooltip: 'ลบสูตร'),
+                      IconButton(onPressed: () => checkPermissionAndExecute(context, 'inventory_recipe_delete', 'ลบสูตร', () => _showDeleteConfirmDialog(recipe)), icon: Icon(Icons.delete, color: Colors.red), tooltip: 'ลบสูตร'),
                   ],
                 ),
               ],

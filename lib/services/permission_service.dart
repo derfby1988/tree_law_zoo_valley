@@ -21,7 +21,7 @@ class PermissionService {
   static Set<String> _cachedActionPermissions = {};
   static String? _cachedUserId;
   static DateTime? _cacheTime;
-  static const _cacheDuration = Duration(minutes: 5);
+  static const _cacheDuration = Duration(minutes: 1);
 
   /// โหลดสิทธิ์ทั้งหมดของ user ปัจจุบัน (ผ่านกลุ่มที่สังกัด)
   static Future<void> loadPermissions({bool forceRefresh = false}) async {
