@@ -3,6 +3,7 @@ import '../../services/inventory_service.dart';
 import '../../services/permission_service.dart';
 import '../../utils/permission_helpers.dart';
 import 'inventory_filter_widget.dart';
+import '../procurement_page.dart';
 
 class ProductTab extends StatefulWidget {
   const ProductTab({super.key});
@@ -156,6 +157,8 @@ class _ProductTabState extends State<ProductTab> {
                   _buildActionButton('หน่วยนับ', Colors.teal, Icons.scale, () => checkPermissionAndExecute(context, 'inventory_products_unit', 'จัดการหน่วยนับ', () => _showUnitDialog())),
                 if (PermissionService.canAccessActionSync('inventory_products_add'))
                   _buildActionButton('เพิ่มสินค้า', Colors.orange, Icons.add_circle, () => checkPermissionAndExecute(context, 'inventory_products_add', 'เพิ่มสินค้า', () => _showAddProductDialog())),
+                if (PermissionService.canAccessPageSync('procurement'))
+                  _buildActionButton('สั่งซื้อสินค้า', Colors.green, Icons.shopping_cart, () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ProcurementPage()))),
               ],
             ),
           ],

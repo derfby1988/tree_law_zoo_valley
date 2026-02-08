@@ -15,6 +15,7 @@ import 'auth_state_observer.dart';
 import 'widgets/home_avatar.dart';
 import 'widgets/drawer_clippers.dart';
 import 'pages/inventory_page.dart';
+import 'pages/procurement_page.dart';
 import 'pages/user_groups_page.dart';
 import 'pages/user_permissions_page.dart';
 import 'services/permission_service.dart';

@@ -126,9 +126,7 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
               children: [
                 if (PermissionService.canAccessActionSync('inventory_adjustment_shelf'))
                   _buildActionButton('ชั้นวาง', Colors.teal, Icons.shelves, () => checkPermissionAndExecute(context, 'inventory_adjustment_shelf', 'จัดการชั้นวาง', () => _showShelfDialog())),
-                if (PermissionService.canAccessActionSync('inventory_adjustment_purchase'))
-                  _buildActionButton('สั่งซื้อสินค้า', Colors.green, Icons.shopping_cart, () => checkPermissionAndExecute(context, 'inventory_adjustment_purchase', 'ซื้อสินค้า', () => _showQuickAdjustDialog('purchase', 'ซื้อสินค้า', Colors.green))),
-                if (PermissionService.canAccessActionSync('inventory_adjustment_withdraw'))
+                                if (PermissionService.canAccessActionSync('inventory_adjustment_withdraw'))
                   _buildActionButton('เบิกใช้', Colors.cyan, Icons.outbox, () => checkPermissionAndExecute(context, 'inventory_adjustment_withdraw', 'เบิกใช้สินค้า', () => _showQuickAdjustDialog('withdraw', 'เบิกใช้สินค้า', Colors.cyan))),
                 if (PermissionService.canAccessActionSync('inventory_adjustment_damage'))
                   _buildActionButton('ตัดสินค้าเสีย', Colors.red, Icons.delete_forever, () => checkPermissionAndExecute(context, 'inventory_adjustment_damage', 'ตัดสินค้าเสีย', () => _showQuickAdjustDialog('damage', 'ตัดสินค้าเสีย', Colors.red))),

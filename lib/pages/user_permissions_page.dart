@@ -18,6 +18,7 @@ final List<Map<String, dynamic>> _systemPages = [
   {'id': 'reports', 'name': 'รายงาน', 'button': 'รายงาน', 'icon': Icons.bar_chart},
   {'id': 'settings', 'name': 'ตั้งค่า', 'button': 'ตั้งค่า', 'icon': Icons.settings},
   {'id': 'end_drawer', 'name': 'เมนูจัดการร้าน (End Drawer)', 'button': 'End Drawer', 'icon': Icons.menu_open},
+  {'id': 'procurement', 'name': 'ระบบสั่งซื้อ', 'button': 'สั่งซื้อ', 'icon': Icons.shopping_cart},
 ];
 
 /// รายการ Tab ทั้งหมดในแต่ละหน้า
@@ -31,6 +32,12 @@ final List<Map<String, dynamic>> _systemTabs = [
   {'id': 'table_booking_main', 'page_id': 'table_booking', 'name': 'จองโต๊ะ', 'icon': Icons.table_restaurant},
   // จองห้อง (room_booking)
   {'id': 'room_booking_main', 'page_id': 'room_booking', 'name': 'จองห้อง', 'icon': Icons.meeting_room},
+  // ระบบสั่งซื้อ (procurement) - 5 tabs
+  {'id': 'procurement_request', 'page_id': 'procurement', 'name': 'ขอซื้อ', 'icon': Icons.request_page},
+  {'id': 'procurement_order', 'page_id': 'procurement', 'name': 'วางใบสั่งซื้อ', 'icon': Icons.description},
+  {'id': 'procurement_confirm', 'page_id': 'procurement', 'name': 'Confirm รับออเดอร์', 'icon': Icons.check_circle},
+  {'id': 'procurement_ship', 'page_id': 'procurement', 'name': 'ส่งสินค้า', 'icon': Icons.local_shipping},
+  {'id': 'procurement_receive', 'page_id': 'procurement', 'name': 'รับสินค้า', 'icon': Icons.inventory_2},
   // เมนูร้านอาหาร (restaurant_menu)
   {'id': 'restaurant_menu_main', 'page_id': 'restaurant_menu', 'name': 'เมนูอาหาร', 'icon': Icons.restaurant_menu},
   // จัดการผู้ใช้ (user_management)
@@ -51,8 +58,7 @@ final List<Map<String, dynamic>> _systemActions = [
   {'id': 'inventory_products_delete', 'tab_id': 'inventory_products', 'name': 'ลบสินค้า', 'icon': Icons.delete},
   // Tab: ปรับปรุงคลัง (inventory_adjustment)
   {'id': 'inventory_adjustment_shelf', 'tab_id': 'inventory_adjustment', 'name': 'จัดการชั้นวาง', 'icon': Icons.shelves},
-  {'id': 'inventory_adjustment_purchase', 'tab_id': 'inventory_adjustment', 'name': 'ซื้อสินค้า', 'icon': Icons.shopping_cart},
-  {'id': 'inventory_adjustment_withdraw', 'tab_id': 'inventory_adjustment', 'name': 'เบิกใช้', 'icon': Icons.outbox},
+    {'id': 'inventory_adjustment_withdraw', 'tab_id': 'inventory_adjustment', 'name': 'เบิกใช้', 'icon': Icons.outbox},
   {'id': 'inventory_adjustment_damage', 'tab_id': 'inventory_adjustment', 'name': 'ตัดสินค้าเสีย', 'icon': Icons.delete_forever},
   {'id': 'inventory_adjustment_count', 'tab_id': 'inventory_adjustment', 'name': 'ตรวจนับสต๊อก', 'icon': Icons.inventory_2},
   {'id': 'inventory_adjustment_warehouse_add', 'tab_id': 'inventory_adjustment', 'name': 'เพิ่มคลังสินค้า', 'icon': Icons.add_business},
@@ -77,6 +83,28 @@ final List<Map<String, dynamic>> _systemActions = [
   {'id': 'user_groups_edit', 'tab_id': 'user_groups_main', 'name': 'แก้ไขกลุ่ม', 'icon': Icons.edit},
   {'id': 'user_groups_delete', 'tab_id': 'user_groups_main', 'name': 'ลบกลุ่ม', 'icon': Icons.delete},
   {'id': 'user_groups_sort_order', 'tab_id': 'user_groups_main', 'name': 'จัดลำดับกลุ่ม', 'icon': Icons.swap_vert},
+  // Tab: ขอซื้อ (procurement_request)
+  {'id': 'procurement_request_create', 'tab_id': 'procurement_request', 'name': 'สร้างใบขอซื้อ', 'icon': Icons.add},
+  {'id': 'procurement_request_edit', 'tab_id': 'procurement_request', 'name': 'แก้ไขใบขอซื้อ', 'icon': Icons.edit},
+  {'id': 'procurement_request_delete', 'tab_id': 'procurement_request', 'name': 'ลบใบขอซื้อ', 'icon': Icons.delete},
+  {'id': 'procurement_request_submit', 'tab_id': 'procurement_request', 'name': 'ส่งอนุมัติ', 'icon': Icons.send},
+  // Tab: วางใบสั่งซื้อ (procurement_order)
+  {'id': 'procurement_order_create', 'tab_id': 'procurement_order', 'name': 'สร้างใบสั่งซื้อ', 'icon': Icons.description},
+  {'id': 'procurement_order_edit', 'tab_id': 'procurement_order', 'name': 'แก้ไขใบสั่งซื้อ', 'icon': Icons.edit},
+  {'id': 'procurement_order_delete', 'tab_id': 'procurement_order', 'name': 'ลบใบสั่งซื้อ', 'icon': Icons.delete},
+  {'id': 'procurement_order_send', 'tab_id': 'procurement_order', 'name': 'ส่งใบสั่งซื้อ', 'icon': Icons.send},
+  // Tab: Confirm รับออเดอร์ (procurement_confirm)
+  {'id': 'procurement_confirm_approve', 'tab_id': 'procurement_confirm', 'name': 'อนุมัติออเดอร์', 'icon': Icons.check_circle},
+  {'id': 'procurement_confirm_reject', 'tab_id': 'procurement_confirm', 'name': 'ปฏิเสธออเดอร์', 'icon': Icons.cancel},
+  {'id': 'procurement_confirm_view', 'tab_id': 'procurement_confirm', 'name': 'ดูรายละเอียด', 'icon': Icons.visibility},
+  // Tab: ส่งสินค้า (procurement_ship)
+  {'id': 'procurement_ship_create', 'tab_id': 'procurement_ship', 'name': 'สร้างใบส่งของ', 'icon': Icons.local_shipping},
+  {'id': 'procurement_ship_track', 'tab_id': 'procurement_ship', 'name': 'ติดตามการส่ง', 'icon': Icons.gps_fixed},
+  {'id': 'procurement_ship_complete', 'tab_id': 'procurement_ship', 'name': 'ยืนยันการส่ง', 'icon': Icons.done_all},
+  // Tab: รับสินค้า (procurement_receive)
+  {'id': 'procurement_receive_confirm', 'tab_id': 'procurement_receive', 'name': 'ยืนยันรับของ', 'icon': Icons.inventory_2},
+  {'id': 'procurement_receive_inspect', 'tab_id': 'procurement_receive', 'name': 'ตรวจสอบสินค้า', 'icon': Icons.search},
+  {'id': 'procurement_receive_return', 'tab_id': 'procurement_receive', 'name': 'คืนสินค้า', 'icon': Icons.keyboard_return},
 ];
 
 class UserPermissionsPage extends StatefulWidget {
