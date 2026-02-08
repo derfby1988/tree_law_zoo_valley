@@ -81,6 +81,26 @@ class InventoryService {
     }
   }
 
+  /// ย้ายสินค้าไปชั้นวางใหม่
+  static Future<bool> updateProductShelf({
+    required String productId,
+    required String shelfId,
+  }) async {
+    try {
+      // Update product with new shelf_id only
+      // Note: warehouse_id is determined by shelf relationship, not stored directly
+      await _client.from('inventory_products').update({
+        'shelf_id': shelfId,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', productId);
+      debugPrint('Product $productId moved to shelf $shelfId');
+      return true;
+    } catch (e) {
+      debugPrint('Error updating product shelf: $e');
+      return false;
+    }
+  }
+
   // =============================================
   // Recipe Categories (ประเภทสูตรอาหาร - แยกจากสินค้า)
   // =============================================

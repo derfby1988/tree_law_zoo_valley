@@ -16,6 +16,11 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
   String _selectedWarehouse = 'ทั้งหมด';
   String _selectedShelf = 'ทั้งหมด';
 
+  // State for shelf listing with pagination
+  String? _selectedWarehouseForShelfFilter;
+  Map<String, int> _shelfProductPages = {}; // shelfId -> current page
+  static const int _productsPerPage = 10;
+
   List<Map<String, dynamic>> _adjustments = [];
   List<Map<String, dynamic>> _products = [];
   List<Map<String, dynamic>> _warehouses = [];
@@ -97,6 +102,8 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
             _buildActionButtons(),
             SizedBox(height: 16),
             _buildWarehouseList(),
+            SizedBox(height: 16),
+            _buildShelfList(), // New shelf listing section
           ],
         ),
       ),
@@ -120,7 +127,7 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
                 if (PermissionService.canAccessActionSync('inventory_adjustment_shelf'))
                   _buildActionButton('ชั้นวาง', Colors.teal, Icons.shelves, () => checkPermissionAndExecute(context, 'inventory_adjustment_shelf', 'จัดการชั้นวาง', () => _showShelfDialog())),
                 if (PermissionService.canAccessActionSync('inventory_adjustment_purchase'))
-                  _buildActionButton('ซื้อสินค้า', Colors.green, Icons.shopping_cart, () => checkPermissionAndExecute(context, 'inventory_adjustment_purchase', 'ซื้อสินค้า', () => _showQuickAdjustDialog('purchase', 'ซื้อสินค้า', Colors.green))),
+                  _buildActionButton('สั่งซื้อสินค้า', Colors.green, Icons.shopping_cart, () => checkPermissionAndExecute(context, 'inventory_adjustment_purchase', 'ซื้อสินค้า', () => _showQuickAdjustDialog('purchase', 'ซื้อสินค้า', Colors.green))),
                 if (PermissionService.canAccessActionSync('inventory_adjustment_withdraw'))
                   _buildActionButton('เบิกใช้', Colors.cyan, Icons.outbox, () => checkPermissionAndExecute(context, 'inventory_adjustment_withdraw', 'เบิกใช้สินค้า', () => _showQuickAdjustDialog('withdraw', 'เบิกใช้สินค้า', Colors.cyan))),
                 if (PermissionService.canAccessActionSync('inventory_adjustment_damage'))
@@ -178,9 +185,8 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
                     ),
                     child: Row(
                       children: [
-                        Expanded(flex: 2, child: Text('ชื่อคลัง', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                        Expanded(flex: 2, child: Text('ที่อยู่', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                        SizedBox(width: 40, child: Text('จัดการ', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                        Expanded(flex: 3, child: Text('ชื่อคลัง', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                        Expanded(flex: 3, child: Text('ที่อยู่', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
                       ],
                     ),
                   ),
@@ -255,45 +261,8 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
       ),
       child: Row(
         children: [
-          Expanded(flex: 2, child: Text(name)),
-          Expanded(flex: 2, child: Text(location, style: TextStyle(color: Colors.grey[600]))),
-          SizedBox(
-            width: 40,
-            child: PopupMenuButton<String>(
-              icon: Icon(Icons.more_vert, color: Colors.grey[600], size: 20),
-              onSelected: (value) {
-                if (value == 'edit') {
-                  checkPermissionAndExecute(context, 'inventory_adjustment_warehouse_edit', 'แก้ไขคลัง', () => _showEditWarehouseDialog(id, name, location));
-                } else if (value == 'delete') {
-                  checkPermissionAndExecute(context, 'inventory_adjustment_warehouse_delete', 'ลบคลัง', () => _showDeleteWarehouseDialog(id, name));
-                }
-              },
-              itemBuilder: (context) => [
-                if (PermissionService.canAccessActionSync('inventory_adjustment_warehouse_edit'))
-                  PopupMenuItem(
-                    value: 'edit',
-                    child: Row(
-                      children: [
-                        Icon(Icons.edit, color: Colors.blue, size: 18),
-                        SizedBox(width: 8),
-                        Expanded(child: Text('แก้ไข')),
-                      ],
-                    ),
-                  ),
-                if (PermissionService.canAccessActionSync('inventory_adjustment_warehouse_delete'))
-                  PopupMenuItem(
-                    value: 'delete',
-                    child: Row(
-                      children: [
-                      Icon(Icons.delete, color: Colors.red, size: 18),
-                      SizedBox(width: 8),
-                      Expanded(child: Text('ลบ')),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
+          Expanded(flex: 3, child: Text(name)),
+          Expanded(flex: 3, child: Text(location, style: TextStyle(color: Colors.grey[600]))),
         ],
       ),
     );
@@ -302,6 +271,774 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
   Future<void> _saveWarehouseOrder() async {
     // TODO: Implement order saving via InventoryService
     // For now, just save locally
+  }
+
+  // ========== SHELF LISTING SECTION ==========
+  Widget _buildShelfList() {
+    // Don't show anything until user selects a warehouse
+    if (_selectedWarehouseForShelfFilter == null) {
+      return Card(
+        elevation: 2,
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'รายการชั้นวางสินค้า',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 16),
+              // Warehouse Filter Dropdown
+              Container(
+                width: double.infinity,
+                child: DropdownButtonFormField<String?>(
+                  isExpanded: true,
+                  decoration: InputDecoration(
+                    labelText: 'เลือกคลัง',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  ),
+                  value: _selectedWarehouseForShelfFilter,
+                  hint: Text('กรุณาเลือกคลัง'),
+                  items: _getSortedWarehousesByShelfCount().map((w) {
+                    final id = w['id'] as String?;
+                    final name = w['name'] as String? ?? 'ไม่มีชื่อ';
+                    final shelfCount = _shelves.where((s) => s['warehouse_id'] == id).length;
+                    if (id == null) return null;
+                    return DropdownMenuItem(
+                      value: id,
+                      child: Text(
+                        '$name ($shelfCount)',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    );
+                  }).where((item) => item != null).cast<DropdownMenuItem<String?>>().toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedWarehouseForShelfFilter = value;
+                    });
+                  },
+                ),
+              ),
+              SizedBox(height: 32),
+              Center(
+                child: Column(
+                  children: [
+                    Icon(Icons.arrow_upward, size: 32, color: Colors.grey[400]),
+                    SizedBox(height: 8),
+                    Text(
+                      'เลือกคลังด้านบนเพื่อดูชั้นวาง',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Filter shelves based on selected warehouse
+    final filteredShelves = _shelves.where((shelf) {
+      return shelf['warehouse_id'] == _selectedWarehouseForShelfFilter;
+    }).toList();
+
+    // Only show shelves with products > 0, sorted by product count (most to least)
+    final shelvesWithProducts = filteredShelves.where((shelf) {
+      final shelfId = shelf['id'] as String?;
+      final productCount = _products.where((p) => p['shelf_id'] == shelfId).length;
+      return productCount > 0;
+    }).toList()
+      ..sort((a, b) {
+        final countA = _products.where((p) => p['shelf_id'] == a['id']).length;
+        final countB = _products.where((p) => p['shelf_id'] == b['id']).length;
+        return countB.compareTo(countA); // มากไปน้อย
+      });
+
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header with dropdown filter
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'รายการชั้นวางสินค้า',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                // Warehouse Filter Dropdown - already selected but can change
+                Container(
+                  width: 140,
+                  child: DropdownButtonFormField<String?>(
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: 'คลัง',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      isDense: true,
+                      isCollapsed: true,
+                    ),
+                    value: _selectedWarehouseForShelfFilter,
+                    items: _getSortedWarehousesByShelfCount().map((w) {
+                      final id = w['id'] as String?;
+                      final name = w['name'] as String? ?? 'ไม่มีชื่อ';
+                      final shelfCount = _shelves.where((s) => s['warehouse_id'] == id).length;
+                      if (id == null) return null;
+                      return DropdownMenuItem(
+                        value: id,
+                        child: Container(
+                          width: 120,
+                          child: Text(
+                            '$name ($shelfCount)',
+                            textAlign: TextAlign.right,
+                            softWrap: true,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      );
+                    }).where((item) => item != null).cast<DropdownMenuItem<String?>>().toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedWarehouseForShelfFilter = value;
+                        _shelfProductPages.clear(); // Reset pagination when changing warehouse
+                      });
+                    },
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 16),
+            // Shelf Cards
+            if (shelvesWithProducts.isEmpty)
+              Center(
+                child: Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Column(
+                    children: [
+                      Icon(Icons.inventory_2_outlined, size: 48, color: Colors.grey[400]),
+                      SizedBox(height: 12),
+                      Text(
+                        'ไม่มีชั้นวางที่มีสินค้า',
+                        style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              ListView.separated(
+                shrinkWrap: true,
+                physics: NeverScrollableScrollPhysics(),
+                itemCount: shelvesWithProducts.length,
+                separatorBuilder: (_, __) => SizedBox(height: 12),
+                itemBuilder: (context, index) {
+                  final shelf = shelvesWithProducts[index];
+                  return _buildShelfCard(shelf);
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildShelfCard(Map<String, dynamic> shelf) {
+    final shelfId = shelf['id'] as String?;
+    final shelfName = shelf['code'] ?? shelf['name'] ?? 'ไม่มีชื่อ';
+    final warehouseId = shelf['warehouse_id'] as String?;
+    final warehouseName = _warehouses.firstWhere(
+      (w) => w['id'] == warehouseId,
+      orElse: () => {'name': 'ไม่ระบุคลัง'},
+    )['name'];
+    final isActive = shelf['is_active'] ?? true;
+
+    // Get products in this shelf, sorted by quantity (low to high)
+    final shelfProducts = _products
+        .where((p) => p['shelf_id'] == shelfId)
+        .toList()
+      ..sort((a, b) {
+        final qtyA = (a['quantity'] as num?)?.toDouble() ?? 0;
+        final qtyB = (b['quantity'] as num?)?.toDouble() ?? 0;
+        return qtyA.compareTo(qtyB); // น้อยไปหามาก
+      });
+    final totalProducts = shelfProducts.length;
+
+    // Pagination
+    final currentPage = _shelfProductPages[shelfId] ?? 0;
+    final totalPages = (totalProducts / _productsPerPage).ceil();
+    final startIndex = currentPage * _productsPerPage;
+    final endIndex = (startIndex + _productsPerPage).clamp(0, totalProducts);
+    final paginatedProducts = shelfProducts.sublist(startIndex, endIndex);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isActive ? Colors.white : Colors.grey[100],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isActive ? Colors.teal.withOpacity(0.3) : Colors.grey[300]!,
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Shelf Header
+          Container(
+            padding: EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isActive ? Colors.teal.withOpacity(0.1) : Colors.grey[200],
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(12),
+                topRight: Radius.circular(12),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.shelves,
+                  color: isActive ? Colors.teal : Colors.grey,
+                  size: 24,
+                ),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        shelfName,
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: isActive ? Colors.black87 : Colors.grey[600],
+                          decoration: isActive ? null : TextDecoration.lineThrough,
+                        ),
+                      ),
+                      Text(
+                        warehouseName,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Status Badge
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: isActive ? Colors.green : Colors.grey,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    isActive ? 'ใช้งาน' : 'ไม่ใช้งาน',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                SizedBox(width: 8),
+                // Product Count Badge
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.inventory_2, size: 12, color: Colors.blue),
+                      SizedBox(width: 4),
+                      Text(
+                        '$totalProducts',
+                        style: TextStyle(
+                          color: Colors.blue,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Product List
+          Container(
+            padding: EdgeInsets.all(12),
+            child: Column(
+              children: [
+                // Header
+                Container(
+                  padding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(flex: 3, child: Text('สินค้า', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                      Expanded(flex: 1, child: Text('คงเหลือ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12), textAlign: TextAlign.center)),
+                      Expanded(flex: 1, child: Text('หน่วย', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12), textAlign: TextAlign.center)),
+                      SizedBox(width: 32), // Space for action menu button
+                    ],
+                  ),
+                ),
+                SizedBox(height: 8),
+                // Products
+                ...paginatedProducts.map((product) {
+                  final productName = product['name'] ?? '-';
+                  final quantity = (product['quantity'] as num?)?.toDouble() ?? 0;
+                  final unit = product['unit']?['abbreviation'] ?? '-';
+                  final isLowStock = quantity <= 5; // threshold for low stock warning
+
+                  return Container(
+                    padding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                    decoration: BoxDecoration(
+                      border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: Text(
+                            productName,
+                            style: TextStyle(fontSize: 13),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Expanded(
+                          flex: 1,
+                          child: Text(
+                            quantity.toStringAsFixed(quantity == quantity.roundToDouble() ? 0 : 1),
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: isLowStock ? Colors.orange : Colors.black87,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        Expanded(
+                          flex: 1,
+                          child: Text(
+                            unit,
+                            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        // Action menu button - only show if user has any move permission
+                        Builder(
+                          builder: (context) {
+                            final canMoveShelf = PermissionService.canAccessActionSync('inventory_adjustment_product_move_shelf');
+                            final canMoveWarehouse = PermissionService.canAccessActionSync('inventory_adjustment_product_move_warehouse');
+                            
+                            if (!canMoveShelf && !canMoveWarehouse) {
+                              return SizedBox(width: 32); // Placeholder when no permissions
+                            }
+                            
+                            return PopupMenuButton<String>(
+                              icon: Icon(Icons.more_vert, color: Colors.grey[600], size: 18),
+                              padding: EdgeInsets.zero,
+                              constraints: BoxConstraints(minWidth: 32, minHeight: 32),
+                              onSelected: (value) {
+                                if (value == 'move_shelf') {
+                                  checkPermissionAndExecute(
+                                    context,
+                                    'inventory_adjustment_product_move_shelf',
+                                    'ย้ายชั้นวาง',
+                                    () => _showMoveProductShelfDialog(product),
+                                  );
+                                } else if (value == 'move_warehouse') {
+                                  checkPermissionAndExecute(
+                                    context,
+                                    'inventory_adjustment_product_move_warehouse',
+                                    'ย้ายคลัง',
+                                    () => _showMoveProductWarehouseDialog(product),
+                                  );
+                                }
+                              },
+                              itemBuilder: (context) => [
+                                if (canMoveShelf)
+                                  PopupMenuItem(
+                                    value: 'move_shelf',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.move_up, color: Colors.blue, size: 18),
+                                        SizedBox(width: 8),
+                                        Text('ย้ายชั้นวาง'),
+                                      ],
+                                    ),
+                                  ),
+                                if (canMoveWarehouse)
+                                  PopupMenuItem(
+                                    value: 'move_warehouse',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.warehouse, color: Colors.orange, size: 18),
+                                        SizedBox(width: 8),
+                                        Text('ย้ายคลัง'),
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+                // Pagination Controls
+                if (totalPages > 1) ...[
+                  SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // First page button
+                      IconButton(
+                        icon: Icon(Icons.first_page, size: 20),
+                        onPressed: currentPage > 0
+                            ? () {
+                                setState(() {
+                                  _shelfProductPages[shelfId!] = 0;
+                                });
+                              }
+                            : null,
+                        padding: EdgeInsets.zero,
+                        constraints: BoxConstraints(minWidth: 32, minHeight: 32),
+                        tooltip: 'หน้าแรก',
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.chevron_left, size: 20),
+                        onPressed: currentPage > 0
+                            ? () {
+                                setState(() {
+                                  _shelfProductPages[shelfId!] = currentPage - 1;
+                                });
+                              }
+                            : null,
+                        padding: EdgeInsets.zero,
+                        constraints: BoxConstraints(minWidth: 32, minHeight: 32),
+                      ),
+                      Container(
+                        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Text(
+                          '${currentPage + 1} / $totalPages',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.chevron_right, size: 20),
+                        onPressed: currentPage < totalPages - 1
+                            ? () {
+                                setState(() {
+                                  _shelfProductPages[shelfId!] = currentPage + 1;
+                                });
+                              }
+                            : null,
+                        padding: EdgeInsets.zero,
+                        constraints: BoxConstraints(minWidth: 32, minHeight: 32),
+                      ),
+                      // Last page button
+                      IconButton(
+                        icon: Icon(Icons.last_page, size: 20),
+                        onPressed: currentPage < totalPages - 1
+                            ? () {
+                                setState(() {
+                                  _shelfProductPages[shelfId!] = totalPages - 1;
+                                });
+                              }
+                            : null,
+                        padding: EdgeInsets.zero,
+                        constraints: BoxConstraints(minWidth: 32, minHeight: 32),
+                        tooltip: 'หน้าสุดท้าย',
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ========== END SHELF LISTING SECTION ==========
+
+  List<Map<String, dynamic>> _getSortedWarehousesByShelfCount() {
+    return List<Map<String, dynamic>>.from(_warehouses)
+      ..sort((a, b) {
+        final shelfCountA = _shelves.where((s) => s['warehouse_id'] == a['id']).length;
+        final shelfCountB = _shelves.where((s) => s['warehouse_id'] == b['id']).length;
+        return shelfCountB.compareTo(shelfCountA); // มากไปน้อย
+      });
+  }
+
+  // Dialog ย้ายสินค้าไปชั้นวางอื่น
+  void _showMoveProductShelfDialog(Map<String, dynamic> product) {
+    final currentShelfId = product['shelf_id'] as String?;
+    String? selectedTargetShelfId;
+    bool isLoading = false;
+
+    // Get current shelf info and warehouse_id from _shelves list
+    final currentShelf = _shelves.firstWhere(
+      (s) => s['id'] == currentShelfId,
+      orElse: () => {'code': 'ไม่ระบุ', 'name': 'ไม่ระบุ', 'warehouse_id': null},
+    );
+    final currentShelfName = currentShelf['code'] ?? currentShelf['name'] ?? 'ไม่ระบุ';
+    final currentWarehouseId = currentShelf['warehouse_id'] as String?;
+
+    // Filter shelves in same warehouse, exclude current shelf
+    final availableShelves = _shelves.where((s) {
+      final sId = s['id'] as String?;
+      final sWarehouseId = s['warehouse_id'] as String?;
+      return sWarehouseId == currentWarehouseId && sId != currentShelfId;
+    }).toList();
+
+    if (availableShelves.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('ไม่มีชั้นวางอื่นในคลังนี้ที่จะย้ายได้'), backgroundColor: Colors.orange),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Row(children: [
+            Icon(Icons.move_up, color: Colors.blue),
+            SizedBox(width: 8),
+            Expanded(child: Text('ย้ายชั้นวาง')),
+          ]),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('สินค้า: ${product['name'] ?? '-'}', style: TextStyle(fontWeight: FontWeight.bold)),
+                SizedBox(height: 4),
+                Text('ชั้นวางปัจจุบัน: $currentShelfName', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+                SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  decoration: InputDecoration(
+                    labelText: 'ชั้นวางปลายทาง *',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  ),
+                  value: selectedTargetShelfId,
+                  hint: Text('เลือกชั้นวาง'),
+                  items: availableShelves.map((s) {
+                    final id = s['id'] as String?;
+                    final name = s['code'] ?? s['name'] ?? 'ไม่มีชื่อ';
+                    if (id == null) return null;
+                    return DropdownMenuItem(value: id, child: Text(name));
+                  }).where((item) => item != null).cast<DropdownMenuItem<String>>().toList(),
+                  onChanged: (value) => setDialogState(() => selectedTargetShelfId = value),
+                  validator: (v) => v == null ? 'กรุณาเลือกชั้นวาง' : null,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            OutlinedButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('ยกเลิก'),
+            ),
+            ElevatedButton(
+              onPressed: isLoading || selectedTargetShelfId == null
+                  ? null
+                  : () async {
+                      setDialogState(() => isLoading = true);
+                      final ok = await InventoryService.updateProductShelf(
+                        productId: product['id'] as String,
+                        shelfId: selectedTargetShelfId!,
+                      );
+                      if (context.mounted) {
+                        Navigator.pop(context);
+                        if (ok) {
+                          _loadData();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('ย้ายชั้นวางสำเร็จ'), backgroundColor: Colors.green),
+                          );
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('เกิดข้อผิดพลาด'), backgroundColor: Colors.red),
+                          );
+                        }
+                      }
+                    },
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
+              child: isLoading
+                  ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : Text('ย้าย'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Dialog ย้ายสินค้าไปคลังอื่น
+  void _showMoveProductWarehouseDialog(Map<String, dynamic> product) {
+    final currentWarehouseId = product['warehouse']?['id'] as String?;
+    final currentShelfId = product['shelf_id'] as String?;
+    String? selectedTargetWarehouseId;
+    String? selectedTargetShelfId;
+    bool isLoading = false;
+
+    // Get current warehouse info for display
+    final currentWarehouse = _warehouses.firstWhere(
+      (w) => w['id'] == currentWarehouseId,
+      orElse: () => {'name': 'ไม่ระบุ'},
+    );
+    final currentWarehouseName = currentWarehouse['name'] ?? 'ไม่ระบุ';
+
+    // Filter warehouses, exclude current
+    final availableWarehouses = _warehouses.where((w) => w['id'] != currentWarehouseId).toList();
+
+    if (availableWarehouses.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('ไม่มีคลังอื่นที่จะย้ายได้'), backgroundColor: Colors.orange),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          // Get shelves for selected target warehouse
+          final targetShelves = selectedTargetWarehouseId != null
+              ? _shelves.where((s) => s['warehouse_id'] == selectedTargetWarehouseId).toList()
+              : <Map<String, dynamic>>[];
+
+          return AlertDialog(
+            title: Row(children: [
+              Icon(Icons.warehouse, color: Colors.orange),
+              SizedBox(width: 8),
+              Expanded(child: Text('ย้ายคลัง')),
+            ]),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('สินค้า: ${product['name'] ?? '-'}', style: TextStyle(fontWeight: FontWeight.bold)),
+                  SizedBox(height: 4),
+                  Text('คลังปัจจุบัน: $currentWarehouseName', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+                  SizedBox(height: 16),
+                  // Target Warehouse Dropdown
+                  DropdownButtonFormField<String>(
+                    decoration: InputDecoration(
+                      labelText: 'คลังปลายทาง *',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    ),
+                    value: selectedTargetWarehouseId,
+                    hint: Text('เลือกคลัง'),
+                    items: availableWarehouses.map((w) {
+                      final id = w['id'] as String?;
+                      final name = w['name'] ?? 'ไม่มีชื่อ';
+                      if (id == null) return null;
+                      return DropdownMenuItem(value: id, child: Text(name));
+                    }).where((item) => item != null).cast<DropdownMenuItem<String>>().toList(),
+                    onChanged: (value) => setDialogState(() {
+                      selectedTargetWarehouseId = value;
+                      selectedTargetShelfId = null; // Reset shelf when warehouse changes
+                    }),
+                    validator: (v) => v == null ? 'กรุณาเลือกคลัง' : null,
+                  ),
+                  SizedBox(height: 12),
+                  // Target Shelf Dropdown (only show if warehouse selected)
+                  if (selectedTargetWarehouseId != null)
+                    DropdownButtonFormField<String>(
+                      decoration: InputDecoration(
+                        labelText: 'ชั้นวางปลายทาง *',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      ),
+                      value: selectedTargetShelfId,
+                      hint: Text('เลือกชั้นวาง'),
+                      items: targetShelves.isEmpty
+                          ? [DropdownMenuItem(value: '', child: Text('ไม่มีชั้นวาง', style: TextStyle(color: Colors.grey)))]
+                          : targetShelves.map((s) {
+                              final id = s['id'] as String?;
+                              final name = s['code'] ?? s['name'] ?? 'ไม่มีชื่อ';
+                              if (id == null) return null;
+                              return DropdownMenuItem(value: id, child: Text(name));
+                            }).where((item) => item != null).cast<DropdownMenuItem<String>>().toList(),
+                      onChanged: targetShelves.isEmpty ? null : (value) => setDialogState(() => selectedTargetShelfId = value),
+                      validator: (v) => v == null || v.isEmpty ? 'กรุณาเลือกชั้นวาง' : null,
+                    ),
+                  if (selectedTargetWarehouseId != null && targetShelves.isEmpty)
+                    Padding(
+                      padding: EdgeInsets.only(top: 8),
+                      child: Text(
+                        'คลังนี้ไม่มีชั้นวาง กรุณาเพิ่มชั้นวางก่อน',
+                        style: TextStyle(color: Colors.orange, fontSize: 12),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              OutlinedButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('ยกเลิก'),
+              ),
+              ElevatedButton(
+                onPressed: isLoading || selectedTargetWarehouseId == null || selectedTargetShelfId == null || targetShelves.isEmpty
+                    ? null
+                    : () async {
+                        setDialogState(() => isLoading = true);
+                        final ok = await InventoryService.updateProductShelf(
+                          productId: product['id'] as String,
+                          shelfId: selectedTargetShelfId!,
+                        );
+                        if (context.mounted) {
+                          Navigator.pop(context);
+                          if (ok) {
+                            _loadData();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('ย้ายคลังสำเร็จ'), backgroundColor: Colors.green),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('เกิดข้อผิดพลาด'), backgroundColor: Colors.red),
+                            );
+                          }
+                        }
+                      },
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white),
+                child: isLoading
+                    ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : Text('ย้าย'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   Widget _buildActionButton(String label, Color color, IconData icon, VoidCallback onTap) {
