@@ -666,7 +666,7 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
                                   checkPermissionAndExecute(
                                     context,
                                     'inventory_adjustment_product_move_warehouse',
-                                    'ย้ายคลัง',
+                                    'โอนไปคลังอื่น',
                                     () => _showMoveProductWarehouseDialog(product),
                                   );
                                 }
@@ -690,7 +690,7 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
                                       children: [
                                         Icon(Icons.warehouse, color: Colors.orange, size: 18),
                                         SizedBox(width: 8),
-                                        Text('ย้ายคลัง'),
+                                        Text('โอนไปคลังอื่น'),
                                       ],
                                     ),
                                   ),
@@ -918,7 +918,7 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
 
     if (availableWarehouses.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('ไม่มีคลังอื่นที่จะย้ายได้'), backgroundColor: Colors.orange),
+        SnackBar(content: Text('ไม่มีคลังอื่นที่จะโอนได้'), backgroundColor: Colors.orange),
       );
       return;
     }
@@ -936,7 +936,7 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
             title: Row(children: [
               Icon(Icons.warehouse, color: Colors.orange),
               SizedBox(width: 8),
-              Expanded(child: Text('ย้ายคลัง')),
+              Expanded(child: Text('โอนไปคลังอื่น')),
             ]),
             content: SingleChildScrollView(
               child: Column(
@@ -1020,7 +1020,7 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
                           if (ok) {
                             _loadData();
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('ย้ายคลังสำเร็จ'), backgroundColor: Colors.green),
+                              SnackBar(content: Text('โอนคลังสำเร็จ'), backgroundColor: Colors.green),
                             );
                           } else {
                             ScaffoldMessenger.of(context).showSnackBar(

@@ -159,6 +159,12 @@ class UserGroupService {
         throw Exception('ไม่พบกลุ่มผู้ใช้ที่เลือก');
       }
 
+      // ตรวจสอบ sort_order ก่อนบันทึก - ป้องกันการเปลี่ยนไปกลุ่มที่สิทธิ์สูงกว่า
+      final canChange = await canChangeToGroup(groupId);
+      if (!canChange) {
+        throw Exception('ไม่สามารถเปลี่ยนไปกลุ่มที่มีสิทธิ์สูงกว่าหรือเท่ากับกลุ่มปัจจุบันได้');
+      }
+
       await _client.auth.updateUser(
         UserAttributes(
           data: {'user_group_id': groupId},
@@ -232,26 +238,87 @@ class UserGroupService {
            name.contains('admin');
   }
 
-  /// ดึงรายการกลุ่มที่ผู้ใช้สามารถเลือกได้
+  /// ดึง sort_order ของกลุ่มผู้ใช้ปัจจุบัน (ค่าน้อย = สิทธิ์สูง)
+  static Future<int?> getCurrentUserSortOrder() async {
+    try {
+      final groupId = await getCurrentUserGroupId();
+      if (groupId == null) return null;
+
+      final response = await _client
+          .from('user_groups')
+          .select('sort_order')
+          .eq('id', groupId)
+          .maybeSingle();
+
+      if (response != null && response['sort_order'] != null) {
+        return response['sort_order'] as int;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Error getting current user sort order: $e');
+      return null;
+    }
+  }
+
+  /// อัปเดต sort_order ของกลุ่มทั้งหมด (ส่งเป็น list ของ {id, sort_order})
+  static Future<bool> updateGroupSortOrders(List<Map<String, dynamic>> sortOrders) async {
+    try {
+      for (final item in sortOrders) {
+        await _client
+            .from('user_groups')
+            .update({'sort_order': item['sort_order']})
+            .eq('id', item['id']);
+      }
+      debugPrint('✅ Updated sort orders for ${sortOrders.length} groups');
+      return true;
+    } catch (e) {
+      debugPrint('❌ Error updating group sort orders: $e');
+      return false;
+    }
+  }
+
+  /// ดึงรายการกลุ่มที่ผู้ใช้สามารถเลือกได้ (กรองตาม sort_order)
+  /// แสดงเฉพาะกลุ่มที่มี sort_order สูงกว่า (ตัวเลขมากกว่า = สิทธิ์ต่ำกว่า) กลุ่มปัจจุบัน
+  /// ยกเว้นลำดับที่ 1 สามารถเห็นทุกกลุ่ม
   static Future<List<UserGroup>> getAvailableGroups() async {
     final allGroups = await getAllGroups();
-    final currentGroup = await getCurrentUserGroup();
+    final currentSortOrder = await getCurrentUserSortOrder();
     
-    if (currentGroup == null) return allGroups;
+    // ถ้าไม่มี sort_order (ยังไม่ได้กำหนดกลุ่ม) ให้แสดงทุกกลุ่ม
+    if (currentSortOrder == null) return allGroups;
     
-    final currentName = currentGroup.groupName.toLowerCase();
+    // ลำดับที่ 1 เห็นทุกกลุ่ม
+    if (currentSortOrder == 1) return allGroups;
     
-    if (currentName.contains('admin')) {
-      return allGroups;
-    }
-    
-    if (currentName.contains('owner') || currentName.contains('เจ้าของ')) {
-      return allGroups.where((g) => !g.groupName.toLowerCase().contains('admin')).toList();
-    }
-    
+    // แสดงเฉพาะกลุ่มที่ sort_order สูงกว่า (ตัวเลขมากกว่า = สิทธิ์ต่ำกว่า)
     return allGroups.where((g) {
-      final name = g.groupName.toLowerCase();
-      return !name.contains('admin') && !name.contains('owner') && !name.contains('เจ้าของ');
+      final groupSortOrder = g.sortOrder ?? 999;
+      return groupSortOrder > currentSortOrder;
     }).toList();
+  }
+
+  /// ตรวจสอบว่าผู้ใช้สามารถเปลี่ยนไปกลุ่มที่ระบุได้หรือไม่ (ตาม sort_order)
+  static Future<bool> canChangeToGroup(String targetGroupId) async {
+    try {
+      final currentSortOrder = await getCurrentUserSortOrder();
+      
+      // ถ้าไม่มี sort_order ให้เปลี่ยนได้
+      if (currentSortOrder == null) return true;
+      
+      // ลำดับที่ 1 เปลี่ยนได้ทุกกลุ่ม
+      if (currentSortOrder == 1) return true;
+      
+      // ดึง sort_order ของกลุ่มเป้าหมาย
+      final targetGroup = await getGroupById(targetGroupId);
+      if (targetGroup == null) return false;
+      
+      final targetSortOrder = targetGroup.sortOrder ?? 999;
+      
+      // เปลี่ยนได้เฉพาะกลุ่มที่ sort_order สูงกว่า (ตัวเลขมากกว่า)
+      return targetSortOrder > currentSortOrder;
+    } catch (e) {
+      debugPrint('Error checking canChangeToGroup: $e');
+      return false;
+    }
   }
 }

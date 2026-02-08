@@ -10,6 +10,7 @@ class UserGroup {
   final DateTime? createdAt;
   final bool isActive;
   final bool requiresProfileCompletion;
+  final int? sortOrder;
 
   UserGroup({
     required this.id,
@@ -20,6 +21,7 @@ class UserGroup {
     this.createdAt,
     this.isActive = true,
     this.requiresProfileCompletion = false,
+    this.sortOrder,
   });
 
   factory UserGroup.fromJson(Map<String, dynamic> json) {
@@ -34,6 +36,7 @@ class UserGroup {
           : null,
       isActive: json['is_active'] ?? true,
       requiresProfileCompletion: json['requires_profile_completion'] ?? false,
+      sortOrder: json['sort_order'] as int?,
     );
   }
 
@@ -47,6 +50,7 @@ class UserGroup {
       'created_at': createdAt?.toIso8601String(),
       'is_active': isActive,
       'requires_profile_completion': requiresProfileCompletion,
+      'sort_order': sortOrder,
     };
   }
 

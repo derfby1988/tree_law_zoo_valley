@@ -18,6 +18,7 @@ import 'pages/inventory_page.dart';
 import 'pages/user_groups_page.dart';
 import 'pages/user_permissions_page.dart';
 import 'services/permission_service.dart';
+import 'services/user_group_service.dart';
 
 // Helper function to validate email or phone
 bool isValidEmailOrPhone(String input) {
@@ -179,6 +180,11 @@ class _MyHomePageState extends State<MyHomePage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final currentUser = Supabase.instance.client.auth.currentUser;
   String? _userFullName;
+  int? _currentUserSortOrder;
+
+  /// ตรวจสอบสิทธิ์ endDrawer จากระบบสิทธิ์ (toggle ได้ในหน้าจัดการสิทธิ์ผู้ใช้)
+  /// ยกเว้นลำดับที่ 1 เข้าถึงได้เสมอ
+  bool get _canAccessEndDrawer => _currentUserSortOrder == 1 || PermissionService.canAccessPageSync('end_drawer');
 
   @override
   void initState() {
@@ -193,9 +199,13 @@ class _MyHomePageState extends State<MyHomePage> {
       final fullName = userMetadata?['full_name'] as String?;
       final username = userMetadata?['username'] as String?;
       
+      // โหลด sort_order ของกลุ่มผู้ใช้ปัจจุบัน (ลำดับ 1 เข้าถึง endDrawer ได้เสมอ)
+      final sortOrder = await UserGroupService.getCurrentUserSortOrder();
+      
       if (mounted) {
         setState(() {
           _userFullName = fullName ?? username ?? currentUser?.email?.split('@')[0] ?? 'สมาชิก';
+          _currentUserSortOrder = sortOrder;
         });
       }
     }
@@ -250,12 +260,12 @@ class _MyHomePageState extends State<MyHomePage> {
           print('Opening left drawer with right swipe');
           _scaffoldKey.currentState?.openDrawer();
         } else if (details.velocity.pixelsPerSecond.dx < -500) {
-          // Swipe ซ้าย (dx < 0) เพื่อเปิด end drawer ด้านขวา (ต้อง login)
-          if (!widget.isGuestMode && currentUser != null) {
+          // Swipe ซ้าย (dx < 0) เพื่อเปิด end drawer ด้านขวา (ต้องเป็นพนักงานร้านขึ้นไป)
+          if (!widget.isGuestMode && currentUser != null && _canAccessEndDrawer) {
             print('Opening right drawer with left swipe');
             _scaffoldKey.currentState?.openEndDrawer();
           } else {
-            print('Right drawer requires login - swipe ignored');
+            print('Right drawer requires staff or above - swipe ignored');
           }
         }
       },
@@ -480,8 +490,8 @@ class _MyHomePageState extends State<MyHomePage> {
           ),
         ),
         ),
-        // Add EndDrawer only for logged-in users
-        endDrawer: !widget.isGuestMode && currentUser != null 
+        // Add EndDrawer only for staff or above
+        endDrawer: !widget.isGuestMode && currentUser != null && _canAccessEndDrawer 
           ? GestureDetector(
               onPanEnd: (details) {
                 print('EndDrawer swipe detected: velocity.dx = ${details.velocity.pixelsPerSecond.dx}');
@@ -696,7 +706,7 @@ class _MyHomePageState extends State<MyHomePage> {
                                     if (details.velocity.pixelsPerSecond.dx > 200) {
                                       _scaffoldKey.currentState?.openDrawer();
                                     } else if (details.velocity.pixelsPerSecond.dx < -200) {
-                                      if (!widget.isGuestMode && currentUser != null) {
+                                      if (!widget.isGuestMode && currentUser != null && _canAccessEndDrawer) {
                                         _scaffoldKey.currentState?.openEndDrawer();
                                       }
                                     }
@@ -791,7 +801,7 @@ class _MyHomePageState extends State<MyHomePage> {
                                     if (details.velocity.pixelsPerSecond.dx > 200) {
                                       _scaffoldKey.currentState?.openDrawer();
                                     } else if (details.velocity.pixelsPerSecond.dx < -200) {
-                                      if (!widget.isGuestMode && currentUser != null) {
+                                      if (!widget.isGuestMode && currentUser != null && _canAccessEndDrawer) {
                                         _scaffoldKey.currentState?.openEndDrawer();
                                       }
                                     }
@@ -969,12 +979,12 @@ class _MyHomePageState extends State<MyHomePage> {
           ),
         ),
         
-        // Menu buttons for user mode
-        if (!widget.isGuestMode) ...[
-          // Menu button to open drawer
+        // Menu buttons for user mode (เฉพาะพนักงานร้านขึ้นไป)
+        if (!widget.isGuestMode && _canAccessEndDrawer) ...[
+          // Menu button to open endDrawer
           IconButton(
             onPressed: () {
-              print('Menu button pressed, opening drawer');
+              print('Menu button pressed, opening endDrawer');
               _scaffoldKey.currentState?.openEndDrawer();
             },
             padding: EdgeInsets.zero,

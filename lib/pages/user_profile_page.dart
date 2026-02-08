@@ -1205,16 +1205,16 @@ class _UserProfilePageState extends State<UserProfilePage> {
     final availableGroups = await UserGroupService.getAvailableGroups();
     
     // โหลดข้อมูลสมาชิกเพื่อนับจำนวน
-    final permissionsResponse = await SupabaseService.client
+    final membersResponse = await SupabaseService.client
         .from('user_group_members')
-        .select('*');
-    final permissions = List<Map<String, dynamic>>.from(permissionsResponse);
+        .select('group_id');
+    final members = List<Map<String, dynamic>>.from(membersResponse);
     
     // เรียงลำดับกลุ่มตามจำนวนสมาชิกจากมากไปน้อย
     availableGroups.sort((a, b) {
-      final countA = permissions.where((p) => p['group_id'] == a.id).length;
-      final countB = permissions.where((p) => p['group_id'] == b.id).length;
-      return countB.compareTo(countA); // มากไปน้อย
+      final countA = members.where((m) => m['group_id'] == a.id).length;
+      final countB = members.where((m) => m['group_id'] == b.id).length;
+      return countB.compareTo(countA);
     });
     
     if (!mounted) return;

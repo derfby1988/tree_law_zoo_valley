@@ -17,6 +17,7 @@ final List<Map<String, dynamic>> _systemPages = [
   {'id': 'user_groups', 'name': 'กลุ่มผู้ใช้', 'button': 'กลุ่ม', 'icon': Icons.group_work},
   {'id': 'reports', 'name': 'รายงาน', 'button': 'รายงาน', 'icon': Icons.bar_chart},
   {'id': 'settings', 'name': 'ตั้งค่า', 'button': 'ตั้งค่า', 'icon': Icons.settings},
+  {'id': 'end_drawer', 'name': 'เมนูจัดการร้าน (End Drawer)', 'button': 'End Drawer', 'icon': Icons.menu_open},
 ];
 
 /// รายการ Tab ทั้งหมดในแต่ละหน้า
@@ -58,7 +59,7 @@ final List<Map<String, dynamic>> _systemActions = [
   {'id': 'inventory_adjustment_warehouse_edit', 'tab_id': 'inventory_adjustment', 'name': 'แก้ไขคลังสินค้า', 'icon': Icons.edit},
   {'id': 'inventory_adjustment_warehouse_delete', 'tab_id': 'inventory_adjustment', 'name': 'ลบคลังสินค้า', 'icon': Icons.delete},
   {'id': 'inventory_adjustment_product_move_shelf', 'tab_id': 'inventory_adjustment', 'name': 'ย้ายสินค้าไปชั้นวางอื่น', 'icon': Icons.move_up},
-  {'id': 'inventory_adjustment_product_move_warehouse', 'tab_id': 'inventory_adjustment', 'name': 'ย้ายสินค้าไปคลังอื่น', 'icon': Icons.warehouse},
+  {'id': 'inventory_adjustment_product_move_warehouse', 'tab_id': 'inventory_adjustment', 'name': 'โอนสินค้าไปคลังอื่น', 'icon': Icons.warehouse},
   // Tab: สูตรอาหาร (inventory_recipe)
   {'id': 'inventory_recipe_add', 'tab_id': 'inventory_recipe', 'name': 'เพิ่มสูตร', 'icon': Icons.add},
   {'id': 'inventory_recipe_edit', 'tab_id': 'inventory_recipe', 'name': 'แก้ไขสูตร', 'icon': Icons.edit},
@@ -75,6 +76,7 @@ final List<Map<String, dynamic>> _systemActions = [
   {'id': 'user_groups_create', 'tab_id': 'user_groups_main', 'name': 'สร้างกลุ่ม', 'icon': Icons.group_add},
   {'id': 'user_groups_edit', 'tab_id': 'user_groups_main', 'name': 'แก้ไขกลุ่ม', 'icon': Icons.edit},
   {'id': 'user_groups_delete', 'tab_id': 'user_groups_main', 'name': 'ลบกลุ่ม', 'icon': Icons.delete},
+  {'id': 'user_groups_sort_order', 'tab_id': 'user_groups_main', 'name': 'จัดลำดับกลุ่ม', 'icon': Icons.swap_vert},
 ];
 
 class UserPermissionsPage extends StatefulWidget {

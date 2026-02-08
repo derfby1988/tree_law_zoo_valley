@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
+import '../services/user_group_service.dart';
 import '../utils/permission_helpers.dart';
 import '../widgets/glass_dialog.dart';
 import '../widgets/glass_button.dart';
@@ -29,6 +30,7 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
   List<Map<String, dynamic>> _users = [];
   List<Map<String, dynamic>> _permissions = [];
   Map<String, dynamic>? _selectedGroup;
+  int? _currentUserSortOrder;
 
   // รายการสีที่แนะนำ
   final List<Color> _presetColors = [
@@ -115,7 +117,7 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
       final groupsResponse = await SupabaseService.client
           .from('user_groups')
           .select('*')
-          .order('created_at', ascending: false);
+          .order('sort_order', ascending: true);
 
       // โหลดข้อมูลผู้ใช้ (สำหรับนับสมาชิก - ไม่กรอง is_active เพราะ user_group_members ไม่มีข้อมูล is_active)
       final usersResponse = await SupabaseService.client
@@ -135,19 +137,23 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
 
       print('📊 Groups: ${groupsResponse.length}, Users: ${usersResponse.length}, Permissions: ${permissionsResponse.length}');
       
+      // โหลด sort_order ของกลุ่มผู้ใช้ปัจจุบัน
+      final currentSortOrder = await UserGroupService.getCurrentUserSortOrder();
+
       setState(() {
         _userGroups = List<Map<String, dynamic>>.from(groupsResponse);
         _users = List<Map<String, dynamic>>.from(usersResponse);
         _permissions = List<Map<String, dynamic>>.from(permissionsResponse);
+        _currentUserSortOrder = currentSortOrder;
         
-        // เรียงลำดับกลุ่มตามจำนวนสมาชิกจากมากไปน้อย
+        // เรียงลำดับกลุ่มตาม sort_order (น้อยไปมาก = สิทธิ์สูงไปต่ำ)
         _userGroups.sort((a, b) {
-          final countA = _getActiveMemberCount(a['id']);
-          final countB = _getActiveMemberCount(b['id']);
-          return countB.compareTo(countA); // มากไปน้อย
+          final orderA = (a['sort_order'] as int?) ?? 999;
+          final orderB = (b['sort_order'] as int?) ?? 999;
+          return orderA.compareTo(orderB);
         });
         
-        print('✅ Loaded ${_userGroups.length} groups (sorted by member count)');
+        print('✅ Loaded ${_userGroups.length} groups (sorted by sort_order), current user sort_order: $currentSortOrder');
         _isLoading = false;
       });
     } catch (e) {
@@ -403,6 +409,162 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
                   onPressed: _isCreating ? null : _createUserGroup,
                   backgroundColor: Color(0xFF2E7D32),
                   icon: Icons.group_add,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showSortGroupsDialog() {
+    // สร้าง copy ของ list สำหรับจัดลำดับ
+    final sortableGroups = List<Map<String, dynamic>>.from(_userGroups);
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => GlassDialog(
+          title: 'จัดลำดับกลุ่มผู้ใช้',
+          child: SizedBox(
+            width: double.maxFinite,
+            height: 400,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.deepPurple[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.deepPurple[200]!),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.deepPurple[400], size: 18),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'ลำดับที่สูงกว่า (ตัวเลขน้อย) = สิทธิ์มากกว่า\nลากเพื่อเปลี่ยนลำดับ',
+                          style: TextStyle(fontSize: 12, color: Colors.deepPurple[700]),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(height: 12),
+                Expanded(
+                  child: ReorderableListView.builder(
+                    itemCount: sortableGroups.length,
+                    onReorder: (oldIndex, newIndex) {
+                      setDialogState(() {
+                        if (newIndex > oldIndex) newIndex--;
+                        final item = sortableGroups.removeAt(oldIndex);
+                        sortableGroups.insert(newIndex, item);
+                      });
+                    },
+                    itemBuilder: (context, index) {
+                      final group = sortableGroups[index];
+                      final groupColor = _hexToColor(group['color'] ?? '#4CAF50');
+                      return Container(
+                        key: ValueKey(group['id']),
+                        margin: EdgeInsets.symmetric(vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: groupColor.withOpacity(0.4)),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.05),
+                              blurRadius: 4,
+                              offset: Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: ListTile(
+                          leading: Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: groupColor,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Center(
+                              child: Text(
+                                '${index + 1}',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ),
+                          ),
+                          title: Text(
+                            group['group_name'] ?? '',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          subtitle: Text(
+                            '${_getActiveMemberCount(group['id'])} สมาชิก',
+                            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                          ),
+                          trailing: Icon(Icons.drag_handle, color: Colors.grey[400]),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: isSaving ? null : () => Navigator.of(context).pop(),
+                  child: Text('ยกเลิก'),
+                ),
+                const SizedBox(width: 12),
+                GlassButton(
+                  text: isSaving ? 'กำลังบันทึก...' : 'บันทึกลำดับ',
+                  onPressed: isSaving ? null : () async {
+                    setDialogState(() => isSaving = true);
+                    
+                    // สร้าง list ของ sort_order ใหม่
+                    final sortOrders = <Map<String, dynamic>>[];
+                    for (int i = 0; i < sortableGroups.length; i++) {
+                      sortOrders.add({
+                        'id': sortableGroups[i]['id'],
+                        'sort_order': i + 1,
+                      });
+                    }
+                    
+                    final success = await UserGroupService.updateGroupSortOrders(sortOrders);
+                    
+                    if (success) {
+                      Navigator.of(context).pop();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('บันทึกลำดับกลุ่มสำเร็จ'),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                      _loadUserGroups();
+                    } else {
+                      setDialogState(() => isSaving = false);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('ไม่สามารถบันทึกลำดับกลุ่มได้'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  },
+                  backgroundColor: Colors.deepPurple[600]!,
+                  icon: Icons.save,
                 ),
               ],
             ),
@@ -883,6 +1045,24 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
                       blurStrength: 5,
                     ),
                   ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: GlassButton(
+                      text: 'จัดลำดับกลุ่ม',
+                      onPressed: () => checkPermissionAndExecute(
+                        context,
+                        'user_groups_sort_order',
+                        'จัดลำดับกลุ่ม',
+                        () => _showSortGroupsDialog(),
+                      ),
+                      backgroundColor: Colors.deepPurple[600]!,
+                      textColor: Colors.white,
+                      icon: Icons.swap_vert,
+                      width: double.infinity,
+                      opacity: 0.85,
+                      blurStrength: 5,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1116,6 +1296,10 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
   Widget _buildGroupCard(Map<String, dynamic> group) {
     final groupColor = _hexToColor(group['color']);
     final headerColor = _darkenColor(groupColor, 0.15);
+    final groupSortOrder = (group['sort_order'] as int?) ?? 999;
+    // ลำดับที่ 1 จัดการได้ทุกกลุ่ม, ลำดับอื่นจัดการได้เฉพาะกลุ่มที่ sort_order สูงกว่า
+    final canManageThisGroup = _currentUserSortOrder != null && 
+        (_currentUserSortOrder == 1 || groupSortOrder > _currentUserSortOrder!);
 
     return Container(
       decoration: BoxDecoration(
@@ -1217,11 +1401,11 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
                           ),
                         ),
                       ],
-                      onChanged: (value) {
+                      onChanged: canManageThisGroup ? (value) {
                         if (value != null) {
                           _updateGroupStatus(group['id'], value);
                         }
-                      },
+                      } : null,
                     ),
                   ),
                 ),
@@ -1231,17 +1415,42 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
           // Description - removed to save space
           // Members list - removed to save space, count shown in header
           // Action buttons - compact
+          // Sort order badge
+          if (group['sort_order'] != null)
+            Padding(
+              padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Row(
+                children: [
+                  Icon(Icons.swap_vert, size: 14, color: Colors.grey[500]),
+                  SizedBox(width: 4),
+                  Text(
+                    'ลำดับ: ${group['sort_order']}',
+                    style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                  ),
+                  if (!canManageThisGroup) ...[
+                    Spacer(),
+                    Icon(Icons.lock, size: 12, color: Colors.grey[400]),
+                    SizedBox(width: 4),
+                    Text(
+                      'ไม่สามารถจัดการได้',
+                      style: TextStyle(fontSize: 10, color: Colors.grey[400]),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          // Action buttons - compact
           Padding(
             padding: EdgeInsets.fromLTRB(16, 8, 16, 12),
             child: Row(
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => _showEditGroupDialog(group),
-                    icon: Icon(Icons.edit, size: 14, color: groupColor),
-                    label: Text('แก้ไข', style: TextStyle(color: groupColor, fontSize: 11)),
+                    onPressed: canManageThisGroup ? () => _showEditGroupDialog(group) : null,
+                    icon: Icon(Icons.edit, size: 14, color: canManageThisGroup ? groupColor : Colors.grey[400]),
+                    label: Text('แก้ไข', style: TextStyle(color: canManageThisGroup ? groupColor : Colors.grey[400], fontSize: 11)),
                     style: OutlinedButton.styleFrom(
-                      side: BorderSide(color: groupColor.withOpacity(0.4)),
+                      side: BorderSide(color: canManageThisGroup ? groupColor.withOpacity(0.4) : Colors.grey[300]!),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
@@ -1252,7 +1461,7 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () {
+                    onPressed: canManageThisGroup ? () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -1261,11 +1470,11 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
                           ),
                         ),
                       );
-                    },
-                    icon: Icon(Icons.security, size: 14, color: headerColor),
-                    label: Text('กำหนดสิทธิ์', style: TextStyle(color: headerColor, fontSize: 11)),
+                    } : null,
+                    icon: Icon(Icons.security, size: 14, color: canManageThisGroup ? headerColor : Colors.grey[400]),
+                    label: Text('กำหนดสิทธิ์', style: TextStyle(color: canManageThisGroup ? headerColor : Colors.grey[400], fontSize: 11)),
                     style: OutlinedButton.styleFrom(
-                      side: BorderSide(color: headerColor.withOpacity(0.4)),
+                      side: BorderSide(color: canManageThisGroup ? headerColor.withOpacity(0.4) : Colors.grey[300]!),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
