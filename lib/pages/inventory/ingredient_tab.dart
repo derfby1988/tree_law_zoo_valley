@@ -3,21 +3,20 @@ import '../../services/inventory_service.dart';
 import '../../services/permission_service.dart';
 import '../../utils/permission_helpers.dart';
 import 'inventory_filter_widget.dart';
-import '../procurement_page.dart';
 
-class ProductTab extends StatefulWidget {
-  const ProductTab({super.key});
+class IngredientTab extends StatefulWidget {
+  const IngredientTab({super.key});
 
   @override
-  State<ProductTab> createState() => _ProductTabState();
+  State<IngredientTab> createState() => _IngredientTabState();
 }
 
-class _ProductTabState extends State<ProductTab> {
+class _IngredientTabState extends State<IngredientTab> {
   final TextEditingController _searchController = TextEditingController();
   String _selectedWarehouse = 'ทั้งหมด';
   String _selectedShelf = 'ทั้งหมด';
 
-  List<Map<String, dynamic>> _products = [];
+  List<Map<String, dynamic>> _ingredients = [];
   List<Map<String, dynamic>> _categories = [];
   List<Map<String, dynamic>> _units = [];
   List<Map<String, dynamic>> _shelves = [];
@@ -34,7 +33,7 @@ class _ProductTabState extends State<ProductTab> {
   static const int _itemsPerPage = 5;
 
   // Sorting
-  String _sortBy = 'qty_desc';
+  String _sortBy = 'low_stock';
 
   @override
   void initState() {
@@ -54,14 +53,14 @@ class _ProductTabState extends State<ProductTab> {
     setState(() { _isLoading = true; _errorMessage = null; });
     try {
       final results = await Future.wait([
-        InventoryService.getProducts(),
+        InventoryService.getIngredients(),
         InventoryService.getCategories(),
         InventoryService.getUnits(),
         InventoryService.getShelves(),
         InventoryService.getWarehouses(),
       ]);
       setState(() {
-        _products = results[0];
+        _ingredients = results[0];
         _categories = results[1];
         _units = results[2];
         _shelves = results[3];
@@ -73,8 +72,8 @@ class _ProductTabState extends State<ProductTab> {
     }
   }
 
-  List<Map<String, dynamic>> get _filteredProducts {
-    var list = List<Map<String, dynamic>>.from(_products);
+  List<Map<String, dynamic>> get _filteredIngredients {
+    var list = List<Map<String, dynamic>>.from(_ingredients);
     final search = _searchController.text.toLowerCase();
     if (search.isNotEmpty) {
       list = list.where((p) => (p['name'] as String).toLowerCase().contains(search)).toList();
@@ -92,8 +91,7 @@ class _ProductTabState extends State<ProductTab> {
         if (_selectedShelf == 'ยังไม่มีชั้นวาง') {
           return p['shelf_id'] == null;
         }
-        final shelf = p['shelf'];
-        return shelf != null && shelf['code'] == _selectedShelf;
+        return false; // ยังไม่รองรับกรองตาม shelf code (ต้อง join)
       }).toList();
     }
     // Sorting
@@ -103,6 +101,19 @@ class _ProductTabState extends State<ProductTab> {
         break;
       case 'qty_asc':
         list.sort((a, b) => ((a['quantity'] as num?)?.toDouble() ?? 0).compareTo((b['quantity'] as num?)?.toDouble() ?? 0));
+        break;
+      case 'low_stock':
+        list.sort((a, b) {
+          final aQty = (a['quantity'] as num?)?.toDouble() ?? 0;
+          final aMinQty = (a['min_quantity'] as num?)?.toDouble() ?? 0;
+          final bQty = (b['quantity'] as num?)?.toDouble() ?? 0;
+          final bMinQty = (b['min_quantity'] as num?)?.toDouble() ?? 0;
+          
+          // คำนวณสัดส่วนว่าเหลือเท่าไหร่ (quantity/min_quantity)
+          final aRatio = aMinQty > 0 ? aQty / aMinQty : (aQty > 0 ? 999 : 0);
+          final bRatio = bMinQty > 0 ? bQty / bMinQty : (bQty > 0 ? 999 : 0);
+          return aRatio.compareTo(bRatio);
+        });
         break;
       case 'out_of_stock':
         list = list.where((p) => ((p['quantity'] as num?)?.toDouble() ?? 0) <= 0).toList();
@@ -117,17 +128,17 @@ class _ProductTabState extends State<ProductTab> {
     return list;
   }
 
-  int get _totalPages => (_filteredProducts.length / _itemsPerPage).ceil();
+  int get _totalPages => (_filteredIngredients.length / _itemsPerPage).ceil();
 
-  List<Map<String, dynamic>> get _paginatedProducts {
-    final filtered = _filteredProducts;
+  List<Map<String, dynamic>> get _paginatedIngredients {
+    final filtered = _filteredIngredients;
     final start = _currentPage * _itemsPerPage;
     if (start >= filtered.length) return [];
     final end = (start + _itemsPerPage).clamp(0, filtered.length);
     return filtered.sublist(start, end);
   }
 
-  String _getProductStatus(Map<String, dynamic> p) {
+  String _getIngredientStatus(Map<String, dynamic> p) {
     final qty = (p['quantity'] as num?)?.toDouble() ?? 0;
     final minQty = (p['min_quantity'] as num?)?.toDouble() ?? 0;
     if (qty <= 0) return 'หมด';
@@ -169,14 +180,13 @@ class _ProductTabState extends State<ProductTab> {
               onShelfChanged: (value) => setState(() { _selectedShelf = value!; _currentPage = 0; }),
               warehouseOptions: warehouseOptions,
               shelfOptions: shelfOptions,
-              showNoShelfOption: true,
             ),
             SizedBox(height: 16),
             _buildActionButtons(),
             SizedBox(height: 16),
             _buildNoShelfCard(),
             SizedBox(height: 16),
-            _buildProductList(),
+            _buildIngredientList(),
           ],
         ),
       ),
@@ -191,22 +201,18 @@ class _ProductTabState extends State<ProductTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('จัดการข้อมูลสินค้า', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text('จัดการวัตถุดิบ', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             SizedBox(height: 12),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
-                if (PermissionService.canAccessActionSync('inventory_products_category'))
-                  _buildActionButton('ประเภท', Colors.blue, Icons.folder, () => checkPermissionAndExecute(context, 'inventory_products_category', 'จัดการประเภท', () => _showCategoryDialog())),
-                if (PermissionService.canAccessActionSync('inventory_products_unit'))
-                  _buildActionButton('หน่วยนับ', Colors.teal, Icons.scale, () => checkPermissionAndExecute(context, 'inventory_products_unit', 'จัดการหน่วยนับ', () => _showUnitDialog())),
-                if (PermissionService.canAccessActionSync('inventory_products_add'))
-                  _buildActionButton('เพิ่มสินค้า', Colors.orange, Icons.add_circle, () => checkPermissionAndExecute(context, 'inventory_products_add', 'เพิ่มสินค้า', () => _showAddProductDialog())),
-                if (PermissionService.canAccessActionSync('inventory_products_produce'))
-                  _buildActionButton('ผลิตสินค้า', Colors.purple, Icons.factory, () => checkPermissionAndExecute(context, 'inventory_products_produce', 'ผลิตสินค้า', () => _showProduceProductDialog())),
-                if (PermissionService.canAccessPageSync('procurement'))
-                  _buildActionButton('สั่งซื้อสินค้า', Colors.green, Icons.shopping_cart, () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ProcurementPage()))),
+                if (PermissionService.canAccessActionSync('inventory_ingredients_category'))
+                  _buildActionButton('ประเภท', Colors.blue, Icons.folder, () => checkPermissionAndExecute(context, 'inventory_ingredients_category', 'จัดการประเภท', () => _showCategoryDialog())),
+                if (PermissionService.canAccessActionSync('inventory_ingredients_unit'))
+                  _buildActionButton('หน่วยนับ', Colors.teal, Icons.scale, () => checkPermissionAndExecute(context, 'inventory_ingredients_unit', 'จัดการหน่วยนับ', () => _showUnitDialog())),
+                if (PermissionService.canAccessActionSync('inventory_ingredients_add'))
+                  _buildActionButton('เพิ่มวัตถุดิบ', Colors.orange, Icons.add_circle, () => checkPermissionAndExecute(context, 'inventory_ingredients_add', 'เพิ่มวัตถุดิบ', () => _showAddIngredientDialog())),
               ],
             ),
           ],
@@ -230,7 +236,7 @@ class _ProductTabState extends State<ProductTab> {
   }
 
   Widget _buildNoShelfCard() {
-    final noShelfItems = _products.where((p) => p['shelf_id'] == null).toList();
+    final noShelfItems = _ingredients.where((p) => p['shelf_id'] == null).toList();
     if (noShelfItems.isEmpty) return SizedBox.shrink();
 
     final allSelected = noShelfItems.isNotEmpty && noShelfItems.every((p) => _selectedNoShelfIds.contains(p['id']));
@@ -243,21 +249,19 @@ class _ProductTabState extends State<ProductTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
             Row(
               children: [
                 Icon(Icons.warning_amber_rounded, color: Colors.orange[700], size: 20),
                 SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'สินค้ายังไม่มีชั้นวาง (${noShelfItems.length} รายการ)',
+                    'วัตถุดิบยังไม่มีชั้นวาง (${noShelfItems.length} รายการ)',
                     style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.orange[800]),
                   ),
                 ),
               ],
             ),
             SizedBox(height: 8),
-            // Select all + Assign button
             Row(
               children: [
                 SizedBox(
@@ -293,7 +297,6 @@ class _ProductTabState extends State<ProductTab> {
               ],
             ),
             SizedBox(height: 8),
-            // Scrollable list
             ConstrainedBox(
               constraints: BoxConstraints(maxHeight: noShelfItems.length > 5 ? 280 : double.infinity),
               child: Scrollbar(
@@ -308,9 +311,8 @@ class _ProductTabState extends State<ProductTab> {
                     final item = noShelfItems[index];
                     final id = item['id'] as String;
                     final qty = (item['quantity'] as num?)?.toDouble() ?? 0;
-                    final status = _getProductStatus(item);
+                    final status = _getIngredientStatus(item);
                     final statusColor = status == 'พร้อม' ? Colors.green : status == 'ใกล้หมด' ? Colors.orange : Colors.red;
-                    final unitAbbr = item['unit']?['abbreviation'] ?? '';
 
                     return Container(
                       margin: EdgeInsets.only(bottom: 4),
@@ -344,7 +346,7 @@ class _ProductTabState extends State<ProductTab> {
                             child: Text(item['name'] ?? '', style: TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
                           ),
                           SizedBox(width: 4),
-                          Text('${qty.toStringAsFixed(qty == qty.roundToDouble() ? 0 : 1)} $unitAbbr', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                          Text('${qty.toStringAsFixed(qty == qty.roundToDouble() ? 0 : 1)}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                           SizedBox(width: 8),
                           Container(width: 8, height: 8, decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle)),
                         ],
@@ -403,10 +405,7 @@ class _ProductTabState extends State<ProductTab> {
                 setDialogState(() => isLoading = true);
                 int success = 0;
                 for (final id in _selectedNoShelfIds) {
-                  final ok = await InventoryService.updateProductShelf(
-                    productId: id,
-                    shelfId: selectedShelfId!,
-                  );
+                  final ok = await InventoryService.updateIngredient(id, {'shelf_id': selectedShelfId});
                   if (ok) success++;
                 }
                 if (context.mounted) {
@@ -431,9 +430,9 @@ class _ProductTabState extends State<ProductTab> {
     );
   }
 
-  Widget _buildProductList() {
-    final filtered = _filteredProducts;
-    final paginated = _paginatedProducts;
+  Widget _buildIngredientList() {
+    final filtered = _filteredIngredients;
+    final paginated = _paginatedIngredients;
     final totalPages = _totalPages;
     return Card(
       elevation: 2,
@@ -446,7 +445,7 @@ class _ProductTabState extends State<ProductTab> {
             Row(
               children: [
                 Expanded(
-                  child: Text('รายการสินค้า (${filtered.length} รายการ)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  child: Text('รายการวัตถุดิบ (${filtered.length} รายการ)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 ),
                 SizedBox(
                   height: 36,
@@ -457,12 +456,12 @@ class _ProductTabState extends State<ProductTab> {
                     style: TextStyle(fontSize: 13, color: Colors.black87),
                     isDense: true,
                     items: [
+                      DropdownMenuItem(value: 'low_stock', child: Text('วัตถุดิบใกล้หมด')),
                       DropdownMenuItem(value: 'qty_desc', child: Text('จำนวนมากสุด')),
                       DropdownMenuItem(value: 'qty_asc', child: Text('จำนวนน้อยสุด')),
-                      
                       DropdownMenuItem(value: 'name_asc', child: Text('เรียงตามชื่อ')),
                       DropdownMenuItem(value: 'no_shelf', child: Text('ยังไม่จัดชั้นวาง')),
-                      DropdownMenuItem(value: 'out_of_stock', child: Text('ไม่มีสินค้า')),
+                      DropdownMenuItem(value: 'out_of_stock', child: Text('ไม่มีวัตถุดิบ')),
                     ],
                     onChanged: (v) => setState(() { _sortBy = v!; _currentPage = 0; }),
                   ),
@@ -473,11 +472,11 @@ class _ProductTabState extends State<ProductTab> {
             if (filtered.isEmpty)
               Padding(
                 padding: EdgeInsets.all(24),
-                child: Center(child: Text('ไม่พบสินค้า', style: TextStyle(color: Colors.grey[600]))),
+                child: Center(child: Text('ไม่พบวัตถุดิบ', style: TextStyle(color: Colors.grey[600]))),
               )
             else ...
               [
-                ...paginated.map((product) => _buildProductItem(product)).toList(),
+                ...paginated.map((ingredient) => _buildIngredientItem(ingredient)).toList(),
                 // Pagination controls
                 if (totalPages > 1)
                   Padding(
@@ -531,12 +530,12 @@ class _ProductTabState extends State<ProductTab> {
     );
   }
 
-  Widget _buildProductItem(Map<String, dynamic> product) {
-    final status = _getProductStatus(product);
+  Widget _buildIngredientItem(Map<String, dynamic> ingredient) {
+    final status = _getIngredientStatus(ingredient);
     final statusColor = status == 'พร้อม' ? Colors.green : status == 'ใกล้หมด' ? Colors.orange : Colors.red;
-    final qty = (product['quantity'] as num?)?.toDouble() ?? 0;
-    final price = (product['price'] as num?)?.toDouble() ?? 0;
-    final unitAbbr = product['unit']?['abbreviation'] ?? '';
+    final qty = (ingredient['quantity'] as num?)?.toDouble() ?? 0;
+    final cost = (ingredient['cost'] as num?)?.toDouble() ?? 0;
+    final unitAbbr = ingredient['unit']?['abbreviation'] ?? '';
 
     return Container(
       margin: EdgeInsets.only(bottom: 8),
@@ -548,22 +547,22 @@ class _ProductTabState extends State<ProductTab> {
       ),
       child: Row(
         children: [
-          Icon(Icons.inventory_2, color: Colors.grey[600]),
+          Icon(Icons.restaurant_menu, color: Colors.grey[600]),
           SizedBox(width: 12),
           Expanded(
             flex: 3,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(product['name'] ?? '', style: TextStyle(fontWeight: FontWeight.w500)),
-                Text('฿${price.toStringAsFixed(0)}/$unitAbbr', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                Text(ingredient['name'] ?? '', style: TextStyle(fontWeight: FontWeight.w500)),
+                Text('฿${cost.toStringAsFixed(0)}/$unitAbbr', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
               ],
             ),
           ),
           Expanded(child: Text('${qty.toStringAsFixed(qty == qty.roundToDouble() ? 0 : 1)}', style: TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
           Container(width: 8, height: 8, decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle)),
           SizedBox(width: 8),
-          IconButton(icon: Icon(Icons.edit, size: 20), onPressed: () => checkPermissionAndExecute(context, 'inventory_products_edit', 'แก้ไขสินค้า', () => _showEditProductDialog(product)), padding: EdgeInsets.zero, constraints: BoxConstraints()),
+          IconButton(icon: Icon(Icons.edit, size: 20), onPressed: () => checkPermissionAndExecute(context, 'inventory_ingredients_edit', 'แก้ไขวัตถุดิบ', () => _showEditIngredientDialog(ingredient)), padding: EdgeInsets.zero, constraints: BoxConstraints()),
         ],
       ),
     );
@@ -571,248 +570,30 @@ class _ProductTabState extends State<ProductTab> {
 
   // Dialogs
   void _showCategoryDialog() {
-    final newCatController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Row(children: [Icon(Icons.folder, color: Colors.blue), SizedBox(width: 8), Text('จัดการประเภท')]),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ..._categories.map((cat) {
-                  final count = _products.where((p) => p['category']?['id'] == cat['id']).length;
-                  return ListTile(title: Text(cat['name'] ?? ''), trailing: Text('$count รายการ'));
-                }).toList(),
-                Divider(),
-                TextField(controller: newCatController, decoration: InputDecoration(labelText: 'เพิ่มประเภทใหม่', border: OutlineInputBorder())),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: Text('ปิด')),
-            ElevatedButton(
-              onPressed: () async {
-                if (newCatController.text.trim().isEmpty) return;
-                final ok = await InventoryService.addCategory(newCatController.text.trim());
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  if (ok) {
-                    _loadData();
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เพิ่มประเภท ${newCatController.text} สำเร็จ'), backgroundColor: Colors.green));
-                  }
-                }
-              },
-              child: Text('บันทึก'),
-            ),
-          ],
-        ),
-      ),
+    // TODO: Implement category dialog for ingredients
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('จัดการประเภทวัตถุดิบยังไม่พร้อมใช้งาน')),
     );
   }
 
   void _showUnitDialog() {
-    final newUnitController = TextEditingController();
-    final newAbbrController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Row(children: [Icon(Icons.scale, color: Colors.teal), SizedBox(width: 8), Text('จัดการหน่วยนับ')]),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ..._units.map((u) {
-                  final count = _products.where((p) => p['unit']?['id'] == u['id']).length;
-                  return ListTile(title: Text('${u['name']} (${u['abbreviation']})'), trailing: Text('$count รายการ'));
-                }).toList(),
-                Divider(),
-                TextField(controller: newUnitController, decoration: InputDecoration(labelText: 'ชื่อหน่วย', border: OutlineInputBorder())),
-                SizedBox(height: 8),
-                TextField(controller: newAbbrController, decoration: InputDecoration(labelText: 'ตัวย่อ', border: OutlineInputBorder())),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: Text('ปิด')),
-            ElevatedButton(
-              onPressed: () async {
-                if (newUnitController.text.trim().isEmpty) return;
-                final ok = await InventoryService.addUnit(newUnitController.text.trim(), abbreviation: newAbbrController.text.trim().isEmpty ? null : newAbbrController.text.trim());
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  if (ok) {
-                    _loadData();
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เพิ่มหน่วย ${newUnitController.text} สำเร็จ'), backgroundColor: Colors.green));
-                  }
-                }
-              },
-              child: Text('บันทึก'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showAddProductDialog() {
-    final formKey = GlobalKey<FormState>();
-    final nameController = TextEditingController();
-    final priceController = TextEditingController();
-    final costController = TextEditingController();
-    final qtyController = TextEditingController(text: '0');
-    final minQtyController = TextEditingController(text: '0');
-    String? selectedCategoryId;
-    String? selectedUnitId;
-    String? selectedShelfId;
-    bool isLoading = false;
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Row(children: [Icon(Icons.add_circle, color: Colors.orange), SizedBox(width: 8), Text('เพิ่มสินค้าใหม่')]),
-          content: SingleChildScrollView(
-            child: Form(
-              key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextFormField(
-                    controller: nameController,
-                    decoration: InputDecoration(labelText: 'ชื่อสินค้า *', border: OutlineInputBorder()),
-                    validator: (v) => v?.trim().isEmpty == true ? 'กรุณากรอกชื่อสินค้า' : null,
-                  ),
-                  SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    decoration: InputDecoration(labelText: 'ประเภท *', border: OutlineInputBorder()),
-                    value: selectedCategoryId,
-                    items: _categories.map((c) => DropdownMenuItem(value: c['id'] as String, child: Text(c['name'] ?? ''))).toList(),
-                    onChanged: (v) => setDialogState(() => selectedCategoryId = v),
-                    validator: (v) => v == null ? 'กรุณาเลือกประเภท' : null,
-                  ),
-                  SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    decoration: InputDecoration(labelText: 'หน่วยนับ *', border: OutlineInputBorder()),
-                    value: selectedUnitId,
-                    items: _units.map((u) => DropdownMenuItem(value: u['id'] as String, child: Text('${u['name']} (${u['abbreviation']})'))).toList(),
-                    onChanged: (v) => setDialogState(() => selectedUnitId = v),
-                    validator: (v) => v == null ? 'กรุณาเลือกหน่วยนับ' : null,
-                  ),
-                  SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    decoration: InputDecoration(labelText: 'ชั้นวาง', border: OutlineInputBorder()),
-                    value: selectedShelfId,
-                    items: _shelves.map((s) => DropdownMenuItem(value: s['id'] as String, child: Text('${s['code']} (${s['warehouse']?['name'] ?? ''})' ))).toList(),
-                    onChanged: (v) => setDialogState(() => selectedShelfId = v),
-                  ),
-                  SizedBox(height: 12),
-                  Row(children: [
-                    Expanded(child: TextFormField(controller: priceController, decoration: InputDecoration(labelText: 'ราคาขาย *', border: OutlineInputBorder(), prefixText: '฿'), keyboardType: TextInputType.number, validator: (v) => v?.trim().isEmpty == true ? 'กรุณากรอก' : null)),
-                    SizedBox(width: 12),
-                    Expanded(child: TextFormField(controller: costController, decoration: InputDecoration(labelText: 'ต้นทุน', border: OutlineInputBorder(), prefixText: '฿'), keyboardType: TextInputType.number)),
-                  ]),
-                  SizedBox(height: 12),
-                  Row(children: [
-                    Expanded(child: TextFormField(controller: qtyController, decoration: InputDecoration(labelText: 'จำนวน', border: OutlineInputBorder()), keyboardType: TextInputType.number)),
-                    SizedBox(width: 12),
-                    Expanded(child: TextFormField(controller: minQtyController, decoration: InputDecoration(labelText: 'จำนวนขั้นต่ำ', border: OutlineInputBorder()), keyboardType: TextInputType.number)),
-                  ]),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: isLoading ? null : () => Navigator.pop(context), child: Text('ยกเลิก')),
-            ElevatedButton(
-              onPressed: isLoading ? null : () async {
-                if (formKey.currentState?.validate() != true) return;
-                setDialogState(() => isLoading = true);
-                final ok = await InventoryService.addProduct(
-                  name: nameController.text.trim(),
-                  categoryId: selectedCategoryId!,
-                  unitId: selectedUnitId!,
-                  shelfId: selectedShelfId,
-                  price: double.tryParse(priceController.text) ?? 0,
-                  cost: double.tryParse(costController.text) ?? 0,
-                  quantity: double.tryParse(qtyController.text) ?? 0,
-                  minQuantity: double.tryParse(minQtyController.text) ?? 0,
-                );
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  if (ok) {
-                    _loadData();
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เพิ่มสินค้า ${nameController.text} สำเร็จ'), backgroundColor: Colors.green));
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เกิดข้อผิดพลาด'), backgroundColor: Colors.red));
-                  }
-                }
-              },
-              child: isLoading ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text('บันทึก'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showEditProductDialog(Map<String, dynamic> product) {
-    final nameController = TextEditingController(text: product['name'] ?? '');
-    final priceController = TextEditingController(text: '${(product['price'] as num?)?.toDouble() ?? 0}');
-    final qtyController = TextEditingController(text: '${(product['quantity'] as num?)?.toDouble() ?? 0}');
-    bool isLoading = false;
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('แก้ไขสินค้า')]),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(controller: nameController, decoration: InputDecoration(labelText: 'ชื่อสินค้า', border: OutlineInputBorder())),
-                SizedBox(height: 12),
-                Row(children: [
-                  Expanded(child: TextField(controller: qtyController, decoration: InputDecoration(labelText: 'จำนวน', border: OutlineInputBorder()), keyboardType: TextInputType.number)),
-                  SizedBox(width: 12),
-                  Expanded(child: TextField(controller: priceController, decoration: InputDecoration(labelText: 'ราคา', border: OutlineInputBorder()), keyboardType: TextInputType.number)),
-                ]),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: isLoading ? null : () => Navigator.pop(context), child: Text('ยกเลิก')),
-            ElevatedButton(
-              onPressed: isLoading ? null : () async {
-                setDialogState(() => isLoading = true);
-                final ok = await InventoryService.updateProduct(product['id'], {
-                  'name': nameController.text.trim(),
-                  'quantity': double.tryParse(qtyController.text) ?? 0,
-                  'price': double.tryParse(priceController.text) ?? 0,
-                });
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  if (ok) {
-                    _loadData();
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('แก้ไขสินค้าสำเร็จ'), backgroundColor: Colors.green));
-                  }
-                }
-              },
-              child: isLoading ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text('บันทึก'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showProduceProductDialog() {
-    // TODO: Implement produce product dialog
+    // TODO: Implement unit dialog for ingredients
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('ผลิตสินค้ายังไม่พร้อมใช้งาน')),
+      SnackBar(content: Text('จัดการหน่วยนับวัตถุดิบยังไม่พร้อมใช้งาน')),
+    );
+  }
+
+  void _showAddIngredientDialog() {
+    // TODO: Implement add ingredient dialog
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('เพิ่มวัตถุดิบยังไม่พร้อมใช้งาน')),
+    );
+  }
+
+  void _showEditIngredientDialog(Map<String, dynamic> ingredient) {
+    // TODO: Implement edit ingredient dialog
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('แก้ไขวัตถุดิบยังไม่พร้อมใช้งาน')),
     );
   }
 }

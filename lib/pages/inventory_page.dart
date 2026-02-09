@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'inventory/overview_tab.dart';
 import 'inventory/product_tab.dart';
+import 'inventory/ingredient_tab.dart';
 import 'inventory/adjustment_tab.dart';
 import 'inventory/recipe_tab.dart';
 import '../services/permission_service.dart';
@@ -21,7 +22,8 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
     {'id': 'inventory_overview', 'label': 'สถิติ / รายงาน', 'icon': Icons.dashboard},
     {'id': 'inventory_products', 'label': 'จัดการสินค้า', 'icon': Icons.inventory},
     {'id': 'inventory_adjustment', 'label': 'ปรับปรุงคลัง', 'icon': Icons.build},
-    {'id': 'inventory_recipe', 'label': 'สูตรอาหาร', 'icon': Icons.restaurant_menu},
+    {'id': 'inventory_ingredients', 'label': 'จัดการวัตถุดิบ', 'icon': Icons.restaurant_menu},
+    {'id': 'inventory_recipe', 'label': 'สูตรอาหาร', 'icon': Icons.dinner_dining},
   ];
 
   List<Map<String, dynamic>> _visibleTabs = [];
@@ -59,6 +61,8 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
         return OverviewTab();
       case 'inventory_products':
         return ProductTab();
+      case 'inventory_ingredients':
+        return IngredientTab();
       case 'inventory_adjustment':
         return AdjustmentTab();
       case 'inventory_recipe':

@@ -198,7 +198,94 @@ class InventoryService {
   }
 
   // =============================================
-  // Categories (ประเภทสินค้า/วัตถุดิบ - ใช้กับ inventory_products เท่านั้น)
+  // Ingredients (วัตถุดิบ - ใช้กับสูตรอาหาร)
+  // =============================================
+
+  static Future<List<Map<String, dynamic>>> getIngredients() async {
+    try {
+      final response = await _client
+          .from('inventory_ingredients')
+          .select('*')
+          .eq('is_active', true)
+          .order('name');
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error loading ingredients: $e');
+      return [];
+    }
+  }
+
+  static Future<bool> addIngredient({
+    required String name,
+    required String categoryId,
+    required String unitId,
+    String? shelfId,
+    double quantity = 0,
+    double minQuantity = 0,
+    double cost = 0,
+    String? supplierName,
+    String? expiryDate,
+    String? notes,
+  }) async {
+    try {
+      await _client.from('inventory_ingredients').insert({
+        'name': name,
+        'category_id': categoryId,
+        'unit_id': unitId,
+        'shelf_id': shelfId,
+        'quantity': quantity,
+        'min_quantity': minQuantity,
+        'cost': cost,
+        'supplier_name': supplierName,
+        'expiry_date': expiryDate,
+        'notes': notes,
+      });
+      return true;
+    } catch (e) {
+      debugPrint('Error adding ingredient: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> updateIngredient(String id, Map<String, dynamic> data) async {
+    try {
+      data['updated_at'] = DateTime.now().toIso8601String();
+      await _client.from('inventory_ingredients').update(data).eq('id', id);
+      return true;
+    } catch (e) {
+      debugPrint('Error updating ingredient: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> deleteIngredient(String id) async {
+    try {
+      await _client.from('inventory_ingredients').update({'is_active': false}).eq('id', id);
+      return true;
+    } catch (e) {
+      debugPrint('Error deleting ingredient: $e');
+      return false;
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> searchIngredients(String query) async {
+    if (query.isEmpty) return [];
+    try {
+      final response = await _client
+          .from('inventory_ingredients')
+          .select('id, name, unit:inventory_units(id, name, abbreviation), category:inventory_categories(id, name)')
+          .ilike('name', '%$query%')
+          .eq('is_active', true)
+          .limit(20);
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error searching ingredients: $e');
+      return [];
+    }
+  }
+
+  // =============================================
+  // Categories (ประเภทสินค้า/วัตถุดิบ - ใช้กับทั้งสองตาราง)
   // =============================================
 
   static Future<List<Map<String, dynamic>>> getCategories() async {

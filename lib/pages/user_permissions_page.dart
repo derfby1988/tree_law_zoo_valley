@@ -27,7 +27,8 @@ final List<Map<String, dynamic>> _systemTabs = [
   {'id': 'inventory_overview', 'page_id': 'inventory', 'name': 'สถิติ / รายงาน', 'icon': Icons.dashboard},
   {'id': 'inventory_products', 'page_id': 'inventory', 'name': 'จัดการสินค้า', 'icon': Icons.inventory},
   {'id': 'inventory_adjustment', 'page_id': 'inventory', 'name': 'ปรับปรุงคลัง', 'icon': Icons.build},
-  {'id': 'inventory_recipe', 'page_id': 'inventory', 'name': 'สูตรอาหาร', 'icon': Icons.restaurant_menu},
+  {'id': 'inventory_ingredients', 'page_id': 'inventory', 'name': 'จัดการวัตถุดิบ', 'icon': Icons.restaurant_menu},
+  {'id': 'inventory_recipe', 'page_id': 'inventory', 'name': 'สูตรอาหาร', 'icon': Icons.dinner_dining},
   // จองโต๊ะ (table_booking)
   {'id': 'table_booking_main', 'page_id': 'table_booking', 'name': 'จองโต๊ะ', 'icon': Icons.table_restaurant},
   // จองห้อง (room_booking)
@@ -54,6 +55,7 @@ final List<Map<String, dynamic>> _systemActions = [
   {'id': 'inventory_products_category', 'tab_id': 'inventory_products', 'name': 'จัดการประเภท', 'icon': Icons.folder},
   {'id': 'inventory_products_unit', 'tab_id': 'inventory_products', 'name': 'จัดการหน่วยนับ', 'icon': Icons.scale},
   {'id': 'inventory_products_add', 'tab_id': 'inventory_products', 'name': 'เพิ่มสินค้า', 'icon': Icons.add_circle},
+  {'id': 'inventory_products_produce', 'tab_id': 'inventory_products', 'name': 'ผลิตสินค้า', 'icon': Icons.factory},
   {'id': 'inventory_products_edit', 'tab_id': 'inventory_products', 'name': 'แก้ไขสินค้า', 'icon': Icons.edit},
   {'id': 'inventory_products_delete', 'tab_id': 'inventory_products', 'name': 'ลบสินค้า', 'icon': Icons.delete},
   // Tab: ปรับปรุงคลัง (inventory_adjustment)
@@ -66,6 +68,12 @@ final List<Map<String, dynamic>> _systemActions = [
   {'id': 'inventory_adjustment_warehouse_delete', 'tab_id': 'inventory_adjustment', 'name': 'ลบคลังสินค้า', 'icon': Icons.delete},
   {'id': 'inventory_adjustment_product_move_shelf', 'tab_id': 'inventory_adjustment', 'name': 'ย้ายสินค้าไปชั้นวางอื่น', 'icon': Icons.move_up},
   {'id': 'inventory_adjustment_product_move_warehouse', 'tab_id': 'inventory_adjustment', 'name': 'โอนสินค้าไปคลังอื่น', 'icon': Icons.warehouse},
+  // Tab: จัดการวัตถุดิบ (inventory_ingredients)
+  {'id': 'inventory_ingredients_category', 'tab_id': 'inventory_ingredients', 'name': 'จัดการประเภท', 'icon': Icons.folder},
+  {'id': 'inventory_ingredients_unit', 'tab_id': 'inventory_ingredients', 'name': 'จัดการหน่วยนับ', 'icon': Icons.scale},
+  {'id': 'inventory_ingredients_add', 'tab_id': 'inventory_ingredients', 'name': 'เพิ่มวัตถุดิบ', 'icon': Icons.add_circle},
+  {'id': 'inventory_ingredients_edit', 'tab_id': 'inventory_ingredients', 'name': 'แก้ไขวัตถุดิบ', 'icon': Icons.edit},
+  {'id': 'inventory_ingredients_delete', 'tab_id': 'inventory_ingredients', 'name': 'ลบวัตถุดิบ', 'icon': Icons.delete},
   // Tab: สูตรอาหาร (inventory_recipe)
   {'id': 'inventory_recipe_add', 'tab_id': 'inventory_recipe', 'name': 'เพิ่มสูตร', 'icon': Icons.add},
   {'id': 'inventory_recipe_edit', 'tab_id': 'inventory_recipe', 'name': 'แก้ไขสูตร', 'icon': Icons.edit},
