@@ -18,7 +18,8 @@ class AccountChartService {
     try {
       final response = await _client
           .from('account_chart')
-          .select('code, name_th, type, level, parent_code, normal_balance, industry');
+          .select('id, code, name_th, name_en, type, level, parent_id, is_active')
+          .order('code');
       _cache = List<Map<String, dynamic>>.from(response);
       _cacheTime = DateTime.now();
       return _filterByType(_cache, type);

@@ -299,7 +299,8 @@ class InventoryService {
       final response = await _client
           .from('inventory_categories')
           .select('*')
-          .order('name');
+          .order('sort_order')
+          .order('code');
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
       debugPrint('Error loading categories: $e');
@@ -307,36 +308,57 @@ class InventoryService {
     }
   }
 
-  static Future<bool> addCategory(
+  static Future<Map<String, dynamic>?> addCategory(
     String name, {
     String? description,
     String? inventoryAccountCode,
     String? revenueAccountCode,
     String? costAccountCode,
+    String? code,
+    String? parentCode,
+    int? level,
+    int? sortOrder,
   }) async {
     try {
-      await _client.from('inventory_categories').insert({
+      final data = {
         'name': name,
         'description': description,
         'inventory_account_code': inventoryAccountCode,
         'revenue_account_code': revenueAccountCode,
         'cost_account_code': costAccountCode,
-      });
-      return true;
+        if (code != null) 'code': code,
+        if (parentCode != null) 'parent_code': parentCode,
+        if (level != null) 'level': level,
+        if (sortOrder != null) 'sort_order': sortOrder,
+      };
+      debugPrint('📦 addCategory insert data: $data');
+      final response = await _client.from('inventory_categories').insert(data).select();
+      debugPrint('📦 addCategory response: $response');
+      if (response.isNotEmpty) {
+        return Map<String, dynamic>.from(response.first);
+      }
+      debugPrint('❌ addCategory: insert returned empty response');
+      return null;
     } catch (e) {
-      debugPrint('Error adding category: $e');
-      return false;
+      debugPrint('❌ Error adding category: $e');
+      return null;
     }
   }
 
-  static Future<bool> updateCategory(String id, Map<String, dynamic> data) async {
+  static Future<Map<String, dynamic>?> updateCategory(String id, Map<String, dynamic> data) async {
     try {
       data['updated_at'] = DateTime.now().toIso8601String();
-      await _client.from('inventory_categories').update(data).eq('id', id);
-      return true;
+      debugPrint('🔍 updateCategory: id=$id, data=$data');
+      final response = await _client.from('inventory_categories').update(data).eq('id', id).select();
+      debugPrint('🔍 updateCategory response: $response');
+      if (response.isNotEmpty) {
+        return Map<String, dynamic>.from(response.first);
+      }
+      debugPrint('❌ updateCategory: update returned empty response');
+      return null;
     } catch (e) {
-      debugPrint('Error updating category: $e');
-      return false;
+      debugPrint('❌ Error updating category: $e');
+      return null;
     }
   }
 
