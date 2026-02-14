@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/inventory_service.dart';
 import '../../services/permission_service.dart';
+import '../../services/account_chart_service.dart';
 import '../../utils/permission_helpers.dart';
 import 'inventory_filter_widget.dart';
 import '../procurement_page.dart';
@@ -22,8 +23,12 @@ class _ProductTabState extends State<ProductTab> {
   List<Map<String, dynamic>> _units = [];
   List<Map<String, dynamic>> _shelves = [];
   List<Map<String, dynamic>> _warehouses = [];
+  List<Map<String, dynamic>> _assetAccounts = [];
+  List<Map<String, dynamic>> _revenueAccounts = [];
+  List<Map<String, dynamic>> _costAccounts = [];
   bool _isLoading = true;
   String? _errorMessage;
+  String? _accountErrorMessage;
 
   // No-shelf selection
   final Set<String> _selectedNoShelfIds = {};
@@ -43,6 +48,196 @@ class _ProductTabState extends State<ProductTab> {
     _searchController.addListener(() => setState(() { _currentPage = 0; }));
   }
 
+  void _showEditCategoryDialog(Map<String, dynamic> category) {
+    final formKey = GlobalKey<FormState>();
+    String? inventoryCode = category['inventory_account_code'] as String?;
+    String? revenueCode = category['revenue_account_code'] as String?;
+    String? costCode = category['cost_account_code'] as String?;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Row(children: [Icon(Icons.folder_open, color: Colors.blue), SizedBox(width: 8), Expanded(child: Text('แก้ไขบัญชีสำหรับ ${category['name']}'))]),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildAccountDropdown(
+                  label: 'บัญชีสินค้าคงเหลือ *',
+                  value: inventoryCode,
+                  accounts: _assetAccounts,
+                  onChanged: (v) => setDialogState(() => inventoryCode = v),
+                ),
+                SizedBox(height: 12),
+                _buildAccountDropdown(
+                  label: 'บัญชีรายได้ *',
+                  value: revenueCode,
+                  accounts: _revenueAccounts,
+                  onChanged: (v) => setDialogState(() => revenueCode = v),
+                ),
+                SizedBox(height: 12),
+                _buildAccountDropdown(
+                  label: 'บัญชีต้นทุน *',
+                  value: costCode,
+                  accounts: _costAccounts,
+                  onChanged: (v) => setDialogState(() => costCode = v),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: Text('ยกเลิก')),
+            ElevatedButton(
+              onPressed: () async {
+                if ([inventoryCode, revenueCode, costCode].any((c) => c == null)) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('กรุณาเลือกบัญชีให้ครบ'), backgroundColor: Colors.red));
+                  return;
+                }
+                final ok = await InventoryService.updateCategory(category['id'] as String, {
+                  'inventory_account_code': inventoryCode,
+                  'revenue_account_code': revenueCode,
+                  'cost_account_code': costCode,
+                });
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  if (ok) {
+                    _loadData();
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('อัปเดตประเภทสำเร็จ'), backgroundColor: Colors.green));
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('อัปเดตไม่สำเร็จ'), backgroundColor: Colors.red));
+                  }
+                }
+              },
+              child: Text('บันทึก'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAccountDropdown({
+    required String label,
+    required String? value,
+    required List<Map<String, dynamic>> accounts,
+    required ValueChanged<String?> onChanged,
+  }) {
+    return DropdownButtonFormField<String>(
+      decoration: InputDecoration(labelText: label, border: OutlineInputBorder()),
+      value: value,
+      items: accounts
+          .map((acc) => DropdownMenuItem(
+                value: acc['code'] as String?,
+                child: Text('${acc['code']} - ${acc['name_th']}'),
+              ))
+          .toList(),
+      onChanged: accounts.isEmpty ? null : onChanged,
+    );
+  }
+
+  String _formatAccountLabel(String? code) {
+    if (code == null) return 'ยังไม่กำหนด';
+    final account = _findAccount(code);
+    return account == null ? code : '${account['code']} - ${account['name_th']}';
+  }
+
+  Map<String, dynamic>? _findAccount(String? code) {
+    if (code == null) return null;
+    return [..._assetAccounts, ..._revenueAccounts, ..._costAccounts].firstWhere(
+      (acc) => acc['code'] == code,
+      orElse: () => {},
+    );
+  }
+
+  Widget _buildCategoryAccountSummary(String categoryId) {
+    final Map<String, dynamic> category = _categories.firstWhere(
+      (c) => c['id'] == categoryId,
+      orElse: () => {},
+    );
+    if (category.isEmpty) return SizedBox.shrink();
+
+    final inventoryCode = category['inventory_account_code'] as String?;
+    final revenueCode = category['revenue_account_code'] as String?;
+    final costCode = category['cost_account_code'] as String?;
+    final missingCount = [inventoryCode, revenueCode, costCode].where((c) => c == null).length;
+
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.blueGrey[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.blueGrey[100]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.account_balance, color: Colors.blueGrey[700], size: 18),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'บัญชีสำหรับ ${category['name'] ?? ''}',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 8),
+          _buildAccountSummaryRow('สินค้าคงเหลือ', inventoryCode),
+          SizedBox(height: 4),
+          _buildAccountSummaryRow('รายได้', revenueCode),
+          SizedBox(height: 4),
+          _buildAccountSummaryRow('ต้นทุน', costCode),
+          if (missingCount > 0) ...[
+            SizedBox(height: 8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Colors.orange[700], size: 18),
+                SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'ประเภทนี้ยังขาดการตั้งค่าบัญชี ${missingCount == 1 ? '' : 'บางรายการ'} กรุณาแก้ไขก่อนบันทึกสินค้าเพื่อหลีกเลี่ยงปัญหาการบันทึกบัญชี',
+                    style: TextStyle(color: Colors.orange[800], fontSize: 12.5),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAccountSummaryRow(String label, String? code) {
+    final hasValue = code != null;
+    return Row(
+      children: [
+        SizedBox(width: 4),
+        Expanded(
+          flex: 2,
+          child: Text(
+            label,
+            style: TextStyle(fontSize: 12.5, color: Colors.grey[700]),
+          ),
+        ),
+        Expanded(
+          flex: 5,
+          child: Text(
+            _formatAccountLabel(code),
+            style: TextStyle(fontSize: 12.5, color: hasValue ? Colors.black87 : Colors.red[700], fontWeight: hasValue ? FontWeight.w500 : FontWeight.w600),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -59,14 +254,36 @@ class _ProductTabState extends State<ProductTab> {
         InventoryService.getUnits(),
         InventoryService.getShelves(),
         InventoryService.getWarehouses(),
+        AccountChartService.getAccounts(type: 'asset'),
+        AccountChartService.getAccounts(type: 'revenue'),
+        AccountChartService.getAccounts(type: 'cogs'),
       ]);
+      final products = results[0];
+      final categories = results[1];
+      final units = results[2];
+      final shelves = results[3];
+      final warehouses = results[4];
+      final assetAccounts = List<Map<String, dynamic>>.from(results[5]);
+      final revenueAccounts = List<Map<String, dynamic>>.from(results[6]);
+      final costAccounts = List<Map<String, dynamic>>.from(results[7]);
+      final hasIncompleteCategoryAccounts = categories.any((cat) =>
+          cat['inventory_account_code'] == null ||
+          cat['revenue_account_code'] == null ||
+          cat['cost_account_code'] == null);
+
       setState(() {
-        _products = results[0];
-        _categories = results[1];
-        _units = results[2];
-        _shelves = results[3];
-        _warehouses = results[4];
+        _products = products;
+        _categories = categories;
+        _units = units;
+        _shelves = shelves;
+        _warehouses = warehouses;
+        _assetAccounts = assetAccounts;
+        _revenueAccounts = revenueAccounts;
+        _costAccounts = costAccounts;
         _isLoading = false;
+        _accountErrorMessage = hasIncompleteCategoryAccounts
+            ? 'มีบางประเภทสินค้าที่ยังไม่ได้กำหนดบัญชีครบถ้วน กรุณาอัปเดตก่อนเพิ่มสินค้าใหม่'
+            : null;
       });
     } catch (e) {
       setState(() { _errorMessage = 'ไม่สามารถโหลดข้อมูล: $e'; _isLoading = false; });
@@ -172,6 +389,11 @@ class _ProductTabState extends State<ProductTab> {
               showNoShelfOption: true,
             ),
             SizedBox(height: 16),
+            if (_accountErrorMessage != null)
+              Padding(
+                padding: EdgeInsets.only(bottom: 8),
+                child: Text(_accountErrorMessage!, style: TextStyle(color: Colors.red)),
+              ),
             _buildActionButtons(),
             SizedBox(height: 16),
             _buildNoShelfCard(),
@@ -572,6 +794,14 @@ class _ProductTabState extends State<ProductTab> {
   // Dialogs
   void _showCategoryDialog() {
     final newCatController = TextEditingController();
+    String? newInventoryAccount;
+    String? newRevenueAccount;
+    String? newCostAccount;
+
+    if (_assetAccounts.isNotEmpty) newInventoryAccount = _assetAccounts.first['code'] as String?;
+    if (_revenueAccounts.isNotEmpty) newRevenueAccount = _revenueAccounts.first['code'] as String?;
+    if (_costAccounts.isNotEmpty) newCostAccount = _costAccounts.first['code'] as String?;
+
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -583,10 +813,53 @@ class _ProductTabState extends State<ProductTab> {
               children: [
                 ..._categories.map((cat) {
                   final count = _products.where((p) => p['category']?['id'] == cat['id']).length;
-                  return ListTile(title: Text(cat['name'] ?? ''), trailing: Text('$count รายการ'));
+                  return ListTile(
+                    title: Text(cat['name'] ?? ''),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('สินค้าคงเหลือ: ${_formatAccountLabel(cat['inventory_account_code'] as String?)}'),
+                        Text('รายได้: ${_formatAccountLabel(cat['revenue_account_code'] as String?)}'),
+                        Text('ต้นทุน: ${_formatAccountLabel(cat['cost_account_code'] as String?)}'),
+                      ],
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('$count รายการ'),
+                        IconButton(
+                          icon: Icon(Icons.edit, size: 18),
+                          onPressed: () => _showEditCategoryDialog(cat),
+                        ),
+                      ],
+                    ),
+                  );
                 }).toList(),
                 Divider(),
-                TextField(controller: newCatController, decoration: InputDecoration(labelText: 'เพิ่มประเภทใหม่', border: OutlineInputBorder())),
+                Align(alignment: Alignment.centerLeft, child: Text('เพิ่มประเภทใหม่', style: TextStyle(fontWeight: FontWeight.bold))),
+                SizedBox(height: 8),
+                TextField(controller: newCatController, decoration: InputDecoration(labelText: 'ชื่อประเภท *', border: OutlineInputBorder())),
+                SizedBox(height: 12),
+                _buildAccountDropdown(
+                  label: 'บัญชีสินค้าคงเหลือ *',
+                  value: newInventoryAccount,
+                  accounts: _assetAccounts,
+                  onChanged: (v) => setDialogState(() => newInventoryAccount = v),
+                ),
+                SizedBox(height: 12),
+                _buildAccountDropdown(
+                  label: 'บัญชีรายได้ *',
+                  value: newRevenueAccount,
+                  accounts: _revenueAccounts,
+                  onChanged: (v) => setDialogState(() => newRevenueAccount = v),
+                ),
+                SizedBox(height: 12),
+                _buildAccountDropdown(
+                  label: 'บัญชีต้นทุน *',
+                  value: newCostAccount,
+                  accounts: _costAccounts,
+                  onChanged: (v) => setDialogState(() => newCostAccount = v),
+                ),
               ],
             ),
           ),
@@ -594,8 +867,20 @@ class _ProductTabState extends State<ProductTab> {
             TextButton(onPressed: () => Navigator.pop(context), child: Text('ปิด')),
             ElevatedButton(
               onPressed: () async {
-                if (newCatController.text.trim().isEmpty) return;
-                final ok = await InventoryService.addCategory(newCatController.text.trim());
+                if (newCatController.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('กรุณากรอกชื่อประเภท')));
+                  return;
+                }
+                if ([newInventoryAccount, newRevenueAccount, newCostAccount].any((element) => element == null)) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('กรุณาเลือกบัญชีให้ครบ')));
+                  return;
+                }
+                final ok = await InventoryService.addCategory(
+                  newCatController.text.trim(),
+                  inventoryAccountCode: newInventoryAccount,
+                  revenueAccountCode: newRevenueAccount,
+                  costAccountCode: newCostAccount,
+                );
                 if (context.mounted) {
                   Navigator.pop(context);
                   if (ok) {
@@ -667,6 +952,10 @@ class _ProductTabState extends State<ProductTab> {
     String? selectedCategoryId;
     String? selectedUnitId;
     String? selectedShelfId;
+    String? overrideInventoryCode;
+    String? overrideRevenueCode;
+    String? overrideCostCode;
+    bool overrideAccounts = false;
     bool isLoading = false;
 
     showDialog(
@@ -693,6 +982,9 @@ class _ProductTabState extends State<ProductTab> {
                     onChanged: (v) => setDialogState(() => selectedCategoryId = v),
                     validator: (v) => v == null ? 'กรุณาเลือกประเภท' : null,
                   ),
+                  SizedBox(height: 8),
+                  if (selectedCategoryId != null)
+                    _buildCategoryAccountSummary(selectedCategoryId!),
                   SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     decoration: InputDecoration(labelText: 'หน่วยนับ *', border: OutlineInputBorder()),
@@ -720,6 +1012,41 @@ class _ProductTabState extends State<ProductTab> {
                     SizedBox(width: 12),
                     Expanded(child: TextFormField(controller: minQtyController, decoration: InputDecoration(labelText: 'จำนวนขั้นต่ำ', border: OutlineInputBorder()), keyboardType: TextInputType.number)),
                   ]),
+                  SizedBox(height: 12),
+                  SwitchListTile(
+                    title: Text('ระบุบัญชีเอง (Override)'),
+                    value: overrideAccounts,
+                    onChanged: (value) => setDialogState(() {
+                      overrideAccounts = value;
+                      if (!overrideAccounts) {
+                        overrideInventoryCode = null;
+                        overrideRevenueCode = null;
+                        overrideCostCode = null;
+                      }
+                    }),
+                  ),
+                  if (overrideAccounts) ...[
+                    _buildAccountDropdown(
+                      label: 'บัญชีสินค้าคงเหลือ *',
+                      value: overrideInventoryCode,
+                      accounts: _assetAccounts,
+                      onChanged: (v) => setDialogState(() => overrideInventoryCode = v),
+                    ),
+                    SizedBox(height: 12),
+                    _buildAccountDropdown(
+                      label: 'บัญชีรายได้ *',
+                      value: overrideRevenueCode,
+                      accounts: _revenueAccounts,
+                      onChanged: (v) => setDialogState(() => overrideRevenueCode = v),
+                    ),
+                    SizedBox(height: 12),
+                    _buildAccountDropdown(
+                      label: 'บัญชีต้นทุน *',
+                      value: overrideCostCode,
+                      accounts: _costAccounts,
+                      onChanged: (v) => setDialogState(() => overrideCostCode = v),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -729,6 +1056,10 @@ class _ProductTabState extends State<ProductTab> {
             ElevatedButton(
               onPressed: isLoading ? null : () async {
                 if (formKey.currentState?.validate() != true) return;
+                if (overrideAccounts && [overrideInventoryCode, overrideRevenueCode, overrideCostCode].any((c) => c == null)) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('กรุณาเลือกบัญชี override ให้ครบ'), backgroundColor: Colors.red));
+                  return;
+                }
                 setDialogState(() => isLoading = true);
                 final ok = await InventoryService.addProduct(
                   name: nameController.text.trim(),
@@ -739,6 +1070,9 @@ class _ProductTabState extends State<ProductTab> {
                   cost: double.tryParse(costController.text) ?? 0,
                   quantity: double.tryParse(qtyController.text) ?? 0,
                   minQuantity: double.tryParse(minQtyController.text) ?? 0,
+                  inventoryAccountCodeOverride: overrideAccounts ? overrideInventoryCode : null,
+                  revenueAccountCodeOverride: overrideAccounts ? overrideRevenueCode : null,
+                  costAccountCodeOverride: overrideAccounts ? overrideCostCode : null,
                 );
                 if (context.mounted) {
                   Navigator.pop(context);

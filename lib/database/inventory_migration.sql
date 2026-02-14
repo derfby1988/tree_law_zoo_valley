@@ -3,6 +3,19 @@
 -- รันใน Supabase SQL Editor
 -- =============================================
 
+-- 0. ตารางผังบัญชี (Account Chart)
+CREATE TABLE IF NOT EXISTS account_chart (
+  code TEXT PRIMARY KEY,
+  name_th TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('asset','liability','equity','revenue','cogs','selling','admin','other')),
+  level INT NOT NULL DEFAULT 1,
+  parent_code TEXT REFERENCES account_chart(code) ON DELETE SET NULL,
+  normal_balance TEXT CHECK (normal_balance IN ('debit','credit')),
+  industry TEXT,
+  is_default BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
 -- 1. ตารางคลังสินค้า (Warehouses)
 CREATE TABLE IF NOT EXISTS inventory_warehouses (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -24,11 +37,13 @@ CREATE TABLE IF NOT EXISTS inventory_shelves (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 3. ตารางประเภทสินค้า (Categories)
 CREATE TABLE IF NOT EXISTS inventory_categories (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL UNIQUE,
   description TEXT,
+  inventory_account_code TEXT REFERENCES account_chart(code),
+  revenue_account_code TEXT REFERENCES account_chart(code),
+  cost_account_code TEXT REFERENCES account_chart(code),
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -47,6 +62,9 @@ CREATE TABLE IF NOT EXISTS inventory_products (
   category_id UUID REFERENCES inventory_categories(id),
   unit_id UUID REFERENCES inventory_units(id),
   shelf_id UUID REFERENCES inventory_shelves(id),
+  inventory_account_code_override TEXT REFERENCES account_chart(code),
+  revenue_account_code_override TEXT REFERENCES account_chart(code),
+  cost_account_code_override TEXT REFERENCES account_chart(code),
   quantity DOUBLE PRECISION DEFAULT 0,
   min_quantity DOUBLE PRECISION DEFAULT 0,
   price DOUBLE PRECISION DEFAULT 0,
@@ -119,12 +137,41 @@ INSERT INTO inventory_warehouses (name, location, manager) VALUES
   ('คลังหลัก', 'อาคาร A', 'คุณสมชาย'),
   ('คลังสำรอง', 'อาคาร B', 'คุณมานี');
 
+-- ผังบัญชีพื้นฐาน (ตัวอย่าง)
+INSERT INTO account_chart (code, name_th, type, level, parent_code, normal_balance) VALUES
+  ('110101', 'เงินสดย่อย', 'asset', 3, '1101', 'debit'),
+  ('130101', 'สินค้าคงเหลือ-อาหารสด', 'asset', 3, '1301', 'debit'),
+  ('130102', 'สินค้าคงเหลือ-เครื่องดื่ม', 'asset', 3, '1301', 'debit'),
+  ('410101', 'รายได้ขายอาหาร', 'revenue', 3, '4101', 'credit'),
+  ('410102', 'รายได้ขายเครื่องดื่ม', 'revenue', 3, '4101', 'credit'),
+  ('510101', 'ต้นทุนอาหาร', 'cogs', 3, '5101', 'debit'),
+  ('510102', 'ต้นทุนเครื่องดื่ม', 'cogs', 3, '5101', 'debit')
+ON CONFLICT (code) DO NOTHING;
+
 -- ประเภทสินค้า
 INSERT INTO inventory_categories (name, description) VALUES
   ('อาหาร', 'อาหารทุกชนิด'),
   ('เครื่องดื่ม', 'เครื่องดื่มทุกชนิด'),
   ('ของหวาน', 'ขนมหวานและเบเกอรี่'),
-  ('วัตถุดิบ', 'วัตถุดิบสำหรับประกอบอาหาร');
+  ('วัตถุดิบ', 'วัตถุดิบสำหรับประกอบอาหาร')
+ON CONFLICT (name) DO NOTHING;
+
+UPDATE inventory_categories SET
+  inventory_account_code = CASE name
+    WHEN 'อาหาร' THEN '130101'
+    WHEN 'เครื่องดื่ม' THEN '130102'
+    ELSE '130101'
+  END,
+  revenue_account_code = CASE name
+    WHEN 'อาหาร' THEN '410101'
+    WHEN 'เครื่องดื่ม' THEN '410102'
+    ELSE '410101'
+  END,
+  cost_account_code = CASE name
+    WHEN 'อาหาร' THEN '510101'
+    WHEN 'เครื่องดื่ม' THEN '510102'
+    ELSE '510101'
+  END;
 
 -- หน่วยนับ
 INSERT INTO inventory_units (name, abbreviation) VALUES

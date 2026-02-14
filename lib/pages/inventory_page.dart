@@ -19,10 +19,10 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
 
   // Tab definitions with permission IDs
   static const _allTabs = [
-    {'id': 'inventory_overview', 'label': 'สถิติ / รายงาน', 'icon': Icons.dashboard},
-    {'id': 'inventory_products', 'label': 'จัดการสินค้า', 'icon': Icons.inventory},
-    {'id': 'inventory_adjustment', 'label': 'ปรับปรุงคลัง', 'icon': Icons.build},
-    {'id': 'inventory_ingredients', 'label': 'จัดการวัตถุดิบ', 'icon': Icons.restaurant_menu},
+    {'id': 'inventory_overview', 'label': 'สถิติ', 'icon': Icons.dashboard},
+    {'id': 'inventory_products', 'label': 'สินค้า', 'icon': Icons.inventory},
+    {'id': 'inventory_adjustment', 'label': 'คลัง', 'icon': Icons.build},
+    {'id': 'inventory_ingredients', 'label': 'วัตถุดิบ', 'icon': Icons.restaurant_menu},
     {'id': 'inventory_recipe', 'label': 'สูตรอาหาร', 'icon': Icons.dinner_dining},
   ];
 

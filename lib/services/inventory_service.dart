@@ -39,7 +39,10 @@ class InventoryService {
     double minQuantity = 0,
     double price = 0,
     double cost = 0,
-    String? expiryDate,
+    DateTime? expiryDate,
+    String? inventoryAccountCodeOverride,
+    String? revenueAccountCodeOverride,
+    String? costAccountCodeOverride,
   }) async {
     try {
       await _client.from('inventory_products').insert({
@@ -51,7 +54,10 @@ class InventoryService {
         'min_quantity': minQuantity,
         'price': price,
         'cost': cost,
-        'expiry_date': expiryDate,
+        'expiry_date': expiryDate?.toIso8601String(),
+        'inventory_account_code_override': inventoryAccountCodeOverride,
+        'revenue_account_code_override': revenueAccountCodeOverride,
+        'cost_account_code_override': costAccountCodeOverride,
       });
       return true;
     } catch (e) {
@@ -301,15 +307,35 @@ class InventoryService {
     }
   }
 
-  static Future<bool> addCategory(String name, {String? description}) async {
+  static Future<bool> addCategory(
+    String name, {
+    String? description,
+    String? inventoryAccountCode,
+    String? revenueAccountCode,
+    String? costAccountCode,
+  }) async {
     try {
       await _client.from('inventory_categories').insert({
         'name': name,
         'description': description,
+        'inventory_account_code': inventoryAccountCode,
+        'revenue_account_code': revenueAccountCode,
+        'cost_account_code': costAccountCode,
       });
       return true;
     } catch (e) {
       debugPrint('Error adding category: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> updateCategory(String id, Map<String, dynamic> data) async {
+    try {
+      data['updated_at'] = DateTime.now().toIso8601String();
+      await _client.from('inventory_categories').update(data).eq('id', id);
+      return true;
+    } catch (e) {
+      debugPrint('Error updating category: $e');
       return false;
     }
   }
