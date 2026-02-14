@@ -27,6 +27,8 @@ class AddProductPage extends StatefulWidget {
 
 class _AddProductPageState extends State<AddProductPage> {
   final _formKey = GlobalKey<FormState>();
+  final _productInfoCardKey = GlobalKey();
+  final _nameFocusNode = FocusNode();
   final _nameController = TextEditingController();
   final _productionQtyController = TextEditingController(text: '1');
   final _qtyController = TextEditingController(text: '0');
@@ -43,14 +45,12 @@ class _AddProductPageState extends State<AddProductPage> {
   bool _isSaving = false;
   bool _showAdditionalFields = false;
   bool _showCategoryError = false;
-  bool _showRecipeError = false;
 
   // Tax
   bool _isTaxExempt = false; // true = ยกเว้นภาษี
   String _taxInclusion = 'included'; // 'included' = รวมภาษี, 'excluded' = ยังไม่รวมภาษี
 
   // Production from recipe
-  bool _isProducedFromRecipe = false;
   String? _selectedRecipeId;
   String _manualProductNameBeforeRecipe = '';
 
@@ -79,6 +79,7 @@ class _AddProductPageState extends State<AddProductPage> {
   // Dynamic labels
   String get _typeLabel => _itemType == ItemType.product ? 'สินค้า' : 'วัตถุดิบ';
   String get _itemTypeValue => _itemType == ItemType.product ? 'product' : 'ingredient';
+  bool get _isProducedFromRecipe => _itemType == ItemType.product && _selectedRecipeId != null;
 
   int? get _primaryImageIndex {
     for (var i = 0; i < _imageSlots.length; i++) {
@@ -118,7 +119,6 @@ class _AddProductPageState extends State<AddProductPage> {
         (_qtyController.text.trim().isNotEmpty && _qtyController.text.trim() != '0') ||
         (_minQtyController.text.trim().isNotEmpty && _minQtyController.text.trim() != '0') ||
         _itemType != ItemType.product ||
-        _isProducedFromRecipe ||
         _selectedRecipeId != null ||
         _productionQtyController.text.trim() != '1' ||
         !_isTaxAutoMode ||
@@ -128,27 +128,45 @@ class _AddProductPageState extends State<AddProductPage> {
         _imageSlots.any((img) => img != null);
   }
 
-  void _handleProducedFromRecipeChanged(bool enabled) {
-    String suggestionName = '';
-    setState(() {
-      _isProducedFromRecipe = enabled;
-      _showRecipeError = false;
-      if (enabled) {
-        _manualProductNameBeforeRecipe = _nameController.text.trim();
-        _selectedRecipeId = null;
-        _nameController.text = '';
-        _productionQtyController.text = '1';
-        suggestionName = '';
-      } else {
-        _selectedRecipeId = null;
-        _nameController.text = _manualProductNameBeforeRecipe;
-        suggestionName = _manualProductNameBeforeRecipe;
+  @override
+  void initState() {
+    super.initState();
+    _nameFocusNode.addListener(() {
+      if (_nameFocusNode.hasFocus) {
+        _scrollProductInfoToTop();
       }
     });
-    _updateCategorySuggestions(suggestionName);
+  }
+
+  void _scrollProductInfoToTop() {
+    final context = _productInfoCardKey.currentContext;
+    if (context == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Scrollable.ensureVisible(
+        context,
+        alignment: 0,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   void _handleRecipeChanged(String? recipeId) {
+    if (recipeId == null) {
+      setState(() {
+        _selectedRecipeId = null;
+        _nameController.text = _manualProductNameBeforeRecipe;
+        _productionQtyController.text = '1';
+      });
+      _updateCategorySuggestions(_manualProductNameBeforeRecipe);
+      return;
+    }
+
+    if (_selectedRecipeId == null) {
+      _manualProductNameBeforeRecipe = _nameController.text.trim();
+    }
+
     final recipe = widget.recipes.firstWhere(
       (r) => r['id'] == recipeId,
       orElse: () => <String, dynamic>{},
@@ -158,7 +176,6 @@ class _AddProductPageState extends State<AddProductPage> {
     final matchedUnitId = _findUnitIdByRecipeUnit(recipeUnit);
     setState(() {
       _selectedRecipeId = recipeId;
-      _showRecipeError = false;
       _nameController.text = recipeName;
       if (matchedUnitId != null) {
         _selectedUnitId = matchedUnitId;
@@ -225,9 +242,7 @@ class _AddProductPageState extends State<AddProductPage> {
     setState(() {
       _itemType = type;
       _resolvedTaxRule = null;
-      _showRecipeError = false;
       if (type == ItemType.ingredient) {
-        _isProducedFromRecipe = false;
         _selectedRecipeId = null;
         _productionQtyController.text = '1';
       }
@@ -299,18 +314,7 @@ class _AddProductPageState extends State<AddProductPage> {
   /// ค้นหาประเภทสินค้าที่ตรงกับชื่อที่พิมพ์
   void _updateCategorySuggestions(String productName) {
     if (productName.trim().isEmpty) {
-      setState(() {
-        _suggestedCategories = [];
-        _selectedCategoryId = null;
-        _categoryInvAccount = null;
-        _categoryRevAccount = null;
-        _categoryCostAccount = null;
-        _resolvedTaxRule = null;
-        _showCategoryError = false;
-        if (_isTaxAutoMode) {
-          _applyItemTypeTaxFallback(_itemType);
-        }
-      });
+      setState(() => _suggestedCategories = []);
       return;
     }
 
@@ -448,6 +452,7 @@ class _AddProductPageState extends State<AddProductPage> {
 
   @override
   void dispose() {
+    _nameFocusNode.dispose();
     _nameController.dispose();
     _productionQtyController.dispose();
     _qtyController.dispose();
@@ -592,62 +597,6 @@ class _AddProductPageState extends State<AddProductPage> {
                 ),
               ],
             ),
-            if (_itemType == ItemType.product) ...[
-              SizedBox(height: 12),
-              CheckboxListTile(
-                contentPadding: EdgeInsets.zero,
-                value: _isProducedFromRecipe,
-                title: Text('ผลิตสินค้าจากสูตรอาหาร'),
-                subtitle: Text('เลือกเมื่อสินค้านี้ได้มาจากกระบวนการผลิตตามสูตร'),
-                controlAffinity: ListTileControlAffinity.leading,
-                onChanged: (v) => _handleProducedFromRecipeChanged(v ?? false),
-              ),
-              if (_isProducedFromRecipe) ...[
-                DropdownButtonFormField<String>(
-                  isExpanded: true,
-                  decoration: InputDecoration(
-                    labelText: 'สูตรอาหาร *',
-                    border: _inputBorder,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-                    errorText: _showRecipeError && _selectedRecipeId == null ? 'กรุณาเลือกสูตรอาหาร' : null,
-                  ),
-                  value: _selectedRecipeId,
-                  items: _recipesSortedByUsage
-                      .map(
-                        (r) => DropdownMenuItem<String>(
-                          value: r['id'] as String?,
-                          child: Text(
-                            '${r['name'] ?? ''} (${r['yield_unit'] ?? '-'})',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: _handleRecipeChanged,
-                ),
-                SizedBox(height: 12),
-                TextFormField(
-                  controller: _productionQtyController,
-                  keyboardType: TextInputType.numberWithOptions(decimal: true),
-                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))],
-                  decoration: InputDecoration(
-                    labelText: 'จำนวนการผลิต *',
-                    hintText: 'เช่น 1, 10, 25.5',
-                    border: _inputBorder,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-                  ),
-                  validator: (v) {
-                    if (!_isProducedFromRecipe) return null;
-                    final text = v?.trim() ?? '';
-                    if (text.isEmpty) return 'กรุณากรอกจำนวนการผลิต';
-                    final qty = double.tryParse(text);
-                    if (qty == null) return 'จำนวนการผลิตต้องเป็นตัวเลข';
-                    if (qty <= 0) return 'จำนวนการผลิตต้องมากกว่า 0';
-                    return null;
-                  },
-                ),
-              ],
-            ],
           ],
         ),
       ),
@@ -877,6 +826,7 @@ class _AddProductPageState extends State<AddProductPage> {
   // ===== Card 2: ข้อมูลสินค้า/วัตถุดิบ =====
   Widget _buildProductInfoCard() {
     return Card(
+      key: _productInfoCardKey,
       elevation: 2,
       child: Padding(
         padding: EdgeInsets.all(16),
@@ -888,6 +838,7 @@ class _AddProductPageState extends State<AddProductPage> {
             // ชื่อ
             TextFormField(
               controller: _nameController,
+              focusNode: _nameFocusNode,
               readOnly: _itemType == ItemType.product && _isProducedFromRecipe,
               decoration: InputDecoration(
                 labelText: 'ชื่อ$_typeLabel *',
@@ -907,14 +858,38 @@ class _AddProductPageState extends State<AddProductPage> {
                 return null;
               },
               textInputAction: TextInputAction.next,
-              onChanged: _updateCategorySuggestions,
+              onTap: _scrollProductInfoToTop,
+              onChanged: (value) {
+                _updateCategorySuggestions(value);
+                _scrollProductInfoToTop();
+              },
             ),
+            if (_itemType == ItemType.product && _isProducedFromRecipe) ...[
+              SizedBox(height: 12),
+              TextFormField(
+                controller: _productionQtyController,
+                keyboardType: TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))],
+                decoration: InputDecoration(
+                  labelText: 'จำนวนการผลิต *',
+                  hintText: 'เช่น 1, 10, 25.5',
+                  border: _inputBorder,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                ),
+                validator: (v) {
+                  if (!_isProducedFromRecipe) return null;
+                  final text = v?.trim() ?? '';
+                  if (text.isEmpty) return 'กรุณากรอกจำนวนการผลิต';
+                  final qty = double.tryParse(text);
+                  if (qty == null) return 'จำนวนการผลิตต้องเป็นตัวเลข';
+                  if (qty <= 0) return 'จำนวนการผลิตต้องมากกว่า 0';
+                  return null;
+                },
+              ),
+            ],
             // แนะนำประเภทอัตโนมัติ
-            if (_suggestedCategories.isNotEmpty && _selectedCategoryId == null)
+            if (_suggestedCategories.isNotEmpty)
               _buildCategorySuggestions(),
-            SizedBox(height: 12),
-            // ประเภท
-            _buildCategoryField(),
             SizedBox(height: 12),
             // หน่วยนับ
             DropdownButtonFormField<String>(
@@ -932,6 +907,9 @@ class _AddProductPageState extends State<AddProductPage> {
               onChanged: (v) => setState(() => _selectedUnitId = v),
               validator: (v) => v == null ? 'กรุณาเลือกหน่วยนับ' : null,
             ),
+            SizedBox(height: 12),
+            // ประเภท
+            _buildCategoryField(),
           ],
         ),
       ),
@@ -1403,47 +1381,109 @@ class _AddProductPageState extends State<AddProductPage> {
     );
   }
 
-  // ===== Category Bottom Sheet =====
+  // ===== Category Dialog (Top) =====
   void _showCategoryBottomSheet() {
     final categories = widget.categories;
     final searchController = TextEditingController();
+    bool didAutoScrollToSelected = false;
 
-    showModalBottomSheet(
+    showDialog<void>(
       context: context,
-      isScrollControlled: true,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      barrierColor: Colors.black54,
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setSheetState) {
             final query = searchController.text.toLowerCase();
-            final filtered = query.isEmpty
+            final filtered = (query.isEmpty
                 ? categories
                 : categories.where((c) {
                     final name = (c['name'] as String? ?? '').toLowerCase();
                     final code = (c['code'] as String? ?? '').toLowerCase();
                     return name.contains(query) || code.contains(query);
-                  }).toList();
+                  }).toList())
+              ..sort((a, b) {
+                final aAccount = (a['inventory_account_code'] as String? ??
+                        a['revenue_account_code'] as String? ??
+                        a['cost_account_code'] as String? ??
+                        '')
+                    .trim();
+                final bAccount = (b['inventory_account_code'] as String? ??
+                        b['revenue_account_code'] as String? ??
+                        b['cost_account_code'] as String? ??
+                        '')
+                    .trim();
 
-            return DraggableScrollableSheet(
-              initialChildSize: 0.7,
-              maxChildSize: 0.9,
-              minChildSize: 0.4,
-              expand: false,
-              builder: (ctx, scrollController) {
-                return Column(
-                  children: [
-                    Container(
-                      margin: EdgeInsets.only(top: 8),
-                      width: 40, height: 4,
-                      decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
+                final aHasAccount = aAccount.isNotEmpty;
+                final bHasAccount = bAccount.isNotEmpty;
+                if (aHasAccount != bHasAccount) return aHasAccount ? -1 : 1;
+
+                final accountCompare = aAccount.compareTo(bAccount);
+                if (accountCompare != 0) return accountCompare;
+
+                final aCode = (a['code'] as String? ?? '').trim();
+                final bCode = (b['code'] as String? ?? '').trim();
+                final codeCompare = aCode.compareTo(bCode);
+                if (codeCompare != 0) return codeCompare;
+
+                final aName = (a['name'] as String? ?? '').trim();
+                final bName = (b['name'] as String? ?? '').trim();
+                return aName.compareTo(bName);
+              });
+            final selectedTileKey = GlobalKey();
+            final screenHeight = MediaQuery.of(ctx).size.height;
+            final topInset = MediaQuery.of(ctx).padding.top;
+            final bottomInset = MediaQuery.of(ctx).padding.bottom;
+
+            final hasSelectedInFiltered = _selectedCategoryId != null &&
+                filtered.any((c) => c['id'] == _selectedCategoryId);
+            if (!didAutoScrollToSelected && hasSelectedInFiltered) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                final selectedContext = selectedTileKey.currentContext;
+                if (selectedContext != null) {
+                  Scrollable.ensureVisible(
+                    selectedContext,
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOut,
+                    alignment: 0.5,
+                  );
+                }
+              });
+              didAutoScrollToSelected = true;
+            }
+
+            return SafeArea(
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: Material(
+                  color: Colors.transparent,
+                  child: Container(
+                    margin: EdgeInsets.fromLTRB(12, topInset > 0 ? 8 : 12, 12, 12 + bottomInset),
+                    height: screenHeight * 0.82,
+                    constraints: BoxConstraints(maxHeight: screenHeight - (topInset + bottomInset + 24)),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
                     ),
-                    Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Column(
-                        children: [
-                          Text('เลือกประเภท$_typeLabel', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                          SizedBox(height: 12),
-                          TextField(
+                    clipBehavior: Clip.antiAlias,
+                    child: Column(
+                      children: [
+                        Padding(
+                          padding: EdgeInsets.fromLTRB(16, 14, 8, 10),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text('เลือกประเภท$_typeLabel', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                              ),
+                              IconButton(
+                                onPressed: () => Navigator.pop(ctx),
+                                icon: Icon(Icons.close),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Padding(
+                          padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+                          child: TextField(
                             controller: searchController,
                             decoration: InputDecoration(
                               hintText: 'ค้นหาประเภท...',
@@ -1453,67 +1493,68 @@ class _AddProductPageState extends State<AddProductPage> {
                             ),
                             onChanged: (_) => setSheetState(() {}),
                           ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: ListView.builder(
-                        controller: scrollController,
-                        itemCount: filtered.length,
-                        itemBuilder: (ctx, i) {
-                          final cat = filtered[i];
-                          final level = (cat['level'] as int?) ?? 1;
-                          final indent = (level - 1) * 16.0;
-                          final code = cat['code'] as String? ?? '';
-                          final name = cat['name'] as String? ?? '';
-                          final isSelected = cat['id'] == _selectedCategoryId;
-                          final hasAccounts = cat['inventory_account_code'] != null;
+                        ),
+                        Divider(height: 1),
+                        Expanded(
+                          child: ListView.builder(
+                            itemCount: filtered.length,
+                            itemBuilder: (ctx, i) {
+                              final cat = filtered[i];
+                              final level = (cat['level'] as int?) ?? 1;
+                              final indent = (level - 1) * 16.0;
+                              final code = cat['code'] as String? ?? '';
+                              final name = cat['name'] as String? ?? '';
+                              final isSelected = cat['id'] == _selectedCategoryId;
+                              final hasAccounts = cat['inventory_account_code'] != null;
 
-                          return InkWell(
-                            onTap: () async {
-                              Navigator.pop(ctx);
-                              await _handleCategorySelected(cat);
-                            },
-                            child: Container(
-                              padding: EdgeInsets.only(left: 16 + indent, right: 16, top: 10, bottom: 10),
-                              decoration: BoxDecoration(
-                                color: isSelected ? Colors.blue[50] : null,
-                                border: Border(bottom: BorderSide(color: Colors.grey.shade100)),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    level <= 2 ? Icons.folder : (level <= 4 ? Icons.folder_open : Icons.label_outline),
-                                    size: 18,
-                                    color: level <= 2 ? Colors.blue : (level <= 3 ? Colors.teal : Colors.grey[600]),
+                              return InkWell(
+                                onTap: () async {
+                                  Navigator.pop(ctx);
+                                  await _handleCategorySelected(cat);
+                                },
+                                child: Container(
+                                  key: isSelected ? selectedTileKey : null,
+                                  padding: EdgeInsets.only(left: 16 + indent, right: 16, top: 10, bottom: 10),
+                                  decoration: BoxDecoration(
+                                    color: isSelected ? Colors.blue[50] : null,
+                                    border: Border(bottom: BorderSide(color: Colors.grey.shade100)),
                                   ),
-                                  SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      '$code  $name',
-                                      style: TextStyle(
-                                        fontSize: level <= 2 ? 14.0 : 13.0,
-                                        fontWeight: level <= 3 ? FontWeight.bold : FontWeight.normal,
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        level <= 2 ? Icons.folder : (level <= 4 ? Icons.folder_open : Icons.label_outline),
+                                        size: 18,
+                                        color: level <= 2 ? Colors.blue : (level <= 3 ? Colors.teal : Colors.grey[600]),
                                       ),
-                                    ),
+                                      SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          '$code  $name',
+                                          style: TextStyle(
+                                            fontSize: level <= 2 ? 14.0 : 13.0,
+                                            fontWeight: level <= 3 ? FontWeight.bold : FontWeight.normal,
+                                          ),
+                                        ),
+                                      ),
+                                      if (!hasAccounts)
+                                        Tooltip(
+                                          message: 'ยังไม่ได้กำหนดบัญชี',
+                                          child: Icon(Icons.warning_amber, size: 16, color: Colors.orange[400]),
+                                        ),
+                                      if (isSelected)
+                                        Icon(Icons.check_circle, size: 20, color: Colors.blue),
+                                    ],
                                   ),
-                                  if (!hasAccounts)
-                                    Tooltip(
-                                      message: 'ยังไม่ได้กำหนดบัญชี',
-                                      child: Icon(Icons.warning_amber, size: 16, color: Colors.orange[400]),
-                                    ),
-                                  if (isSelected)
-                                    Icon(Icons.check_circle, size: 20, color: Colors.blue),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                      ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                );
-              },
+                  ),
+                ),
+              ),
             );
           },
         );
@@ -1530,14 +1571,8 @@ class _AddProductPageState extends State<AddProductPage> {
       return;
     }
 
-    if (_itemType == ItemType.product && _isProducedFromRecipe && _selectedRecipeId == null) {
-      setState(() => _showRecipeError = true);
-      return;
-    }
-
     setState(() {
       _showCategoryError = false;
-      _showRecipeError = false;
     });
 
     setState(() => _isSaving = true);
