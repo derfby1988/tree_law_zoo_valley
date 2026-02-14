@@ -19,6 +19,7 @@ final List<Map<String, dynamic>> _systemPages = [
   {'id': 'settings', 'name': 'ตั้งค่า', 'button': 'ตั้งค่า', 'icon': Icons.settings},
   {'id': 'end_drawer', 'name': 'เมนูจัดการร้าน (End Drawer)', 'button': 'End Drawer', 'icon': Icons.menu_open},
   {'id': 'procurement', 'name': 'ระบบสั่งซื้อ', 'button': 'สั่งซื้อ', 'icon': Icons.shopping_cart},
+  {'id': 'tax_rules_admin', 'name': 'จัดการกฎภาษี', 'button': 'กฎภาษี', 'icon': Icons.rule},
 ];
 
 /// รายการ Tab ทั้งหมดในแต่ละหน้า

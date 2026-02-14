@@ -7,6 +7,7 @@ import 'inventory_filter_widget.dart';
 import 'product_action_buttons_card.dart';
 import '../procurement_page.dart';
 import 'category_management_page.dart';
+import 'add_product_page.dart';
 
 class ProductTab extends StatefulWidget {
   const ProductTab({super.key});
@@ -23,6 +24,7 @@ class _ProductTabState extends State<ProductTab> {
   List<Map<String, dynamic>> _products = [];
   List<Map<String, dynamic>> _categories = [];
   List<Map<String, dynamic>> _units = [];
+  List<Map<String, dynamic>> _recipes = [];
   List<Map<String, dynamic>> _shelves = [];
   List<Map<String, dynamic>> _warehouses = [];
   List<Map<String, dynamic>> _assetAccounts = [];
@@ -64,7 +66,8 @@ class _ProductTabState extends State<ProductTab> {
       final results = await Future.wait([
         InventoryService.getProducts(),
         InventoryService.getCategories(),
-        InventoryService.getUnits(),
+        InventoryService.getUnitsSortedByInventoryUsage(),
+        InventoryService.getRecipesSortedByUsage(),
         InventoryService.getShelves(),
         InventoryService.getWarehouses(),
         AccountChartService.getAccounts(type: 'asset'),
@@ -74,11 +77,12 @@ class _ProductTabState extends State<ProductTab> {
       final products = results[0];
       final categories = results[1];
       final units = results[2];
-      final shelves = results[3];
-      final warehouses = results[4];
-      final assetAccounts = List<Map<String, dynamic>>.from(results[5]);
-      final revenueAccounts = List<Map<String, dynamic>>.from(results[6]);
-      final costAccounts = List<Map<String, dynamic>>.from(results[7]);
+      final recipes = results[3];
+      final shelves = results[4];
+      final warehouses = results[5];
+      final assetAccounts = List<Map<String, dynamic>>.from(results[6]);
+      final revenueAccounts = List<Map<String, dynamic>>.from(results[7]);
+      final costAccounts = List<Map<String, dynamic>>.from(results[8]);
       // Debug: แสดงข้อมูล account ของแต่ละ category
       for (final cat in categories) {
         debugPrint('📋 Category "${cat['name']}": inv=${cat['inventory_account_code']}, rev=${cat['revenue_account_code']}, cost=${cat['cost_account_code']}');
@@ -94,6 +98,7 @@ class _ProductTabState extends State<ProductTab> {
         _products = products;
         _categories = categories;
         _units = units;
+        _recipes = recipes;
         _shelves = shelves;
         _warehouses = warehouses;
         _assetAccounts = assetAccounts;
@@ -655,10 +660,21 @@ class _ProductTabState extends State<ProductTab> {
     );
   }
 
-  void _showAddProductDialog() {
-    // TODO: Implement add product dialog
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('เพิ่มสินค้าใหม่ยังไม่พร้อมใช้งาน')),
+  void _showAddProductDialog() async {
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AddProductPage(
+          categories: _categories,
+          units: _units,
+          recipes: _recipes,
+          shelves: _shelves,
+          warehouses: _warehouses,
+        ),
+      ),
     );
+    if (result == true) {
+      await _loadData();
+    }
   }
 }

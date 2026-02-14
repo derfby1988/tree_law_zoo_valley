@@ -7,6 +7,26 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class InventoryService {
   static final SupabaseClient _client = Supabase.instance.client;
 
+  static const Map<String, dynamic> _productTaxFallback = {
+    'is_tax_exempt': false,
+    'tax_rate': 7.0,
+    'tax_inclusion': 'included',
+    'rule_name': 'ค่าเริ่มต้นสินค้า (VAT 7%)',
+    'legal_reference': 'ประมวลรัษฎากร ภาษีมูลค่าเพิ่ม (กำหนดเป็นค่าเริ่มต้นระบบ)',
+    'requires_manual_review': true,
+    'source': 'fallback',
+  };
+
+  static const Map<String, dynamic> _ingredientTaxFallback = {
+    'is_tax_exempt': true,
+    'tax_rate': 0.0,
+    'tax_inclusion': 'excluded',
+    'rule_name': 'ค่าเริ่มต้นวัตถุดิบ (ยกเว้นภาษี)',
+    'legal_reference': 'กำหนดโดยนโยบายเริ่มต้นระบบ (ต้องตรวจสอบธุรกรรมจริง)',
+    'requires_manual_review': true,
+    'source': 'fallback',
+  };
+
   // =============================================
   // Products
   // =============================================
@@ -30,6 +50,172 @@ class InventoryService {
     }
   }
 
+  /// ดึงสูตรอาหารเรียงตามการใช้งานล่าสุด (updated_at ล่าสุดก่อน)
+  static Future<List<Map<String, dynamic>>> getRecipesSortedByUsage() async {
+    try {
+      final response = await _client
+          .from('inventory_recipes')
+          .select('id, name, updated_at, yield_quantity, yield_unit')
+          .eq('is_active', true)
+          .order('updated_at', ascending: false)
+          .order('name');
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error loading recipes sorted by usage: $e');
+      return getRecipes();
+    }
+  }
+
+  /// Resolve กฎภาษีที่มีผลบังคับใช้ตามประเภทสินค้าและวันที่
+  /// หมายเหตุ: เป็นระบบช่วยแนะนำ ต้องให้ผู้ใช้งานตรวจสอบความถูกต้องทางกฎหมายก่อนใช้งานจริง
+  static Future<Map<String, dynamic>> resolveTaxRuleForCategory({
+    required String categoryId,
+    required String itemType,
+    DateTime? effectiveDate,
+  }) async {
+    final date = effectiveDate ?? DateTime.now();
+    final isoDate = date.toIso8601String().split('T').first;
+
+    try {
+      final response = await _client
+          .from('inventory_tax_rules')
+          .select('*')
+          .eq('category_id', categoryId)
+          .eq('is_active', true)
+          .or('item_type.eq.$itemType,item_type.eq.both')
+          .lte('effective_from', isoDate)
+          .or('effective_to.is.null,effective_to.gte.$isoDate')
+          .order('priority', ascending: false)
+          .order('effective_from', ascending: false)
+          .limit(1);
+
+      if ((response as List).isNotEmpty) {
+        final row = Map<String, dynamic>.from(response.first);
+        return {
+          'is_tax_exempt': row['is_tax_exempt'] as bool? ?? false,
+          'tax_rate': (row['tax_rate'] as num?)?.toDouble() ?? 0.0,
+          'tax_inclusion': (row['tax_inclusion'] as String?) ?? 'excluded',
+          'rule_name': (row['rule_name'] as String?) ?? 'กฎภาษีตามประเภทสินค้า',
+          'legal_reference': (row['legal_reference'] as String?) ?? '',
+          'requires_manual_review': row['requires_manual_review'] as bool? ?? false,
+          'source': 'rule',
+          'rule_id': row['id'],
+          'effective_from': row['effective_from'],
+          'effective_to': row['effective_to'],
+        };
+      }
+    } catch (e) {
+      debugPrint('Error resolving tax rule: $e');
+    }
+
+    return Map<String, dynamic>.from(
+      itemType == 'ingredient' ? _ingredientTaxFallback : _productTaxFallback,
+    );
+  }
+
+  static Future<List<Map<String, dynamic>>> getTaxRules({
+    String? categoryId,
+    bool includeInactive = true,
+  }) async {
+    try {
+      var query = _client
+          .from('inventory_tax_rules')
+          .select('''
+            *,
+            category:inventory_categories(id, code, name)
+          ''');
+
+      if (categoryId != null) {
+        query = query.eq('category_id', categoryId);
+      }
+
+      if (!includeInactive) {
+        query = query.eq('is_active', true);
+      }
+
+      final response = await query
+          .order('is_active', ascending: false)
+          .order('priority', ascending: false)
+          .order('effective_from', ascending: false);
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error loading tax rules: $e');
+      return [];
+    }
+  }
+
+  static Future<Map<String, dynamic>?> addTaxRule({
+    required String categoryId,
+    required String itemType,
+    required bool isTaxExempt,
+    required double taxRate,
+    required String taxInclusion,
+    required String ruleName,
+    String? legalReference,
+    required DateTime effectiveFrom,
+    DateTime? effectiveTo,
+    int priority = 1,
+    bool requiresManualReview = true,
+    bool isActive = true,
+  }) async {
+    try {
+      final response = await _client.from('inventory_tax_rules').insert({
+        'category_id': categoryId,
+        'item_type': itemType,
+        'is_tax_exempt': isTaxExempt,
+        'tax_rate': taxRate,
+        'tax_inclusion': taxInclusion,
+        'rule_name': ruleName,
+        'legal_reference': legalReference,
+        'effective_from': effectiveFrom.toIso8601String().split('T').first,
+        'effective_to': effectiveTo?.toIso8601String().split('T').first,
+        'priority': priority,
+        'requires_manual_review': requiresManualReview,
+        'is_active': isActive,
+      }).select().single();
+
+      return Map<String, dynamic>.from(response);
+    } catch (e) {
+      debugPrint('Error adding tax rule: $e');
+      return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> updateTaxRule(
+    String id,
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      data['updated_at'] = DateTime.now().toIso8601String();
+      final response = await _client
+          .from('inventory_tax_rules')
+          .update(data)
+          .eq('id', id)
+          .select()
+          .single();
+      return Map<String, dynamic>.from(response);
+    } catch (e) {
+      debugPrint('Error updating tax rule: $e');
+      return null;
+    }
+  }
+
+  static Future<bool> deactivateTaxRule(String id) async {
+    try {
+      await _client.from('inventory_tax_rules').update({
+        'is_active': false,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', id);
+      return true;
+    } catch (e) {
+      debugPrint('Error deactivating tax rule: $e');
+      return false;
+    }
+  }
+
+  static const String _productBucket = 'product-images';
+
   static Future<bool> addProduct({
     required String name,
     required String categoryId,
@@ -40,29 +226,94 @@ class InventoryService {
     double price = 0,
     double cost = 0,
     DateTime? expiryDate,
-    String? inventoryAccountCodeOverride,
-    String? revenueAccountCodeOverride,
-    String? costAccountCodeOverride,
+    String itemType = 'product',
+    bool isTaxExempt = true,
+    double taxRate = 0,
+    String taxInclusion = 'excluded',
+    Uint8List? imageBytes,
+    String? imageFileName,
   }) async {
     try {
-      await _client.from('inventory_products').insert({
+      final data = <String, dynamic>{
         'name': name,
         'category_id': categoryId,
         'unit_id': unitId,
-        'shelf_id': shelfId,
         'quantity': quantity,
         'min_quantity': minQuantity,
         'price': price,
         'cost': cost,
-        'expiry_date': expiryDate?.toIso8601String(),
-        'inventory_account_code_override': inventoryAccountCodeOverride,
-        'revenue_account_code_override': revenueAccountCodeOverride,
-        'cost_account_code_override': costAccountCodeOverride,
-      });
+        'item_type': itemType,
+        'is_tax_exempt': isTaxExempt,
+        'tax_rate': taxRate,
+        'tax_inclusion': taxInclusion,
+      };
+      if (shelfId != null) data['shelf_id'] = shelfId;
+      if (expiryDate != null) data['expiry_date'] = expiryDate.toIso8601String();
+
+      debugPrint('📦 addProduct: $data');
+      final response = await _client.from('inventory_products').insert(data).select('id').single();
+      final productId = response['id'] as String;
+
+      // อัปโหลดรูปภาพ (ถ้ามี)
+      if (imageBytes != null && imageFileName != null) {
+        await _uploadProductImage(productId, imageBytes, imageFileName);
+      }
+
       return true;
     } catch (e) {
-      debugPrint('Error adding product: $e');
+      debugPrint('❌ Error adding product: $e');
       return false;
+    }
+  }
+
+  /// อัปโหลดรูปภาพสินค้า/วัตถุดิบไปยัง Supabase Storage
+  static Future<String?> _uploadProductImage(String productId, Uint8List imageBytes, String fileName) async {
+    try {
+      // บีบอัดรูปภาพจาก bytes
+      Uint8List uploadBytes = imageBytes;
+      try {
+        final original = img.decodeImage(imageBytes);
+        if (original != null) {
+          img.Image resized = original;
+          if (original.width > 480 || original.height > 480) {
+            resized = img.copyResize(
+              original,
+              width: original.width > original.height ? 480 : null,
+              height: original.height >= original.width ? 480 : null,
+            );
+          }
+          uploadBytes = Uint8List.fromList(img.encodeJpg(resized, quality: 45));
+          debugPrint('Product image compressed: ${imageBytes.length} -> ${uploadBytes.length} bytes');
+        }
+      } catch (e) {
+        debugPrint('Warning: Could not compress product image, uploading original: $e');
+      }
+
+      final storageName = 'product_${productId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final path = 'products/$storageName';
+
+      await _client.storage.from(_productBucket).uploadBinary(
+        path,
+        uploadBytes,
+        fileOptions: const FileOptions(
+          contentType: 'image/jpeg',
+          upsert: true,
+        ),
+      );
+
+      final publicUrl = _client.storage.from(_productBucket).getPublicUrl(path);
+
+      // อัปเดต image_url ในตาราง products
+      await _client.from('inventory_products').update({
+        'image_url': publicUrl,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', productId);
+
+      debugPrint('📸 Product image uploaded: $publicUrl');
+      return publicUrl;
+    } catch (e) {
+      debugPrint('❌ Error uploading product image: $e');
+      return null;
     }
   }
 
@@ -376,6 +627,38 @@ class InventoryService {
     } catch (e) {
       debugPrint('Error loading units: $e');
       return [];
+    }
+  }
+
+  /// ดึงหน่วยนับเรียงตามจำนวนสินค้าที่ใช้งานจริง (มาก -> น้อย)
+  static Future<List<Map<String, dynamic>>> getUnitsSortedByInventoryUsage() async {
+    try {
+      final units = await getUnits();
+      final products = await _client
+          .from('inventory_products')
+          .select('unit_id')
+          .eq('is_active', true);
+
+      final usageCount = <String, int>{};
+      for (final p in products) {
+        final unitId = p['unit_id'] as String?;
+        if (unitId == null) continue;
+        usageCount[unitId] = (usageCount[unitId] ?? 0) + 1;
+      }
+
+      units.sort((a, b) {
+        final aId = a['id'] as String? ?? '';
+        final bId = b['id'] as String? ?? '';
+        final aCount = usageCount[aId] ?? 0;
+        final bCount = usageCount[bId] ?? 0;
+        if (aCount != bCount) return bCount.compareTo(aCount);
+        return (a['name'] as String? ?? '').compareTo(b['name'] as String? ?? '');
+      });
+
+      return units;
+    } catch (e) {
+      debugPrint('Error loading units sorted by inventory usage: $e');
+      return getUnits();
     }
   }
 

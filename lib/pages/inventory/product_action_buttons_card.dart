@@ -40,8 +40,8 @@ class ProductActionButtonsCard extends StatelessWidget {
                   _buildActionButton('หน่วยนับ', Colors.teal, Icons.scale, () => 
                     checkPermissionAndExecute(context, 'inventory_products_unit', 'จัดการหน่วยนับ', onShowUnitDialog)),
                 if (PermissionService.canAccessActionSync('inventory_products_add'))
-                  _buildActionButton('เพิ่มสินค้า', Colors.orange, Icons.add_circle, () => 
-                    checkPermissionAndExecute(context, 'inventory_products_add', 'เพิ่มสินค้า', onShowAddProductDialog)),
+                  _buildActionButton('เพิ่มสินค้า/วัตถุดิบ', Colors.orange, Icons.add_circle, () => 
+                    checkPermissionAndExecute(context, 'inventory_products_add', 'เพิ่มสินค้า/วัตถุดิบ', onShowAddProductDialog)),
                 if (PermissionService.canAccessActionSync('inventory_products_produce'))
                   _buildActionButton('ผลิตสินค้า', Colors.purple, Icons.factory, () => 
                     checkPermissionAndExecute(context, 'inventory_products_produce', 'ผลิตสินค้า', onShowProduceProductDialog)),

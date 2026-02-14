@@ -18,6 +18,7 @@ import 'pages/inventory_page.dart';
 import 'pages/procurement_page.dart';
 import 'pages/user_groups_page.dart';
 import 'pages/user_permissions_page.dart';
+import 'pages/inventory/tax_rules_admin_page.dart';
 import 'services/permission_service.dart';
 import 'services/user_group_service.dart';
 
@@ -616,6 +617,18 @@ class _MyHomePageState extends State<MyHomePage> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(builder: (context) => const UserGroupsPage()),
+                        );
+                      },
+                    ),
+                  if (PermissionService.canAccessPageSync('tax_rules_admin'))
+                    ListTile(
+                      title: Text('จัดการกฎภาษี', style: TextStyle(color: Colors.white)),
+                      leading: Icon(Icons.rule, color: Colors.white),
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const TaxRulesAdminPage()),
                         );
                       },
                     ),
