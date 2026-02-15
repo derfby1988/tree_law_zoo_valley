@@ -39,6 +39,357 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
     _loadData();
   }
 
+  String _formatDateOnly(DateTime? date) {
+    if (date == null) return 'ไม่ระบุ';
+    final dd = date.day.toString().padLeft(2, '0');
+    final mm = date.month.toString().padLeft(2, '0');
+    final yy = date.year.toString();
+    return '$dd/$mm/$yy';
+  }
+
+  Future<DateTime?> _pickDateOnly({DateTime? initialDate}) async {
+    final now = DateTime.now();
+    return showDatePicker(
+      context: context,
+      initialDate: initialDate ?? now,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+  }
+
+  void _showPurchaseReceiveDialog() {
+    String? selectedProductId;
+    final qtyController = TextEditingController();
+    final reasonController = TextEditingController();
+    bool isLoading = false;
+
+    // true = ทั้งล็อตวันเดียว, false = หลายล็อตย่อยวันต่างกัน
+    bool sameDateForWholeLot = true;
+    DateTime? uniformProductionDate;
+    DateTime? uniformExpiryDate;
+    final mixedLotRows = <Map<String, dynamic>>[
+      {
+        'qtyController': TextEditingController(),
+        'productionDate': null,
+        'expiryDate': null,
+      }
+    ];
+
+    void disposeMixedRows() {
+      for (final row in mixedLotRows) {
+        final c = row['qtyController'];
+        if (c is TextEditingController) c.dispose();
+      }
+    }
+
+    Future<void> submit(StateSetter setDialogState) async {
+      if (selectedProductId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('กรุณาเลือกสินค้า'), backgroundColor: Colors.red),
+        );
+        return;
+      }
+
+      final receiveQty = double.tryParse(qtyController.text.trim());
+      if (receiveQty == null || receiveQty <= 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('กรุณากรอกจำนวนรับเข้าที่ถูกต้อง'), backgroundColor: Colors.red),
+        );
+        return;
+      }
+
+      final product = _products.where((p) => p['id'] == selectedProductId).firstOrNull;
+      final currentQty = (product?['quantity'] as num?)?.toDouble() ?? 0;
+
+      final lotBarcodeEntries = <Map<String, dynamic>>[];
+      if (sameDateForWholeLot) {
+        lotBarcodeEntries.add({
+          'quantity': receiveQty,
+          'production_date': uniformProductionDate,
+          'expiry_date': uniformExpiryDate,
+        });
+      } else {
+        double sum = 0;
+        for (final row in mixedLotRows) {
+          final controller = row['qtyController'] as TextEditingController;
+          final rowQty = double.tryParse(controller.text.trim()) ?? 0;
+          if (rowQty <= 0) continue;
+          sum += rowQty;
+          lotBarcodeEntries.add({
+            'quantity': rowQty,
+            'production_date': row['productionDate'] as DateTime?,
+            'expiry_date': row['expiryDate'] as DateTime?,
+          });
+        }
+
+        if (lotBarcodeEntries.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('กรุณากรอกจำนวนในล็อตย่อยอย่างน้อย 1 รายการ'), backgroundColor: Colors.red),
+          );
+          return;
+        }
+
+        if ((sum - receiveQty).abs() > 0.0001) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('จำนวนรวมล็อตย่อย ($sum) ต้องเท่ากับจำนวนรับเข้า ($receiveQty)'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+      }
+
+      setDialogState(() => isLoading = true);
+      final ok = await InventoryService.addAdjustment(
+        productId: selectedProductId!,
+        type: 'purchase',
+        quantityBefore: currentQty,
+        quantityAfter: currentQty + receiveQty,
+        reason: reasonController.text.trim().isEmpty ? null : reasonController.text.trim(),
+        lotBarcodeEntries: lotBarcodeEntries,
+      );
+
+      if (!context.mounted) return;
+      Navigator.pop(context);
+      disposeMixedRows();
+      qtyController.dispose();
+      reasonController.dispose();
+
+      if (ok) {
+        _loadData();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('รับเข้าสินค้าสำเร็จ'), backgroundColor: Colors.green),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('เกิดข้อผิดพลาดในการรับเข้า'), backgroundColor: Colors.red),
+        );
+      }
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final product = selectedProductId != null
+              ? _products.where((p) => p['id'] == selectedProductId).firstOrNull
+              : null;
+          final currentQty = (product?['quantity'] as num?)?.toDouble() ?? 0;
+
+          return AlertDialog(
+            title: Row(
+              children: [
+                Icon(Icons.add_shopping_cart, color: Colors.green),
+                SizedBox(width: 8),
+                Expanded(child: Text('รับเข้าสินค้า')),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<String>(
+                    decoration: InputDecoration(labelText: 'เลือกสินค้า', border: OutlineInputBorder()),
+                    items: _products
+                        .map((p) => DropdownMenuItem(value: p['id'] as String, child: Text(p['name'] ?? '')))
+                        .toList(),
+                    onChanged: (v) => setDialogState(() => selectedProductId = v),
+                  ),
+                  if (product != null) ...[
+                    SizedBox(height: 8),
+                    Text(
+                      'คงเหลือ: ${currentQty.toStringAsFixed(0)} ${product['unit']?['abbreviation'] ?? ''}',
+                      style: TextStyle(color: Colors.grey[600]),
+                    ),
+                  ],
+                  SizedBox(height: 12),
+                  TextField(
+                    controller: qtyController,
+                    decoration: InputDecoration(labelText: 'จำนวนรับเข้า', border: OutlineInputBorder()),
+                    keyboardType: TextInputType.numberWithOptions(decimal: true),
+                  ),
+                  SizedBox(height: 12),
+                  TextField(
+                    controller: reasonController,
+                    decoration: InputDecoration(labelText: 'เหตุผล/หมายเหตุ', border: OutlineInputBorder()),
+                  ),
+                  SizedBox(height: 14),
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey[300]!),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('เงื่อนไขวันผลิต/หมดอายุของล็อตรับเข้า', style: TextStyle(fontWeight: FontWeight.w600)),
+                        SizedBox(height: 8),
+                        RadioListTile<bool>(
+                          value: true,
+                          groupValue: sameDateForWholeLot,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text('เหมือนกันทั้งล็อต'),
+                          onChanged: (v) => setDialogState(() => sameDateForWholeLot = v ?? true),
+                        ),
+                        RadioListTile<bool>(
+                          value: false,
+                          groupValue: sameDateForWholeLot,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text('แตกต่างกันในแต่ละล็อตย่อย/ชิ้น'),
+                          onChanged: (v) => setDialogState(() => sameDateForWholeLot = v ?? false),
+                        ),
+                        if (sameDateForWholeLot) ...[
+                          SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: () async {
+                                    final picked = await _pickDateOnly(initialDate: uniformProductionDate);
+                                    if (picked != null) {
+                                      setDialogState(() => uniformProductionDate = picked);
+                                    }
+                                  },
+                                  child: Text('ผลิต: ${_formatDateOnly(uniformProductionDate)}'),
+                                ),
+                              ),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: () async {
+                                    final picked = await _pickDateOnly(initialDate: uniformExpiryDate);
+                                    if (picked != null) {
+                                      setDialogState(() => uniformExpiryDate = picked);
+                                    }
+                                  },
+                                  child: Text('หมดอายุ: ${_formatDateOnly(uniformExpiryDate)}'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ] else ...[
+                          SizedBox(height: 8),
+                          ...List.generate(mixedLotRows.length, (index) {
+                            final row = mixedLotRows[index];
+                            final rowQtyController = row['qtyController'] as TextEditingController;
+                            final rowProd = row['productionDate'] as DateTime?;
+                            final rowExp = row['expiryDate'] as DateTime?;
+
+                            return Container(
+                              margin: EdgeInsets.only(bottom: 8),
+                              padding: EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Colors.grey[300]!),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Column(
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: TextField(
+                                          controller: rowQtyController,
+                                          keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                          decoration: InputDecoration(
+                                            labelText: 'จำนวนล็อตย่อย',
+                                            border: OutlineInputBorder(),
+                                            isDense: true,
+                                          ),
+                                        ),
+                                      ),
+                                      IconButton(
+                                        onPressed: mixedLotRows.length <= 1
+                                            ? null
+                                            : () => setDialogState(() {
+                                                  final c = row['qtyController'];
+                                                  if (c is TextEditingController) c.dispose();
+                                                  mixedLotRows.removeAt(index);
+                                                }),
+                                        icon: Icon(Icons.delete_outline, color: Colors.red),
+                                      ),
+                                    ],
+                                  ),
+                                  SizedBox(height: 8),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: OutlinedButton(
+                                          onPressed: () async {
+                                            final picked = await _pickDateOnly(initialDate: rowProd);
+                                            if (picked != null) {
+                                              setDialogState(() => row['productionDate'] = picked);
+                                            }
+                                          },
+                                          child: Text('ผลิต: ${_formatDateOnly(rowProd)}'),
+                                        ),
+                                      ),
+                                      SizedBox(width: 8),
+                                      Expanded(
+                                        child: OutlinedButton(
+                                          onPressed: () async {
+                                            final picked = await _pickDateOnly(initialDate: rowExp);
+                                            if (picked != null) {
+                                              setDialogState(() => row['expiryDate'] = picked);
+                                            }
+                                          },
+                                          child: Text('หมดอายุ: ${_formatDateOnly(rowExp)}'),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            );
+                          }),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: TextButton.icon(
+                              onPressed: () => setDialogState(() {
+                                mixedLotRows.add({
+                                  'qtyController': TextEditingController(),
+                                  'productionDate': null,
+                                  'expiryDate': null,
+                                });
+                              }),
+                              icon: Icon(Icons.add),
+                              label: Text('เพิ่มล็อตย่อย'),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  disposeMixedRows();
+                  qtyController.dispose();
+                  reasonController.dispose();
+                  Navigator.pop(context);
+                },
+                child: Text('ยกเลิก'),
+              ),
+              ElevatedButton(
+                onPressed: isLoading ? null : () => submit(setDialogState),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+                child: isLoading
+                    ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : Text('บันทึก'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -126,7 +477,9 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
               children: [
                 if (PermissionService.canAccessActionSync('inventory_adjustment_shelf'))
                   _buildActionButton('ชั้นวาง', Colors.teal, Icons.shelves, () => checkPermissionAndExecute(context, 'inventory_adjustment_shelf', 'จัดการชั้นวาง', () => _showShelfDialog())),
-                                if (PermissionService.canAccessActionSync('inventory_adjustment_withdraw'))
+                if (PermissionService.canAccessActionSync('inventory_adjustment_purchase'))
+                  _buildActionButton('รับเข้า', Colors.green, Icons.add_shopping_cart, () => checkPermissionAndExecute(context, 'inventory_adjustment_purchase', 'รับเข้าสินค้า', () => _showPurchaseReceiveDialog())),
+                if (PermissionService.canAccessActionSync('inventory_adjustment_withdraw'))
                   _buildActionButton('เบิกใช้', Colors.cyan, Icons.outbox, () => checkPermissionAndExecute(context, 'inventory_adjustment_withdraw', 'เบิกใช้สินค้า', () => _showQuickAdjustDialog('withdraw', 'เบิกใช้สินค้า', Colors.cyan))),
                 if (PermissionService.canAccessActionSync('inventory_adjustment_damage'))
                   _buildActionButton('ตัดสินค้าเสีย', Colors.red, Icons.delete_forever, () => checkPermissionAndExecute(context, 'inventory_adjustment_damage', 'ตัดสินค้าเสีย', () => _showQuickAdjustDialog('damage', 'ตัดสินค้าเสีย', Colors.red))),

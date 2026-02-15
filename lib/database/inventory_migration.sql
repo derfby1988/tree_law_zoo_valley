@@ -75,6 +75,28 @@ CREATE TABLE IF NOT EXISTS inventory_products (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- 5.1 ตารางบาร์โค้ดสินค้า (Product Barcodes)
+CREATE TABLE IF NOT EXISTS inventory_product_barcodes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  product_id UUID NOT NULL REFERENCES inventory_products(id) ON DELETE CASCADE,
+  barcode_type TEXT NOT NULL DEFAULT 'GS1-128',
+  barcode_scope TEXT NOT NULL DEFAULT 'master' CHECK (barcode_scope IN ('master', 'lot')),
+  barcode_text TEXT NOT NULL,
+  account_code TEXT,
+  production_date DATE,
+  expiry_date DATE,
+  received_date DATE,
+  lot_quantity DOUBLE PRECISION,
+  is_primary BOOLEAN DEFAULT true,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_inventory_product_primary_barcode
+  ON inventory_product_barcodes(product_id)
+  WHERE is_primary = true AND is_active = true;
+
 -- 6. ตารางสูตรอาหาร (Recipes)
 CREATE TABLE IF NOT EXISTS inventory_recipes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -307,6 +329,7 @@ ALTER TABLE inventory_shelves ENABLE ROW LEVEL SECURITY;
 ALTER TABLE inventory_categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE inventory_units ENABLE ROW LEVEL SECURITY;
 ALTER TABLE inventory_products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE inventory_product_barcodes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE inventory_recipes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE inventory_recipe_ingredients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE inventory_adjustments ENABLE ROW LEVEL SECURITY;
@@ -318,6 +341,7 @@ CREATE POLICY "Allow all for authenticated" ON inventory_shelves FOR ALL TO auth
 CREATE POLICY "Allow all for authenticated" ON inventory_categories FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all for authenticated" ON inventory_units FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all for authenticated" ON inventory_products FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all for authenticated" ON inventory_product_barcodes FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all for authenticated" ON inventory_recipes FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all for authenticated" ON inventory_recipe_ingredients FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all for authenticated" ON inventory_adjustments FOR ALL TO authenticated USING (true) WITH CHECK (true);
@@ -329,6 +353,7 @@ CREATE POLICY "Allow read for anon" ON inventory_shelves FOR SELECT TO anon USIN
 CREATE POLICY "Allow read for anon" ON inventory_categories FOR SELECT TO anon USING (true);
 CREATE POLICY "Allow read for anon" ON inventory_units FOR SELECT TO anon USING (true);
 CREATE POLICY "Allow read for anon" ON inventory_products FOR SELECT TO anon USING (true);
+CREATE POLICY "Allow read for anon" ON inventory_product_barcodes FOR SELECT TO anon USING (true);
 CREATE POLICY "Allow read for anon" ON inventory_recipes FOR SELECT TO anon USING (true);
 CREATE POLICY "Allow read for anon" ON inventory_recipe_ingredients FOR SELECT TO anon USING (true);
 CREATE POLICY "Allow read for anon" ON inventory_adjustments FOR SELECT TO anon USING (true);
@@ -340,17 +365,20 @@ CREATE POLICY "Allow write for anon" ON inventory_shelves FOR INSERT TO anon WIT
 CREATE POLICY "Allow write for anon" ON inventory_categories FOR INSERT TO anon WITH CHECK (true);
 CREATE POLICY "Allow write for anon" ON inventory_units FOR INSERT TO anon WITH CHECK (true);
 CREATE POLICY "Allow write for anon" ON inventory_products FOR INSERT TO anon WITH CHECK (true);
+CREATE POLICY "Allow write for anon" ON inventory_product_barcodes FOR INSERT TO anon WITH CHECK (true);
 CREATE POLICY "Allow write for anon" ON inventory_recipes FOR INSERT TO anon WITH CHECK (true);
 CREATE POLICY "Allow write for anon" ON inventory_recipe_ingredients FOR INSERT TO anon WITH CHECK (true);
 CREATE POLICY "Allow write for anon" ON inventory_adjustments FOR INSERT TO anon WITH CHECK (true);
 CREATE POLICY "Allow write for anon" ON inventory_production_logs FOR INSERT TO anon WITH CHECK (true);
 
 CREATE POLICY "Allow update for anon" ON inventory_products FOR UPDATE TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "Allow update for anon" ON inventory_product_barcodes FOR UPDATE TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "Allow update for anon" ON inventory_recipes FOR UPDATE TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "Allow update for anon" ON inventory_recipe_ingredients FOR UPDATE TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "Allow delete for anon" ON inventory_recipes FOR DELETE TO anon USING (true);
 CREATE POLICY "Allow delete for anon" ON inventory_recipe_ingredients FOR DELETE TO anon USING (true);
 CREATE POLICY "Allow delete for anon" ON inventory_products FOR DELETE TO anon USING (true);
+CREATE POLICY "Allow delete for anon" ON inventory_product_barcodes FOR DELETE TO anon USING (true);
 
 -- =============================================
 -- Storage Bucket สำหรับรูปสูตรอาหาร

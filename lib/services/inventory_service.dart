@@ -50,6 +50,156 @@ class InventoryService {
     }
   }
 
+  static Future<List<Map<String, dynamic>>> getProductsByCategory(
+    String categoryId, {
+    int limit = 8,
+  }) async {
+    try {
+      final response = await _client
+          .from('inventory_products')
+          .select('''
+            id,
+            name,
+            quantity,
+            is_active,
+            updated_at,
+            unit:inventory_units(id, name, abbreviation)
+          ''')
+          .eq('category_id', categoryId)
+          .order('updated_at', ascending: false)
+          .limit(limit);
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error loading products by category: $e');
+      return [];
+    }
+  }
+
+  static Future<void> _createProductBarcode({
+    required String productId,
+    required String barcodeType,
+    String? accountCode,
+  }) async {
+    final normalizedAccountCode = (accountCode ?? '').trim();
+    final barcodeText = _buildGs1128BarcodeText(accountCode: normalizedAccountCode);
+
+    await _client.from('inventory_product_barcodes').insert({
+      'product_id': productId,
+      'barcode_type': barcodeType,
+      'barcode_text': barcodeText,
+      'account_code': normalizedAccountCode,
+      'barcode_scope': 'master',
+      'is_primary': true,
+      'is_active': true,
+      'updated_at': DateTime.now().toIso8601String(),
+    });
+  }
+
+  static String _buildGs1128BarcodeText({
+    required String accountCode,
+  }) {
+    final safeAccount = accountCode.isEmpty ? '0000000000' : accountCode;
+    return '(240)$safeAccount';
+  }
+
+  static String _buildGs1128LotBarcodeText({
+    required String accountCode,
+    required double quantity,
+    DateTime? productionDate,
+    DateTime? expiryDate,
+  }) {
+    final safeAccount = accountCode.isEmpty ? '0000000000' : accountCode;
+    final mfg = productionDate != null ? '(11)${_formatGs1Date(productionDate)}' : '';
+    final exp = expiryDate != null ? '(17)${_formatGs1Date(expiryDate)}' : '';
+    final qtyText = quantity == quantity.roundToDouble()
+        ? quantity.toStringAsFixed(0)
+        : quantity.toStringAsFixed(2);
+    return '(240)$safeAccount$mfg$exp(37)$qtyText';
+  }
+
+  static String _formatGs1Date(DateTime date) {
+    final yy = (date.year % 100).toString().padLeft(2, '0');
+    final mm = date.month.toString().padLeft(2, '0');
+    final dd = date.day.toString().padLeft(2, '0');
+    return '$yy$mm$dd';
+  }
+
+  static DateTime? _parseToDateOnly(dynamic value) {
+    if (value == null) return null;
+    if (value is DateTime) {
+      return DateTime(value.year, value.month, value.day);
+    }
+    final parsed = DateTime.tryParse(value.toString());
+    if (parsed == null) return null;
+    return DateTime(parsed.year, parsed.month, parsed.day);
+  }
+
+  static Future<String> _resolveProductAccountCode(String productId) async {
+    try {
+      final response = await _client
+          .from('inventory_products')
+          .select('''
+            category:inventory_categories(
+              inventory_account_code,
+              revenue_account_code,
+              cost_account_code
+            )
+          ''')
+          .eq('id', productId)
+          .maybeSingle();
+
+      final category = (response?['category'] as Map<String, dynamic>?) ?? const <String, dynamic>{};
+      final inv = (category['inventory_account_code'] as String? ?? '').trim();
+      if (inv.isNotEmpty) return inv;
+      final rev = (category['revenue_account_code'] as String? ?? '').trim();
+      if (rev.isNotEmpty) return rev;
+      final cost = (category['cost_account_code'] as String? ?? '').trim();
+      if (cost.isNotEmpty) return cost;
+    } catch (e) {
+      debugPrint('Error resolving product account code: $e');
+    }
+    return '0000000000';
+  }
+
+  static Future<void> _createLotBarcodesForReceiving({
+    required String productId,
+    required List<Map<String, dynamic>> lotBarcodeEntries,
+  }) async {
+    if (lotBarcodeEntries.isEmpty) return;
+    final accountCode = await _resolveProductAccountCode(productId);
+    final today = DateTime.now();
+
+    for (final entry in lotBarcodeEntries) {
+      final quantity = (entry['quantity'] as num?)?.toDouble() ?? 0;
+      if (quantity <= 0) continue;
+
+      final productionDate = _parseToDateOnly(entry['production_date']);
+      final expiryDate = _parseToDateOnly(entry['expiry_date']);
+      final barcodeText = _buildGs1128LotBarcodeText(
+        accountCode: accountCode,
+        quantity: quantity,
+        productionDate: productionDate,
+        expiryDate: expiryDate,
+      );
+
+      await _client.from('inventory_product_barcodes').insert({
+        'product_id': productId,
+        'barcode_type': 'GS1-128',
+        'barcode_scope': 'lot',
+        'barcode_text': barcodeText,
+        'account_code': accountCode,
+        'production_date': productionDate?.toIso8601String().split('T').first,
+        'expiry_date': expiryDate?.toIso8601String().split('T').first,
+        'received_date': today.toIso8601String().split('T').first,
+        'lot_quantity': quantity,
+        'is_primary': false,
+        'is_active': true,
+        'updated_at': DateTime.now().toIso8601String(),
+      });
+    }
+  }
+
   /// ดึงสูตรอาหารเรียงตามการใช้งานล่าสุด (updated_at ล่าสุดก่อน)
   static Future<List<Map<String, dynamic>>> getRecipesSortedByUsage() async {
     try {
@@ -232,6 +382,9 @@ class InventoryService {
     String taxInclusion = 'excluded',
     Uint8List? imageBytes,
     String? imageFileName,
+    bool createGs1Barcode = false,
+    String barcodeType = 'GS1-128',
+    String? barcodeAccountCode,
   }) async {
     try {
       final data = <String, dynamic>{
@@ -257,6 +410,15 @@ class InventoryService {
       // อัปโหลดรูปภาพ (ถ้ามี)
       if (imageBytes != null && imageFileName != null) {
         await _uploadProductImage(productId, imageBytes, imageFileName);
+      }
+
+      // สร้างบาร์โค้ด GS1-128 อัตโนมัติ (ถ้าเปิดใช้งาน)
+      if (createGs1Barcode) {
+        await _createProductBarcode(
+          productId: productId,
+          barcodeType: barcodeType,
+          accountCode: barcodeAccountCode,
+        );
       }
 
       return true;
@@ -313,6 +475,105 @@ class InventoryService {
       return publicUrl;
     } catch (e) {
       debugPrint('❌ Error uploading product image: $e');
+      return null;
+    }
+  }
+
+  /// รวมรูปภาพหลายรูปเป็นรูปเดียว (Collage)
+  static Future<Uint8List?> mergeImages(List<Uint8List> images) async {
+    if (images.isEmpty) return null;
+    if (images.length == 1) return images.first;
+
+    return compute(_mergeImagesTask, images);
+  }
+
+  static Uint8List? _mergeImagesTask(List<Uint8List> images) {
+    try {
+      final List<img.Image> decoded = [];
+      for (final bytes in images) {
+        final d = img.decodeImage(bytes);
+        if (d != null) decoded.add(d);
+      }
+
+      if (decoded.isEmpty) return null;
+      if (decoded.length == 1) return img.encodeJpg(decoded.first, quality: 80);
+
+      const int canvasWidth = 1200;
+      const int gap = 10;
+      const int rowHeight = 440; // 4:3 approx for half width
+      
+      // Determine Layout
+      int rows = 1;
+      if (decoded.length > 2) rows = 2; // 3, 4, 5 -> 2 rows
+
+      final int totalHeight = (rows * rowHeight) + ((rows + 1) * gap);
+      
+      final canvas = img.Image(width: canvasWidth, height: totalHeight);
+      // Fill white background
+      img.fill(canvas, color: img.ColorRgb8(255, 255, 255));
+
+      // Function to draw a row
+      void drawRow(List<img.Image> rowImages, int yPos) {
+        int count = rowImages.length;
+        if (count == 0) return;
+        
+        int itemWidth = (canvasWidth - (gap * (count + 1))) ~/ count;
+        int x = gap;
+        
+        for (final src in rowImages) {
+           // Helper to cover resize
+           double srcAspect = src.width / src.height;
+           double targetAspect = itemWidth / rowHeight;
+           
+           img.Image toDraw;
+           if (srcAspect > targetAspect) {
+             // Image is wider than target. Resize to match height, crop width.
+             toDraw = img.copyResize(src, height: rowHeight);
+             int cropX = (toDraw.width - itemWidth) ~/ 2;
+             if (cropX < 0) cropX = 0;
+             toDraw = img.copyCrop(toDraw, x: cropX, y: 0, width: itemWidth, height: rowHeight);
+           } else {
+             // Image is taller. Resize to match width, crop height.
+             toDraw = img.copyResize(src, width: itemWidth);
+             int cropY = (toDraw.height - rowHeight) ~/ 2;
+             if (cropY < 0) cropY = 0;
+             toDraw = img.copyCrop(toDraw, x: 0, y: cropY, width: itemWidth, height: rowHeight);
+           }
+
+          img.compositeImage(canvas, toDraw, dstX: x, dstY: yPos);
+          x += itemWidth + gap;
+        }
+      }
+      
+      // Split images into rows
+      List<img.Image> r1 = [];
+      List<img.Image> r2 = [];
+      
+      if (decoded.length <= 2) {
+        r1 = decoded;
+      } else if (decoded.length == 3) {
+        r1 = decoded.sublist(0, 2);
+        r2 = decoded.sublist(2);
+      } else if (decoded.length == 4) {
+        r1 = decoded.sublist(0, 2);
+        r2 = decoded.sublist(2);
+      } else { // 5
+        r1 = decoded.sublist(0, 2);
+        r2 = decoded.sublist(2);
+      }
+      
+      int y = gap;
+      drawRow(r1, y);
+      
+      if (r2.isNotEmpty) {
+        y += rowHeight + gap;
+        drawRow(r2, y);
+      }
+      
+      return Uint8List.fromList(img.encodeJpg(canvas, quality: 85));
+      
+    } catch (e) {
+      // Cannot print in isolate easily without custom setup, just return null on failure
       return null;
     }
   }
@@ -1198,6 +1459,7 @@ class InventoryService {
     required double quantityAfter,
     String? reason,
     String? userName,
+    List<Map<String, dynamic>>? lotBarcodeEntries,
   }) async {
     try {
       final change = quantityAfter - quantityBefore;
@@ -1217,6 +1479,13 @@ class InventoryService {
         'quantity': quantityAfter,
         'updated_at': DateTime.now().toIso8601String(),
       }).eq('id', productId);
+
+      if (type == 'purchase' && lotBarcodeEntries != null && lotBarcodeEntries.isNotEmpty) {
+        await _createLotBarcodesForReceiving(
+          productId: productId,
+          lotBarcodeEntries: lotBarcodeEntries,
+        );
+      }
 
       return true;
     } catch (e) {

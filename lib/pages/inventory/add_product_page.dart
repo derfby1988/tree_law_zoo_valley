@@ -50,6 +50,9 @@ class _AddProductPageState extends State<AddProductPage> {
   bool _isTaxExempt = false; // true = ยกเว้นภาษี
   String _taxInclusion = 'included'; // 'included' = รวมภาษี, 'excluded' = ยังไม่รวมภาษี
 
+  // Barcode
+  bool _createGs1Barcode = true;
+
   // Production from recipe
   String? _selectedRecipeId;
   String _manualProductNameBeforeRecipe = '';
@@ -80,6 +83,19 @@ class _AddProductPageState extends State<AddProductPage> {
   String get _typeLabel => _itemType == ItemType.product ? 'สินค้า' : 'วัตถุดิบ';
   String get _itemTypeValue => _itemType == ItemType.product ? 'product' : 'ingredient';
   bool get _isProducedFromRecipe => _itemType == ItemType.product && _selectedRecipeId != null;
+  String get _resolvedBarcodeAccountCode {
+    final inv = (_categoryInvAccount ?? '').trim();
+    if (inv.isNotEmpty) return inv;
+    final rev = (_categoryRevAccount ?? '').trim();
+    if (rev.isNotEmpty) return rev;
+    final cost = (_categoryCostAccount ?? '').trim();
+    if (cost.isNotEmpty) return cost;
+    return '0000000000';
+  }
+
+  String get _barcodePreviewText {
+    return '(240)$_resolvedBarcodeAccountCode';
+  }
 
   int? get _primaryImageIndex {
     for (var i = 0; i < _imageSlots.length; i++) {
@@ -121,6 +137,7 @@ class _AddProductPageState extends State<AddProductPage> {
         _itemType != ItemType.product ||
         _selectedRecipeId != null ||
         _productionQtyController.text.trim() != '1' ||
+        !_createGs1Barcode ||
         !_isTaxAutoMode ||
         _isTaxExempt ||
         _taxInclusion != 'included' ||
@@ -511,9 +528,9 @@ class _AddProductPageState extends State<AddProductPage> {
                   firstChild: SizedBox.shrink(),
                   secondChild: Column(
                     children: [
-                      _buildTaxCard(),
+                      _buildBarcodeSection(),
                       SizedBox(height: 12),
-                      _buildStockLocationCard(),
+                      _buildTaxCard(),
                       SizedBox(height: 12),
                       _buildAccountInfoCard(),
                     ],
@@ -551,7 +568,7 @@ class _AddProductPageState extends State<AddProductPage> {
               Expanded(
                 child: Text(
                   _showAdditionalFields
-                      ? 'ซ่อนข้อมูลเพิ่มเติม (ภาษี, สต็อก, บัญชี)'
+                      ? 'ซ่อนข้อมูลเพิ่มเติม (ภาษี, บัญชี)'
                       : 'แสดงข้อมูลเพิ่มเติม (ไม่บังคับ)',
                   style: TextStyle(fontWeight: FontWeight.w600),
                 ),
@@ -609,31 +626,38 @@ class _AddProductPageState extends State<AddProductPage> {
     required bool isSelected,
     required Color color,
     required VoidCallback onTap,
+    Color? selectedBackgroundColor,
+    Color? selectedBorderColor,
+    Color? selectedForegroundColor,
   }) {
+    final activeBackgroundColor = selectedBackgroundColor ?? color;
+    final activeBorderColor = selectedBorderColor ?? color;
+    final activeForegroundColor = selectedForegroundColor ?? Colors.white;
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(10),
       child: Container(
         padding: EdgeInsets.symmetric(vertical: 14),
         decoration: BoxDecoration(
-          color: isSelected ? color : Colors.grey[100],
+          color: isSelected ? activeBackgroundColor : Colors.grey[100],
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: isSelected ? color : Colors.grey[300]!,
+            color: isSelected ? activeBorderColor : Colors.grey[300]!,
             width: isSelected ? 2 : 1,
           ),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 20, color: isSelected ? Colors.white : Colors.grey[600]),
+            Icon(icon, size: 20, color: isSelected ? activeForegroundColor : Colors.grey[600]),
             SizedBox(width: 8),
             Text(
               label,
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.bold,
-                color: isSelected ? Colors.white : Colors.grey[600],
+                color: isSelected ? activeForegroundColor : Colors.grey[600],
               ),
             ),
           ],
@@ -843,7 +867,7 @@ class _AddProductPageState extends State<AddProductPage> {
               decoration: InputDecoration(
                 labelText: 'ชื่อ$_typeLabel *',
                 hintText: _itemType == ItemType.product
-                    ? 'เช่น ข้าวหอมมะลิ ตราบัวเงิน 5 กก.'
+                    ? 'ควรพิมพ์กว้้างๆก่อน เช่น ผลไม้ สัตว์ เครื่องดื่ม เพื่อล็อครหัสทางธุรกิจไว้'
                     : 'เช่น แป้งสาลี, น้ำตาลทราย',
                 border: _inputBorder,
                 filled: _itemType == ItemType.product && _isProducedFromRecipe,
@@ -916,11 +940,52 @@ class _AddProductPageState extends State<AddProductPage> {
     );
   }
 
+  Widget _buildBarcodeSection() {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            value: _createGs1Barcode,
+            title: Text('สร้างบาร์โค้ด GS1-128 อัตโนมัติ', style: TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: Text('ใช้รหัสบัญชีจากประเภทสินค้า (ระดับสินค้า/Master)'),
+            onChanged: (v) => setState(() => _createGs1Barcode = v),
+          ),
+          if (_createGs1Barcode) ...[
+            SizedBox(height: 8),
+            Text('รหัสบัญชีที่ใช้: $_resolvedBarcodeAccountCode', style: TextStyle(fontSize: 12, color: Colors.grey[700])),
+            SizedBox(height: 6),
+            Text(
+              'บาร์โค้ดระดับสินค้า (Master): วันที่ผลิต/หมดอายุจะไปเก็บระดับล็อตตอนรับเข้าหรือผลิต',
+              style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+            ),
+            SizedBox(height: 6),
+            SelectableText(
+              _barcodePreviewText,
+              style: TextStyle(fontFamily: 'monospace', fontSize: 12, color: Colors.blueGrey[800]),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildCategoryField() {
     final categories = widget.categories;
     final selectedCat = _selectedCategoryId != null
         ? categories.firstWhere((c) => c['id'] == _selectedCategoryId, orElse: () => <String, dynamic>{})
         : null;
+    final isSelectedCategoryTaxExempt = _resolvedTaxRule?['is_tax_exempt'] == true;
+    final selectedCode = selectedCat != null && selectedCat.isNotEmpty ? (selectedCat['code'] as String? ?? '') : '';
+    final selectedName = selectedCat != null && selectedCat.isNotEmpty ? (selectedCat['name'] as String? ?? '') : '';
 
     final displayText = selectedCat != null && selectedCat.isNotEmpty
         ? '${selectedCat['code']} \u00BB ${selectedCat['name']}'
@@ -960,14 +1025,31 @@ class _AddProductPageState extends State<AddProductPage> {
           ),
           errorText: _showCategoryError && _selectedCategoryId == null ? 'กรุณาเลือกประเภท$_typeLabel' : null,
         ),
-        child: Text(
-          displayText ?? 'เลือกประเภท$_typeLabel',
-          style: TextStyle(
-            color: displayText != null ? null : Colors.grey[600],
-            fontSize: 14,
-          ),
-          overflow: TextOverflow.ellipsis,
-        ),
+        child: displayText == null
+            ? Text(
+                'เลือกประเภท$_typeLabel',
+                style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                overflow: TextOverflow.ellipsis,
+              )
+            : (isSelectedCategoryTaxExempt
+                ? Text.rich(
+                    TextSpan(
+                      style: TextStyle(fontSize: 14, color: Colors.black87),
+                      children: [
+                        TextSpan(
+                          text: '$selectedCode \u00BB ',
+                          style: TextStyle(color: Colors.green[700], fontWeight: FontWeight.w700),
+                        ),
+                        TextSpan(text: selectedName),
+                      ],
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  )
+                : Text(
+                    displayText,
+                    style: TextStyle(fontSize: 14),
+                    overflow: TextOverflow.ellipsis,
+                  )),
       ),
     );
   }
@@ -1059,6 +1141,9 @@ class _AddProductPageState extends State<AddProductPage> {
                     icon: Icons.money_off,
                     isSelected: _isTaxExempt,
                     color: Colors.green,
+                    selectedBackgroundColor: Colors.green[50],
+                    selectedBorderColor: Colors.green[400],
+                    selectedForegroundColor: Colors.green[800],
                     onTap: _isTaxAutoMode ? () {} : () => setState(() => _isTaxExempt = true),
                   ),
                 ),
@@ -1381,11 +1466,225 @@ class _AddProductPageState extends State<AddProductPage> {
     );
   }
 
+  Future<void> _showCategoryInsightDialog({
+    required Map<String, dynamic> category,
+    required bool isTaxExemptCategory,
+  }) async {
+    final categoryId = category['id'] as String?;
+    if (categoryId == null || categoryId.isEmpty) return;
+
+    final code = (category['code'] as String? ?? '').trim();
+    final name = (category['name'] as String? ?? '').trim();
+    final description = (category['description'] as String? ?? '').trim();
+    final invAccount = (category['inventory_account_code'] as String? ?? '').trim();
+    final revAccount = (category['revenue_account_code'] as String? ?? '').trim();
+    final costAccount = (category['cost_account_code'] as String? ?? '').trim();
+    final hintSource = '$code $name $description'.toLowerCase();
+
+    final exampleHints = <String>[];
+    if (hintSource.contains('เกษตร') || hintSource.contains('อินทรีย์') || hintSource.contains('organic')) {
+      exampleHints.addAll(['ผักอินทรีย์', 'ข้าวออร์แกนิก', 'ผลไม้ปลอดสาร']);
+    }
+    if (hintSource.contains('เครื่องดื่ม')) {
+      exampleHints.add('น้ำผลไม้ 100%');
+    }
+    if (hintSource.contains('อาหาร')) {
+      exampleHints.add('อาหารแปรรูปจากวัตถุดิบธรรมชาติ');
+    }
+    if (isTaxExemptCategory && exampleHints.isEmpty) {
+      exampleHints.addAll(['สินค้าเกษตรดิบ', 'สินค้าอินทรีย์ตามเงื่อนไขภาษี']);
+    }
+
+    final scrollController = ScrollController();
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) {
+          return AlertDialog(
+            titlePadding: EdgeInsets.fromLTRB(18, 16, 10, 8),
+            title: Row(
+              children: [
+                Expanded(
+                  child: Text('ข้อมูลหมวดบัญชี: $code', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  icon: Icon(Icons.close),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: 540,
+              child: FutureBuilder<List<Map<String, dynamic>>>(
+                future: InventoryService.getProductsByCategory(categoryId, limit: 8),
+                builder: (ctx, snapshot) {
+                  final products = snapshot.data ?? const <Map<String, dynamic>>[];
+
+                  return Scrollbar(
+                    controller: scrollController,
+                    thumbVisibility: true,
+                    child: SingleChildScrollView(
+                      controller: scrollController,
+                      padding: EdgeInsets.only(right: 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                      Text(name, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                      SizedBox(height: 6),
+                      Text(
+                        description.isNotEmpty ? description : 'หมวดนี้ใช้จัดกลุ่มสินค้าเพื่อกำหนดบัญชีและการคำนวณภาษี',
+                        style: TextStyle(fontSize: 13, color: Colors.grey[700], height: 1.35),
+                      ),
+                      SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          Chip(
+                            avatar: Icon(isTaxExemptCategory ? Icons.eco : Icons.receipt_long,
+                                size: 16, color: isTaxExemptCategory ? Colors.green[700] : Colors.orange[700]),
+                            label: Text(isTaxExemptCategory ? 'ยกเว้นภาษี' : 'มีภาษี'),
+                            backgroundColor: isTaxExemptCategory ? Colors.green[50] : Colors.orange[50],
+                          ),
+                          if (invAccount.isNotEmpty) Chip(label: Text('สินค้าคงคลัง: $invAccount')),
+                          if (revAccount.isNotEmpty) Chip(label: Text('รายได้: $revAccount')),
+                          if (costAccount.isNotEmpty) Chip(label: Text('ต้นทุน: $costAccount')),
+                        ],
+                      ),
+                      if (exampleHints.isNotEmpty) ...[
+                        SizedBox(height: 14),
+                        Text('ยกตัวอย่าง', style: TextStyle(fontWeight: FontWeight.w700)),
+                        SizedBox(height: 6),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: exampleHints.map((e) => Chip(label: Text(e), visualDensity: VisualDensity.compact)).toList(),
+                        ),
+                      ],
+                      SizedBox(height: 14),
+                      Text('สินค้าที่เคยจัดอยู่หมวดนี้', style: TextStyle(fontWeight: FontWeight.w700)),
+                      SizedBox(height: 6),
+                      if (snapshot.connectionState == ConnectionState.waiting)
+                        Row(
+                          children: [
+                            SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+                            SizedBox(width: 8),
+                            Text('กำลังโหลดรายการสินค้า...'),
+                          ],
+                        )
+                      else if (products.isEmpty)
+                        Text('ยังไม่มีสินค้าที่เคยจัดในหมวดนี้', style: TextStyle(color: Colors.grey[700]))
+                      else
+                        ...products.map((p) {
+                          final productName = (p['name'] as String? ?? '').trim();
+                          final qty = (p['quantity'] as num?)?.toDouble() ?? 0;
+                          final unit = p['unit'] as Map<String, dynamic>?;
+                          final unitText = (unit?['abbreviation'] as String? ?? unit?['name'] as String? ?? '').trim();
+                          final qtyText = qty == qty.roundToDouble() ? qty.toStringAsFixed(0) : qty.toStringAsFixed(2);
+
+                          return Padding(
+                            padding: EdgeInsets.only(bottom: 6),
+                            child: Row(
+                              children: [
+                                Expanded(child: Text('• $productName', overflow: TextOverflow.ellipsis)),
+                                Text(
+                                  unitText.isEmpty ? qtyText : '$qtyText $unitText',
+                                  style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
+                    ],
+                  ),
+                ));
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('ปิด'),
+            ),
+          ],
+        );
+      },
+    );
+  } finally {
+    scrollController.dispose();
+  }
+}
+
   // ===== Category Dialog (Top) =====
-  void _showCategoryBottomSheet() {
+  Future<void> _showCategoryBottomSheet() async {
     final categories = widget.categories;
     final searchController = TextEditingController();
     bool didAutoScrollToSelected = false;
+    final taxExemptCategoryIds = <String>{};
+
+    DateTime? parseDateOnly(dynamic value) {
+      if (value == null) return null;
+      if (value is DateTime) return DateTime(value.year, value.month, value.day);
+      if (value is String && value.trim().isNotEmpty) {
+        final parsed = DateTime.tryParse(value);
+        if (parsed != null) return DateTime(parsed.year, parsed.month, parsed.day);
+      }
+      return null;
+    }
+
+    bool isRuleEffective(Map<String, dynamic> rule, DateTime today) {
+      final from = parseDateOnly(rule['effective_from']);
+      final to = parseDateOnly(rule['effective_to']);
+      if (from != null && from.isAfter(today)) return false;
+      if (to != null && to.isBefore(today)) return false;
+      return true;
+    }
+
+    try {
+      final rules = await InventoryService.getTaxRules(includeInactive: false);
+      final today = DateTime.now();
+      final effectiveDate = DateTime(today.year, today.month, today.day);
+      final bestRuleByCategoryId = <String, Map<String, dynamic>>{};
+
+      for (final rule in rules) {
+        final categoryId = rule['category_id'] as String?;
+        if (categoryId == null || categoryId.isEmpty) continue;
+
+        final itemType = (rule['item_type'] as String?) ?? 'both';
+        if (itemType != 'both' && itemType != _itemTypeValue) continue;
+        if (!isRuleEffective(rule, effectiveDate)) continue;
+
+        final currentBest = bestRuleByCategoryId[categoryId];
+        if (currentBest == null) {
+          bestRuleByCategoryId[categoryId] = rule;
+          continue;
+        }
+
+        final currentPriority = (currentBest['priority'] as num?)?.toInt() ?? 0;
+        final nextPriority = (rule['priority'] as num?)?.toInt() ?? 0;
+        if (nextPriority > currentPriority) {
+          bestRuleByCategoryId[categoryId] = rule;
+          continue;
+        }
+        if (nextPriority < currentPriority) continue;
+
+        final currentFrom = parseDateOnly(currentBest['effective_from']) ?? DateTime(1970);
+        final nextFrom = parseDateOnly(rule['effective_from']) ?? DateTime(1970);
+        if (nextFrom.isAfter(currentFrom)) {
+          bestRuleByCategoryId[categoryId] = rule;
+        }
+      }
+
+      taxExemptCategoryIds
+        ..clear()
+        ..addAll(
+          bestRuleByCategoryId.entries
+              .where((e) => e.value['is_tax_exempt'] == true)
+              .map((e) => e.key),
+        );
+    } catch (_) {
+      // ถ้าโหลดกฎไม่ได้ ให้แสดงรายการปกติ
+    }
 
     showDialog<void>(
       context: context,
@@ -1393,7 +1692,7 @@ class _AddProductPageState extends State<AddProductPage> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setSheetState) {
-            final query = searchController.text.toLowerCase();
+            final query = searchController.text.trim().toLowerCase();
             final filtered = (query.isEmpty
                 ? categories
                 : categories.where((c) {
@@ -1506,12 +1805,19 @@ class _AddProductPageState extends State<AddProductPage> {
                               final name = cat['name'] as String? ?? '';
                               final isSelected = cat['id'] == _selectedCategoryId;
                               final hasAccounts = cat['inventory_account_code'] != null;
+                              final categoryId = cat['id'] as String?;
+                              final isTaxExemptCategory =
+                                  categoryId != null && taxExemptCategoryIds.contains(categoryId);
 
                               return InkWell(
                                 onTap: () async {
                                   Navigator.pop(ctx);
                                   await _handleCategorySelected(cat);
                                 },
+                                onLongPress: () => _showCategoryInsightDialog(
+                                  category: cat,
+                                  isTaxExemptCategory: isTaxExemptCategory,
+                                ),
                                 child: Container(
                                   key: isSelected ? selectedTileKey : null,
                                   padding: EdgeInsets.only(left: 16 + indent, right: 16, top: 10, bottom: 10),
@@ -1528,14 +1834,35 @@ class _AddProductPageState extends State<AddProductPage> {
                                       ),
                                       SizedBox(width: 8),
                                       Expanded(
-                                        child: Text(
-                                          '$code  $name',
-                                          style: TextStyle(
-                                            fontSize: level <= 2 ? 14.0 : 13.0,
-                                            fontWeight: level <= 3 ? FontWeight.bold : FontWeight.normal,
+                                        child: RichText(
+                                          overflow: TextOverflow.ellipsis,
+                                          text: TextSpan(
+                                            style: TextStyle(
+                                              fontSize: level <= 2 ? 14.0 : 13.0,
+                                              fontWeight: level <= 3 ? FontWeight.bold : FontWeight.normal,
+                                              color: Colors.black87,
+                                            ),
+                                            children: [
+                                              TextSpan(
+                                                text: '$code  ',
+                                                style: TextStyle(
+                                                  color: isTaxExemptCategory ? Colors.green[700] : Colors.black87,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                              TextSpan(text: name),
+                                            ],
                                           ),
                                         ),
                                       ),
+                                      if (isTaxExemptCategory)
+                                        Padding(
+                                          padding: EdgeInsets.only(right: 6),
+                                          child: Tooltip(
+                                            message: 'หมวดนี้ยกเว้นภาษี',
+                                            child: Icon(Icons.eco, size: 16, color: Colors.green[600]),
+                                          ),
+                                        ),
                                       if (!hasAccounts)
                                         Tooltip(
                                           message: 'ยังไม่ได้กำหนดบัญชี',
@@ -1580,6 +1907,25 @@ class _AddProductPageState extends State<AddProductPage> {
     try {
       final taxRate = _isTaxExempt ? 0.0 : (double.tryParse(_taxRateController.text) ?? 0);
 
+      // เตรียมรูปภาพ
+      Uint8List? finalImageBytes;
+      String? finalImageName;
+
+      final validImages = _imageSlots.where((img) => img != null).cast<Uint8List>().toList();
+      
+      if (validImages.isNotEmpty) {
+        if (validImages.length > 1) {
+          // กรณีมีหลายรูป ให้รวมเป็นรูปเดียว
+          finalImageBytes = await InventoryService.mergeImages(validImages);
+          finalImageName = 'merged_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        } else {
+          // กรณีมีรูปเดียว ใช้รูปนั้นเลย
+          finalImageBytes = validImages.first;
+          final index = _imageSlots.indexOf(finalImageBytes);
+          finalImageName = _imageFileNames[index];
+        }
+      }
+
       final ok = await InventoryService.addProduct(
         name: _nameController.text.trim(),
         categoryId: _selectedCategoryId!,
@@ -1593,8 +1939,11 @@ class _AddProductPageState extends State<AddProductPage> {
         isTaxExempt: _isTaxExempt,
         taxRate: taxRate,
         taxInclusion: _taxInclusion,
-        imageBytes: _primaryImageBytes,
-        imageFileName: _primaryImageFileName,
+        imageBytes: finalImageBytes,
+        imageFileName: finalImageName,
+        createGs1Barcode: _createGs1Barcode,
+        barcodeType: 'GS1-128',
+        barcodeAccountCode: _resolvedBarcodeAccountCode,
       );
 
       if (!mounted) return;
