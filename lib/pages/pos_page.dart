@@ -17,6 +17,7 @@ class _PosPageState extends State<PosPage> {
   Map<String, dynamic>? _selectedProduct;
   String? _selectedCategoryId;
   bool _isLoading = true;
+  final FocusNode _searchFocus = FocusNode();
 
   // Search
   final _searchController = TextEditingController();
@@ -41,6 +42,9 @@ class _PosPageState extends State<PosPage> {
   @override
   void initState() {
     super.initState();
+    _searchFocus.addListener(() {
+      if (mounted) setState(() {});
+    });
     _loadData();
   }
 
@@ -52,10 +56,30 @@ class _PosPageState extends State<PosPage> {
     );
   }
 
+  Widget _gradientText(String label, {double fontSize = 13, FontWeight weight = FontWeight.w600}) {
+    return ShaderMask(
+      shaderCallback: (Rect bounds) => _iconGradient.createShader(bounds),
+      blendMode: BlendMode.srcIn,
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(fontSize: fontSize, fontWeight: weight, color: Colors.white),
+      ),
+    );
+  }
+
+  void _focusSearchField() {
+    if (!_searchFocus.hasFocus) {
+      FocusScope.of(context).requestFocus(_searchFocus);
+    }
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
     _barcodeController.dispose();
+    _searchFocus.dispose();
     super.dispose();
   }
 
@@ -172,43 +196,53 @@ class _PosPageState extends State<PosPage> {
 
     return Scaffold(
       backgroundColor: _bgColor,
+      resizeToAvoidBottomInset: true,
       body: SafeArea(
-        child: Row(
-          children: [
-            // Left Icon Bar (full height, over header)
-            _buildLeftIconBar(),
-            // Main content
-            Expanded(
-              child: Column(
-                children: [
-                  // Header
-                  _buildHeader(),
-                  // Body
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        children: [
-                          // Top row: Zone 1, 2, 3
-                          // Zone 3 height = Zone 1 height + gap + Zone 4 height
-                          Expanded(
-                            flex: 6,
-                            child: _buildTopAndMiddleRow(),
-                          ),
-                          const SizedBox(height: 12),
-                          // Zone 5: Recent Transaction / Cart
-                          Expanded(
-                            flex: 4,
-                            child: _buildZone5(),
-                          ),
-                        ],
+        child: GestureDetector(
+          behavior: HitTestBehavior.deferToChild,
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: Row(
+            children: [
+              // Left Icon Bar (full height, over header)
+              _buildLeftIconBar(),
+              // Main content
+              Expanded(
+                child: Column(
+                  children: [
+                    // Header
+                    _buildHeader(),
+                    // Body
+                    Expanded(
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          // Always show all zones (no keyboard-only hiding)
+                          return SingleChildScrollView(
+                            padding: const EdgeInsets.all(12),
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(minHeight: constraints.maxHeight - 24),
+                              child: Column(
+                                children: [
+                                  SizedBox(
+                                    height: (constraints.maxHeight - 24) * 0.6,
+                                    child: _buildTopAndMiddleRow(),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  SizedBox(
+                                    height: (constraints.maxHeight - 24) * 0.4,
+                                    child: _buildZone5(),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -409,14 +443,7 @@ class _PosPageState extends State<PosPage> {
           children: [
             Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: _accentGreen.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: _gradientIcon(Icons.receipt_long, size: 18),
-                ),
+                _gradientIcon(Icons.receipt_long, size: 18),
                 const SizedBox(width: 8),
                 Flexible(
                   child: Text('ราคารวมก่อนคำนวณภาษี',
@@ -482,14 +509,7 @@ class _PosPageState extends State<PosPage> {
           children: [
             Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(5),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: _gradientIcon(Icons.analytics, size: 16),
-                ),
+                _gradientIcon(Icons.analytics, size: 16),
                 const SizedBox(width: 8),
                 Flexible(
                   child: Text('ยอดสุทธิ',
@@ -524,14 +544,7 @@ class _PosPageState extends State<PosPage> {
           children: [
             Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: Colors.purple.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: _gradientIcon(Icons.payment, size: 18),
-                ),
+                _gradientIcon(Icons.payment, size: 18),
                 const SizedBox(width: 8),
                 Text('การชำระเงิน', style: TextStyle(fontSize: 12, color: _textSecondary, fontWeight: FontWeight.w500)),
               ],
@@ -566,13 +579,16 @@ class _PosPageState extends State<PosPage> {
           _showPaymentDialog(label);
         },
         child: Center(
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, color: color, size: 22),
-              const SizedBox(width: 8),
-              Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 13)),
-            ],
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _gradientIcon(icon, size: 22),
+                const SizedBox(width: 8),
+                _gradientText(label, fontSize: 13, weight: FontWeight.w600),
+              ],
+            ),
           ),
         ),
       ),
@@ -591,14 +607,7 @@ class _PosPageState extends State<PosPage> {
           children: [
             Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: Colors.amber.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: _gradientIcon(Icons.shopping_bag, size: 18),
-                ),
+                _gradientIcon(Icons.shopping_bag, size: 18),
                 const SizedBox(width: 8),
                 Text('สินค้า', style: TextStyle(fontSize: 11.5, color: _textSecondary, fontWeight: FontWeight.w500)),
                 const Spacer(),
@@ -611,6 +620,14 @@ class _PosPageState extends State<PosPage> {
               height: 34,
               child: TextField(
                 controller: _searchController,
+                focusNode: _searchFocus,
+                autofocus: false,
+                keyboardType: TextInputType.text,
+                textInputAction: TextInputAction.search,
+                onTap: () {
+                  _focusSearchField();
+                  setState(() {});
+                },
                 onChanged: (_) => setState(() {}),
                 style: const TextStyle(fontSize: 13),
                 decoration: InputDecoration(
