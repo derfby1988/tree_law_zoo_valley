@@ -19,6 +19,7 @@ import 'pages/procurement_page.dart';
 import 'pages/user_groups_page.dart';
 import 'pages/user_permissions_page.dart';
 import 'pages/inventory/tax_rules_admin_page.dart';
+import 'pages/pos_page.dart';
 import 'services/permission_service.dart';
 import 'services/user_group_service.dart';
 
@@ -522,13 +523,18 @@ class _MyHomePageState extends State<MyHomePage> {
                       ),
                     ),
                   ),
-                  ListTile(
-                    title: Text('ขาย/ POS', style: TextStyle(color: Colors.white)),
-                    leading: Icon(Icons.point_of_sale, color: Colors.white),
-                    onTap: () {
-                      Navigator.pop(context);
-                    },
-                  ),
+                  if (PermissionService.canAccessPageSync('pos'))
+                    ListTile(
+                      title: Text('ขาย/ POS', style: TextStyle(color: Colors.white)),
+                      leading: Icon(Icons.point_of_sale, color: Colors.white),
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const PosPage()),
+                        );
+                      },
+                    ),
                   ListTile(
                     title: Text('เปิดโต๊ะ', style: TextStyle(color: Colors.white)),
                     leading: Icon(Icons.table_restaurant, color: Colors.white),
