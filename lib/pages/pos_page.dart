@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/inventory_service.dart';
+import '../services/permission_service.dart';
+import '../utils/permission_helpers.dart';
 
 class PosPage extends StatefulWidget {
   const PosPage({super.key});
@@ -17,7 +19,11 @@ class _PosPageState extends State<PosPage> {
   Map<String, dynamic>? _selectedProduct;
   String? _selectedCategoryId;
   bool _isLoading = true;
+  bool _isProcessing = false;
   final FocusNode _searchFocus = FocusNode();
+
+  // Tax/service cache per category
+  final Map<String, Map<String, dynamic>> _taxRuleCache = {};
 
   // Search
   final _searchController = TextEditingController();
@@ -102,7 +108,23 @@ class _PosPageState extends State<PosPage> {
   }
 
   // Cart logic
-  void _addToCart(Map<String, dynamic> product) {
+  Future<void> _addToCart(Map<String, dynamic> product) async {
+    // Resolve tax rule if not cached
+    final catId = (product['category'] is Map) ? product['category']['id'] as String? : null;
+    if (catId != null && !_taxRuleCache.containsKey(catId)) {
+      final rule = await InventoryService.resolveTaxRuleForCategory(
+        categoryId: catId,
+        itemType: 'product',
+      );
+      _taxRuleCache[catId] = rule;
+    }
+    // Apply tax rule to product
+    if (catId != null && _taxRuleCache.containsKey(catId)) {
+      final rule = _taxRuleCache[catId]!;
+      product['is_tax_exempt'] = rule['is_tax_exempt'] ?? false;
+      product['tax_rate'] = rule['tax_rate'] ?? 7.0;
+    }
+
     setState(() {
       final existingIndex = _cartItems.indexWhere(
         (item) => item['product']['id'] == product['id'],
@@ -144,11 +166,32 @@ class _PosPageState extends State<PosPage> {
     return total;
   }
 
-  double get _taxRate => 0.07;
   double get _serviceRate => 0.10;
   double get _discount => 0; // TODO: implement discount logic
   double get _preTaxTotal => _subtotal - _discount;
-  double get _taxAmount => _preTaxTotal * _taxRate;
+
+  /// คำนวณภาษีจาก tax rule จริงต่อสินค้า
+  double get _taxAmount {
+    double tax = 0;
+    for (final item in _cartItems) {
+      final product = item['product'] as Map<String, dynamic>;
+      final qty = item['qty'] as int;
+      final price = (product['price'] ?? 0).toDouble();
+      final isTaxExempt = product['is_tax_exempt'] == true;
+      final taxRate = (product['tax_rate'] ?? 7.0).toDouble();
+      if (!isTaxExempt) {
+        tax += price * qty * (taxRate / 100);
+      }
+    }
+    return tax;
+  }
+
+  /// อัตราภาษีเฉลี่ยถ่วงน้ำหนัก (สำหรับแสดงผล)
+  double get _avgTaxRate {
+    if (_subtotal == 0) return 7.0;
+    return (_taxAmount / _preTaxTotal) * 100;
+  }
+
   double get _serviceAmount => _preTaxTotal * _serviceRate;
   double get _netTotal => _preTaxTotal + _taxAmount + _serviceAmount;
 
@@ -524,7 +567,7 @@ class _PosPageState extends State<PosPage> {
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: _textPrimary),
             ),
             const SizedBox(height: 4),
-            _infoRow('ภาษี 7%', _taxAmount),
+            _infoRow('ภาษี ${_avgTaxRate.toStringAsFixed(1)}%', _taxAmount),
             _infoRow('ค่าบริการ 10%', _serviceAmount),
           ],
         ),
@@ -885,7 +928,7 @@ class _PosPageState extends State<PosPage> {
           children: [
             _dialogRow('ยอดรวม', '฿${_subtotal.toStringAsFixed(2)}'),
             if (_discount > 0) _dialogRow('ส่วนลด', '-฿${_discount.toStringAsFixed(2)}'),
-            _dialogRow('ภาษี 7%', '฿${_taxAmount.toStringAsFixed(2)}'),
+            _dialogRow('ภาษี ${_avgTaxRate.toStringAsFixed(1)}%', '฿${_taxAmount.toStringAsFixed(2)}'),
             _dialogRow('ค่าบริการ 10%', '฿${_serviceAmount.toStringAsFixed(2)}'),
             const Divider(),
             _dialogRow('ยอดสุทธิ', '฿${_netTotal.toStringAsFixed(2)}', bold: true),
@@ -904,7 +947,12 @@ class _PosPageState extends State<PosPage> {
             ),
             onPressed: () {
               Navigator.pop(ctx);
-              _processPayment(method);
+              checkPermissionAndExecute(
+                context,
+                'pos_main_sell',
+                'ขายสินค้า',
+                () => _processPayment(method),
+              );
             },
             child: const Text('ยืนยันชำระเงิน'),
           ),
@@ -927,16 +975,53 @@ class _PosPageState extends State<PosPage> {
   }
 
   Future<void> _processPayment(String method) async {
-    // TODO: Save order to database
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('ชำระเงินสำเร็จ ($method) ยอด ฿${_netTotal.toStringAsFixed(2)}'),
-        backgroundColor: _accentGreen,
-      ),
+    if (_isProcessing) return;
+    setState(() => _isProcessing = true);
+
+    final user = Supabase.instance.client.auth.currentUser;
+    final userName = user?.userMetadata?['full_name'] ?? user?.email?.split('@')[0] ?? 'พนักงาน';
+
+    final result = await InventoryService.createPosOrder(
+      cartItems: _cartItems,
+      subtotal: _subtotal,
+      discountAmount: _discount,
+      discountNote: _discount > 0 ? 'ส่วนลด' : null,
+      taxRate: _avgTaxRate,
+      taxAmount: _taxAmount,
+      serviceRate: _serviceRate * 100,
+      serviceAmount: _serviceAmount,
+      netTotal: _netTotal,
+      paymentMethod: method,
+      userName: userName,
     );
-    setState(() {
-      _cartItems.clear();
-      _selectedProduct = null;
-    });
+
+    setState(() => _isProcessing = false);
+
+    if (result != null) {
+      final orderNumber = result['order_number'] ?? '';
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('ชำระเงินสำเร็จ ($method) $orderNumber ยอด ฿${_netTotal.toStringAsFixed(2)}'),
+            backgroundColor: _accentGreen,
+          ),
+        );
+      }
+      setState(() {
+        _cartItems.clear();
+        _selectedProduct = null;
+      });
+      // Reload products to refresh stock
+      _loadData();
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('เกิดข้อผิดพลาดในการบันทึกออเดอร์'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }

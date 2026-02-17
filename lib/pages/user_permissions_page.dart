@@ -21,6 +21,7 @@ final List<Map<String, dynamic>> _systemPages = [
   {'id': 'procurement', 'name': 'ระบบสั่งซื้อ', 'button': 'สั่งซื้อ', 'icon': Icons.shopping_cart},
   {'id': 'tax_rules_admin', 'name': 'จัดการกฎภาษี', 'button': 'กฎภาษี', 'icon': Icons.rule},
   {'id': 'pos', 'name': 'ขาย/POS', 'button': 'POS', 'icon': Icons.point_of_sale},
+  {'id': 'stock_movement', 'name': 'Stock Movement', 'button': 'Movement', 'icon': Icons.swap_vert},
 ];
 
 /// รายการ Tab ทั้งหมดในแต่ละหน้า
@@ -41,6 +42,10 @@ final List<Map<String, dynamic>> _systemTabs = [
   {'id': 'procurement_confirm', 'page_id': 'procurement', 'name': 'Confirm รับออเดอร์', 'icon': Icons.check_circle},
   {'id': 'procurement_ship', 'page_id': 'procurement', 'name': 'ส่งสินค้า', 'icon': Icons.local_shipping},
   {'id': 'procurement_receive', 'page_id': 'procurement', 'name': 'รับสินค้า', 'icon': Icons.inventory_2},
+  // POS (pos)
+  {'id': 'pos_main', 'page_id': 'pos', 'name': 'ขายสินค้า', 'icon': Icons.point_of_sale},
+  // Stock Movement (stock_movement)
+  {'id': 'stock_movement_main', 'page_id': 'stock_movement', 'name': 'รายงาน Movement', 'icon': Icons.swap_vert},
   // เมนูร้านอาหาร (restaurant_menu)
   {'id': 'restaurant_menu_main', 'page_id': 'restaurant_menu', 'name': 'เมนูอาหาร', 'icon': Icons.restaurant_menu},
   // จัดการผู้ใช้ (user_management)
@@ -61,8 +66,9 @@ final List<Map<String, dynamic>> _systemActions = [
   {'id': 'inventory_products_edit', 'tab_id': 'inventory_products', 'name': 'แก้ไขสินค้า', 'icon': Icons.edit},
   {'id': 'inventory_products_delete', 'tab_id': 'inventory_products', 'name': 'ลบสินค้า', 'icon': Icons.delete},
   // Tab: ปรับปรุงคลัง (inventory_adjustment)
-  {'id': 'inventory_adjustment_shelf', 'tab_id': 'inventory_adjustment', 'name': 'จัดการชั้นวาง', 'icon': Icons.shelves},
-    {'id': 'inventory_adjustment_withdraw', 'tab_id': 'inventory_adjustment', 'name': 'เบิกใช้', 'icon': Icons.outbox},
+  {'id': 'inventory_adjustment_shelf', 'tab_id': 'inventory_adjustment', 'name': '\u0e08\u0e31\u0e14\u0e01\u0e32\u0e23\u0e0a\u0e31\u0e49\u0e19\u0e27\u0e32\u0e07', 'icon': Icons.shelves},
+  {'id': 'inventory_adjustment_purchase', 'tab_id': 'inventory_adjustment', 'name': '\u0e23\u0e31\u0e1a\u0e40\u0e02\u0e49\u0e32\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32', 'icon': Icons.add_shopping_cart},
+  {'id': 'inventory_adjustment_withdraw', 'tab_id': 'inventory_adjustment', 'name': '\u0e40\u0e1a\u0e34\u0e01\u0e43\u0e0a\u0e49', 'icon': Icons.outbox},
   {'id': 'inventory_adjustment_damage', 'tab_id': 'inventory_adjustment', 'name': 'ตัดสินค้าเสีย', 'icon': Icons.delete_forever},
   {'id': 'inventory_adjustment_count', 'tab_id': 'inventory_adjustment', 'name': 'ตรวจนับสต๊อก', 'icon': Icons.inventory_2},
   {'id': 'inventory_adjustment_warehouse_add', 'tab_id': 'inventory_adjustment', 'name': 'เพิ่มคลังสินค้า', 'icon': Icons.add_business},
@@ -93,6 +99,15 @@ final List<Map<String, dynamic>> _systemActions = [
   {'id': 'user_groups_edit', 'tab_id': 'user_groups_main', 'name': 'แก้ไขกลุ่ม', 'icon': Icons.edit},
   {'id': 'user_groups_delete', 'tab_id': 'user_groups_main', 'name': 'ลบกลุ่ม', 'icon': Icons.delete},
   {'id': 'user_groups_sort_order', 'tab_id': 'user_groups_main', 'name': 'จัดลำดับกลุ่ม', 'icon': Icons.swap_vert},
+  // Tab: POS (pos_main)
+  {'id': 'pos_main_sell', 'tab_id': 'pos_main', 'name': 'ขายสินค้า', 'icon': Icons.point_of_sale},
+  {'id': 'pos_main_discount', 'tab_id': 'pos_main', 'name': 'ให้ส่วนลด', 'icon': Icons.discount},
+  {'id': 'pos_main_void', 'tab_id': 'pos_main', 'name': 'ยกเลิกรายการ', 'icon': Icons.cancel},
+  // Tab: Stock Movement (stock_movement_main)
+  {'id': 'stock_movement_main_view', 'tab_id': 'stock_movement_main', 'name': 'ดูรายงาน', 'icon': Icons.visibility},
+  {'id': 'stock_movement_main_export', 'tab_id': 'stock_movement_main', 'name': 'ส่งออกรายงาน', 'icon': Icons.file_download},
+  // Tab: รับสินค้า (procurement_receive)
+  {'id': 'procurement_receive_add', 'tab_id': 'procurement_receive', 'name': 'รับสินค้าเข้า', 'icon': Icons.add_shopping_cart},
   // Tab: ขอซื้อ (procurement_request)
   {'id': 'procurement_request_create', 'tab_id': 'procurement_request', 'name': 'สร้างใบขอซื้อ', 'icon': Icons.add},
   {'id': 'procurement_request_edit', 'tab_id': 'procurement_request', 'name': 'แก้ไขใบขอซื้อ', 'icon': Icons.edit},

@@ -1836,4 +1836,277 @@ class InventoryService {
       return false;
     }
   }
+
+  // =============================================
+  // Stock Movement (enhanced queries)
+  // =============================================
+
+  /// ดึง stock movement พร้อม filter (type, product, date range)
+  static Future<List<Map<String, dynamic>>> getStockMovements({
+    int limit = 100,
+    String? type,
+    String? productId,
+    DateTime? dateFrom,
+    DateTime? dateTo,
+  }) async {
+    try {
+      var query = _client
+          .from('inventory_adjustments')
+          .select('''
+            *,
+            product:inventory_products(id, name, sku, unit:inventory_units(id, name, abbreviation))
+          ''');
+
+      if (type != null && type.isNotEmpty && type != 'all') {
+        query = query.eq('type', type);
+      }
+      if (productId != null && productId.isNotEmpty) {
+        query = query.eq('product_id', productId);
+      }
+      if (dateFrom != null) {
+        query = query.gte('created_at', dateFrom.toIso8601String());
+      }
+      if (dateTo != null) {
+        final endOfDay = DateTime(dateTo.year, dateTo.month, dateTo.day, 23, 59, 59);
+        query = query.lte('created_at', endOfDay.toIso8601String());
+      }
+
+      final response = await query
+          .order('created_at', ascending: false)
+          .limit(limit);
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error loading stock movements: $e');
+      return [];
+    }
+  }
+
+  /// สรุปยอด movement แยกตาม type
+  static Future<Map<String, dynamic>> getMovementSummary({
+    DateTime? dateFrom,
+    DateTime? dateTo,
+  }) async {
+    try {
+      final movements = await getStockMovements(
+        limit: 1000,
+        dateFrom: dateFrom,
+        dateTo: dateTo,
+      );
+
+      double totalIn = 0;
+      double totalOut = 0;
+      int saleCount = 0;
+      int purchaseCount = 0;
+      int adjustCount = 0;
+
+      for (final m in movements) {
+        final change = (m['quantity_change'] as num?)?.toDouble() ?? 0;
+        final type = m['type'] as String? ?? '';
+
+        if (change > 0) totalIn += change;
+        if (change < 0) totalOut += change.abs();
+
+        switch (type) {
+          case 'sale': saleCount++; break;
+          case 'purchase': case 'receive': purchaseCount++; break;
+          default: adjustCount++; break;
+        }
+      }
+
+      return {
+        'total_in': totalIn,
+        'total_out': totalOut,
+        'sale_count': saleCount,
+        'purchase_count': purchaseCount,
+        'adjust_count': adjustCount,
+        'total_count': movements.length,
+      };
+    } catch (e) {
+      debugPrint('Error getting movement summary: $e');
+      return {};
+    }
+  }
+
+  /// ดึงสินค้าที่คงเหลือต่ำกว่า min_quantity
+  static Future<List<Map<String, dynamic>>> getLowStockProducts() async {
+    try {
+      final products = await getProducts();
+      return products.where((p) {
+        final qty = (p['quantity'] as num?)?.toDouble() ?? 0;
+        final minQty = (p['min_quantity'] as num?)?.toDouble() ?? 0;
+        return qty <= minQty && minQty > 0;
+      }).toList();
+    } catch (e) {
+      debugPrint('Error getting low stock products: $e');
+      return [];
+    }
+  }
+
+  /// ดึงยอดขาย POS สรุปตามช่วงเวลา
+  static Future<Map<String, dynamic>> getSalesReport({
+    DateTime? dateFrom,
+    DateTime? dateTo,
+  }) async {
+    try {
+      var query = _client.from('pos_orders').select('*');
+      if (dateFrom != null) {
+        query = query.gte('created_at', dateFrom.toIso8601String());
+      }
+      if (dateTo != null) {
+        final endOfDay = DateTime(dateTo.year, dateTo.month, dateTo.day, 23, 59, 59);
+        query = query.lte('created_at', endOfDay.toIso8601String());
+      }
+
+      final orders = await query.order('created_at', ascending: false);
+      final list = List<Map<String, dynamic>>.from(orders);
+
+      double totalSales = 0;
+      double totalTax = 0;
+      double totalService = 0;
+      double totalDiscount = 0;
+      int orderCount = list.length;
+
+      for (final o in list) {
+        totalSales += (o['net_total'] as num?)?.toDouble() ?? 0;
+        totalTax += (o['tax_amount'] as num?)?.toDouble() ?? 0;
+        totalService += (o['service_amount'] as num?)?.toDouble() ?? 0;
+        totalDiscount += (o['discount_amount'] as num?)?.toDouble() ?? 0;
+      }
+
+      return {
+        'orders': list,
+        'order_count': orderCount,
+        'total_sales': totalSales,
+        'total_tax': totalTax,
+        'total_service': totalService,
+        'total_discount': totalDiscount,
+      };
+    } catch (e) {
+      debugPrint('Error getting sales report: $e');
+      return {'orders': [], 'order_count': 0, 'total_sales': 0.0};
+    }
+  }
+
+  // =============================================
+  // POS Orders
+  // =============================================
+
+  /// สร้างออเดอร์ POS พร้อมบันทึกรายการสินค้า ลดสต็อก และบันทึก adjustment
+  static Future<Map<String, dynamic>?> createPosOrder({
+    required List<Map<String, dynamic>> cartItems,
+    required double subtotal,
+    required double discountAmount,
+    String? discountNote,
+    required double taxRate,
+    required double taxAmount,
+    required double serviceRate,
+    required double serviceAmount,
+    required double netTotal,
+    required String paymentMethod,
+    String? tableNumber,
+    String? userName,
+  }) async {
+    try {
+      final userId = _client.auth.currentUser?.id;
+
+      // 1. สร้าง order header
+      final orderResp = await _client.from('pos_orders').insert({
+        'order_number': '', // trigger จะ generate ให้
+        'user_id': userId,
+        'user_name': userName ?? 'พนักงาน',
+        'table_number': tableNumber,
+        'subtotal': subtotal,
+        'discount_amount': discountAmount,
+        'discount_note': discountNote,
+        'tax_rate': taxRate,
+        'tax_amount': taxAmount,
+        'service_rate': serviceRate,
+        'service_amount': serviceAmount,
+        'net_total': netTotal,
+        'payment_method': paymentMethod,
+        'status': 'completed',
+      }).select().single();
+
+      final orderId = orderResp['id'] as String;
+      final orderNumber = orderResp['order_number'] as String;
+
+      // 2. สร้าง order lines + ลดสต็อก + บันทึก adjustment
+      for (final item in cartItems) {
+        final product = item['product'] as Map<String, dynamic>;
+        final qty = item['qty'] as int;
+        final productId = product['id'] as String;
+        final productName = product['name'] as String? ?? '';
+        final unitPrice = (product['price'] ?? 0).toDouble();
+        final lineTotal = unitPrice * qty;
+        final unit = product['unit'];
+        final unitName = (unit is Map) ? (unit['abbreviation'] ?? unit['name'] ?? '') : '';
+        final isTaxExempt = product['is_tax_exempt'] == true;
+        final productTaxRate = (product['tax_rate'] ?? 0).toDouble();
+
+        // Insert order line
+        await _client.from('pos_order_lines').insert({
+          'order_id': orderId,
+          'product_id': productId,
+          'product_name': productName,
+          'unit_name': unitName,
+          'quantity': qty,
+          'unit_price': unitPrice,
+          'line_total': lineTotal,
+          'tax_exempt': isTaxExempt,
+          'tax_rate': productTaxRate,
+          'note': item['note'] ?? '',
+        });
+
+        // ลดสต็อก
+        final productResp = await _client
+            .from('inventory_products')
+            .select('quantity')
+            .eq('id', productId)
+            .single();
+        final currentQty = (productResp['quantity'] as num).toDouble();
+        final newQty = currentQty - qty;
+
+        await _client.from('inventory_products').update({
+          'quantity': newQty,
+          'updated_at': DateTime.now().toIso8601String(),
+        }).eq('id', productId);
+
+        // บันทึก adjustment
+        await _client.from('inventory_adjustments').insert({
+          'product_id': productId,
+          'type': 'sale',
+          'quantity_before': currentQty,
+          'quantity_after': newQty,
+          'quantity_change': -qty.toDouble(),
+          'reason': 'ขาย POS ($orderNumber)',
+          'reference_id': orderId,
+          'user_name': userName ?? 'พนักงาน',
+        });
+      }
+
+      debugPrint('✅ POS Order created: $orderNumber, total: $netTotal');
+      return Map<String, dynamic>.from(orderResp);
+    } catch (e) {
+      debugPrint('❌ Error creating POS order: $e');
+      return null;
+    }
+  }
+
+  /// ดึงออเดอร์ POS ล่าสุด
+  static Future<List<Map<String, dynamic>>> getRecentPosOrders({int limit = 20}) async {
+    try {
+      final response = await _client
+          .from('pos_orders')
+          .select('''
+            *,
+            lines:pos_order_lines(*)
+          ''')
+          .order('created_at', ascending: false)
+          .limit(limit);
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error loading POS orders: $e');
+      return [];
+    }
+  }
 }
