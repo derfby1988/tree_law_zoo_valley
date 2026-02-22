@@ -21,6 +21,7 @@ import 'pages/user_permissions_page.dart';
 import 'pages/inventory/tax_rules_admin_page.dart';
 import 'pages/inventory/stock_movement_page.dart';
 import 'pages/reports_page.dart';
+import 'pages/table_management_page.dart';
 import 'pages/pos_page.dart';
 import 'services/permission_service.dart';
 import 'services/user_group_service.dart';
@@ -637,6 +638,18 @@ class _MyHomePageState extends State<MyHomePage> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(builder: (context) => const TaxRulesAdminPage()),
+                        );
+                      },
+                    ),
+                  if (PermissionService.canAccessPageSync('table_management'))
+                    ListTile(
+                      title: Text('จัดการโต๊ะและร้าน', style: TextStyle(color: Colors.white)),
+                      leading: Icon(Icons.table_restaurant, color: Colors.white),
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const TableManagementPage()),
                         );
                       },
                     ),

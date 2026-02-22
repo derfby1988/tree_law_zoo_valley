@@ -22,6 +22,7 @@ final List<Map<String, dynamic>> _systemPages = [
   {'id': 'tax_rules_admin', 'name': 'จัดการกฎภาษี', 'button': 'กฎภาษี', 'icon': Icons.rule},
   {'id': 'pos', 'name': 'ขาย/POS', 'button': 'POS', 'icon': Icons.point_of_sale},
   {'id': 'stock_movement', 'name': 'Stock Movement', 'button': 'Movement', 'icon': Icons.swap_vert},
+  {'id': 'table_management', 'name': 'จัดการโต๊ะและร้าน', 'button': 'โต๊ะ', 'icon': Icons.table_restaurant},
 ];
 
 /// รายการ Tab ทั้งหมดในแต่ละหน้า
@@ -42,6 +43,11 @@ final List<Map<String, dynamic>> _systemTabs = [
   {'id': 'procurement_confirm', 'page_id': 'procurement', 'name': 'Confirm รับออเดอร์', 'icon': Icons.check_circle},
   {'id': 'procurement_ship', 'page_id': 'procurement', 'name': 'ส่งสินค้า', 'icon': Icons.local_shipping},
   {'id': 'procurement_receive', 'page_id': 'procurement', 'name': 'รับสินค้า', 'icon': Icons.inventory_2},
+  // Table Management (table_management)
+  {'id': 'table_management_zones', 'page_id': 'table_management', 'name': 'จัดการร้าน/โซน', 'icon': Icons.store},
+  {'id': 'table_management_tables', 'page_id': 'table_management', 'name': 'จัดการโต๊ะ', 'icon': Icons.table_restaurant},
+  {'id': 'table_management_layout', 'page_id': 'table_management', 'name': 'ผังร้าน (Floor Plan)', 'icon': Icons.grid_view},
+  {'id': 'table_management_types', 'page_id': 'table_management', 'name': 'ประเภทโต๊ะ', 'icon': Icons.category},
   // POS (pos)
   {'id': 'pos_main', 'page_id': 'pos', 'name': 'ขายสินค้า', 'icon': Icons.point_of_sale},
   // Stock Movement (stock_movement)
@@ -99,6 +105,25 @@ final List<Map<String, dynamic>> _systemActions = [
   {'id': 'user_groups_edit', 'tab_id': 'user_groups_main', 'name': 'แก้ไขกลุ่ม', 'icon': Icons.edit},
   {'id': 'user_groups_delete', 'tab_id': 'user_groups_main', 'name': 'ลบกลุ่ม', 'icon': Icons.delete},
   {'id': 'user_groups_sort_order', 'tab_id': 'user_groups_main', 'name': 'จัดลำดับกลุ่ม', 'icon': Icons.swap_vert},
+  // Tab: จัดการร้าน/โซน (table_management_zones)
+  {'id': 'table_management_zones_add', 'tab_id': 'table_management_zones', 'name': 'เพิ่มร้าน/โซน', 'icon': Icons.add_business},
+  {'id': 'table_management_zones_edit', 'tab_id': 'table_management_zones', 'name': 'แก้ไขร้าน/โซน', 'icon': Icons.edit},
+  {'id': 'table_management_zones_delete', 'tab_id': 'table_management_zones', 'name': 'ลบร้าน/โซน', 'icon': Icons.delete},
+  // Tab: จัดการโต๊ะ (table_management_tables)
+  {'id': 'table_management_tables_add', 'tab_id': 'table_management_tables', 'name': 'เพิ่มโต๊ะ', 'icon': Icons.add},
+  {'id': 'table_management_tables_edit', 'tab_id': 'table_management_tables', 'name': 'แก้ไขโต๊ะ', 'icon': Icons.edit},
+  {'id': 'table_management_tables_delete', 'tab_id': 'table_management_tables', 'name': 'ลบโต๊ะ', 'icon': Icons.delete},
+  // Tab: ผังร้าน (table_management_layout)
+  {'id': 'table_management_layout_move', 'tab_id': 'table_management_layout', 'name': 'ย้ายโต๊ะบนผัง', 'icon': Icons.open_with},
+  {'id': 'table_management_layout_element_add', 'tab_id': 'table_management_layout', 'name': 'เพิ่มข้อความ/รูปทรง', 'icon': Icons.add_box},
+  {'id': 'table_management_layout_element_delete', 'tab_id': 'table_management_layout', 'name': 'ลบข้อความ/รูปทรง', 'icon': Icons.delete},
+  // Tab: ประเภทโต๊ะ (table_management_types)
+  {'id': 'table_management_types_add', 'tab_id': 'table_management_types', 'name': 'เพิ่มประเภทโต๊ะ', 'icon': Icons.add},
+  {'id': 'table_management_types_edit', 'tab_id': 'table_management_types', 'name': 'แก้ไขประเภทโต๊ะ', 'icon': Icons.edit},
+  {'id': 'table_management_types_delete', 'tab_id': 'table_management_types', 'name': 'ลบประเภทโต๊ะ', 'icon': Icons.delete},
+  // Tab: จองโต๊ะ (table_booking_main)
+  {'id': 'table_booking_create', 'tab_id': 'table_booking_main', 'name': 'สร้างการจอง', 'icon': Icons.book_online},
+  {'id': 'table_booking_cancel', 'tab_id': 'table_booking_main', 'name': 'ยกเลิกการจอง', 'icon': Icons.cancel},
   // Tab: POS (pos_main)
   {'id': 'pos_main_sell', 'tab_id': 'pos_main', 'name': 'ขายสินค้า', 'icon': Icons.point_of_sale},
   {'id': 'pos_main_discount', 'tab_id': 'pos_main', 'name': 'ให้ส่วนลด', 'icon': Icons.discount},
