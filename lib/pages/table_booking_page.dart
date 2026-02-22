@@ -6,6 +6,7 @@ import '../services/table_management_service.dart';
 import '../services/table_booking_service.dart';
 import '../services/permission_service.dart';
 import '../utils/permission_helpers.dart';
+import '../widgets/home_left_drawer.dart';
 
 class TableBookingPage extends StatefulWidget {
   const TableBookingPage({super.key, required this.isGuestMode});
@@ -17,6 +18,7 @@ class TableBookingPage extends StatefulWidget {
 }
 
 class _TableBookingPageState extends State<TableBookingPage> {
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   String? _selectedTable;
   String? _selectedZoneName;
   String? _activeBookingId;
@@ -253,6 +255,17 @@ class _TableBookingPageState extends State<TableBookingPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: _scaffoldKey,
+      drawer: HomeLeftDrawer(
+        isGuestMode: widget.isGuestMode,
+        onHomeTap: () {
+          Navigator.pop(context);
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        },
+        onTableBookingTap: () {
+          Navigator.pop(context);
+        },
+      ),
       backgroundColor: Colors.transparent,
       body: Container(
         decoration: const BoxDecoration(
@@ -292,8 +305,8 @@ class _TableBookingPageState extends State<TableBookingPage> {
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
                                     IconButton(
-                                      icon: const Icon(Icons.arrow_back, color: Colors.deepPurple),
-                                      onPressed: () => Navigator.pop(context),
+                                      icon: const Icon(Icons.menu, color: Colors.deepPurple),
+                                      onPressed: () => _scaffoldKey.currentState?.openDrawer(),
                                     ),
                                     if (widget.isGuestMode)
                                       Container(
@@ -429,7 +442,7 @@ class _TableBookingPageState extends State<TableBookingPage> {
     required List<Map<String, dynamic>> rawTables,
   }) {
     final hasPlacedTables = rawTables.any((t) => t['pos_x'] != null && t['pos_y'] != null);
-    final showFloorPlan = _floorPlanZones.contains(zoneId) && hasPlacedTables;
+    final showFloorPlan = hasPlacedTables; // บังคับผังร้านเมื่อมีตำแหน่งโต๊ะ
 
     return Container(
       width: double.infinity,
@@ -461,45 +474,6 @@ class _TableBookingPageState extends State<TableBookingPage> {
                   Text(time, style: const TextStyle(fontSize: 12, color: Colors.black54)),
                 ],
               ),
-              if (hasPlacedTables)
-                GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      if (_floorPlanZones.contains(zoneId)) {
-                        _floorPlanZones.remove(zoneId);
-                      } else {
-                        _floorPlanZones.add(zoneId);
-                      }
-                    });
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: showFloorPlan
-                          ? const Color(0xFF3B82F6).withValues(alpha: 0.1)
-                          : Colors.grey.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          showFloorPlan ? Icons.list : Icons.grid_view,
-                          size: 16,
-                          color: showFloorPlan ? const Color(0xFF3B82F6) : Colors.grey[600],
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          showFloorPlan ? 'รายการ' : 'ผังร้าน',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: showFloorPlan ? const Color(0xFF3B82F6) : Colors.grey[600],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
             ],
           ),
           const SizedBox(height: 12),
@@ -748,6 +722,7 @@ class _TableBookingPageState extends State<TableBookingPage> {
       ),
     );
   }
+
 }
 
 class _LegendDot extends StatelessWidget {

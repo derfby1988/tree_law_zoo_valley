@@ -8,14 +8,14 @@ import '../widgets/glass_button.dart';
 import 'user_permissions_page.dart';
 import 'group_form_manager_page.dart';
 
-class UserGroupsPage extends StatefulWidget {
-  const UserGroupsPage({super.key});
+class HRMPage extends StatefulWidget {
+  const HRMPage({super.key});
 
   @override
-  State<UserGroupsPage> createState() => _UserGroupsPageState();
+  State<HRMPage> createState() => _HRMPageState();
 }
 
-class _UserGroupsPageState extends State<UserGroupsPage> {
+class _HRMPageState extends State<HRMPage> {
   final _groupNameController = TextEditingController();
   final _groupDescriptionController = TextEditingController();
   
@@ -419,9 +419,14 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
   }
 
   void _showSortGroupsDialog() {
-    // สร้าง copy ของ list สำหรับจัดลำดับ
-    final sortableGroups = List<Map<String, dynamic>>.from(_userGroups);
+    // ...
     bool isSaving = false;
+    final sortableGroups = List<Map<String, dynamic>>.from(_userGroups)
+      ..sort((a, b) {
+        final orderA = (a['sort_order'] as int?) ?? 999;
+        final orderB = (b['sort_order'] as int?) ?? 999;
+        return orderA.compareTo(orderB);
+      });
 
     showDialog(
       context: context,
@@ -946,215 +951,296 @@ class _UserGroupsPageState extends State<UserGroupsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          children: [
-            Icon(Icons.group, color: Colors.white),
-            SizedBox(width: 8),
-            Text('จัดการกลุ่มผู้ใช้', style: TextStyle(color: Colors.white)),
-          ],
-        ),
-        backgroundColor: Color(0xFF2E7D32),
-        iconTheme: IconThemeData(color: Colors.white),
-        elevation: 0,
-      ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFFE8F5E8),
-              Color(0xFFF1F8E9),
-              Colors.white,
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Row(
+            children: [
+              Icon(Icons.group, color: Colors.white),
+              SizedBox(width: 8),
+              Text('HRM', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+          backgroundColor: Color(0xFF2E7D32),
+          iconTheme: IconThemeData(color: Colors.white),
+          elevation: 0,
+          bottom: const TabBar(
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            indicatorColor: Colors.white,
+            tabs: [
+              Tab(text: 'สถิติ'),
+              Tab(text: 'กลุ่มและสิทธิ์'),
             ],
           ),
         ),
-        child: Column(
+        body: TabBarView(
           children: [
-            // Header Section
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 10,
-                    offset: Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'กลุ่มผู้ใช้งาน',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF2E7D32),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'จัดการกลุ่มและประเภทของผู้ใช้งานในระบบ',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Action Buttons
-            Container(
-              padding: EdgeInsets.all(20),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: GlassButton(
-                      text: 'สร้างกลุ่มใหม่',
-                      onPressed: _showCreateGroupDialog,
-                      backgroundColor: Color(0xFF2E7D32),
-                      textColor: Colors.white,
-                      icon: Icons.add,
-                      width: double.infinity,
-                      opacity: 0.85,  // เพิ่มความทึบให้เห็นชัด
-                      blurStrength: 5,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: GlassButton(
-                      text: 'จัดการฟอร์มกลุ่ม',
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const GroupFormManagerPage(),
-                        ),
-                      ),
-                      backgroundColor: Colors.blueGrey[700]!,
-                      textColor: Colors.white,
-                      icon: Icons.format_list_bulleted,
-                      width: double.infinity,
-                      opacity: 0.85,
-                      blurStrength: 5,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: GlassButton(
-                      text: 'จัดลำดับกลุ่ม',
-                      onPressed: () => checkPermissionAndExecute(
-                        context,
-                        'user_groups_sort_order',
-                        'จัดลำดับกลุ่ม',
-                        () => _showSortGroupsDialog(),
-                      ),
-                      backgroundColor: Colors.deepPurple[600]!,
-                      textColor: Colors.white,
-                      icon: Icons.swap_vert,
-                      width: double.infinity,
-                      opacity: 0.85,
-                      blurStrength: 5,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Content Section
-            Expanded(
-              child: _isLoading
-                  ? _buildSkeletonLoader()
-                  : _errorMessage != null
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.error_outline,
-                                size: 64,
-                                color: Colors.red[400],
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                _errorMessage!,
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: Colors.red[600],
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                              const SizedBox(height: 16),
-                              GlassButton(
-                                text: 'ลองใหม่',
-                                onPressed: _loadUserGroups,
-                                backgroundColor: Color(0xFF2E7D32),
-                              ),
-                            ],
-                          ),
-                        )
-                      : _userGroups.isEmpty
-                          ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.group_outlined,
-                                    size: 64,
-                                    color: Colors.grey[400],
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    'ยังไม่มีกลุ่มผู้ใช้',
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      color: Colors.grey[600],
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'กด "สร้างกลุ่มใหม่" เพื่อเริ่มต้น',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.grey[500],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )
-                          : LayoutBuilder(
-                              builder: (context, constraints) {
-                                final width = constraints.maxWidth;
-                                final crossAxisCount = width >= 1000
-                                    ? 3
-                                    : width >= 720
-                                        ? 2
-                                        : 1;
-                                return GridView.builder(
-                                  padding: EdgeInsets.fromLTRB(20, 4, 20, 20),
-                                  itemCount: _userGroups.length,
-                                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: crossAxisCount,
-                                    crossAxisSpacing: 16,
-                                    mainAxisSpacing: 16,
-                                    childAspectRatio: crossAxisCount == 1 ? 1.9 : 1.7,
-                                  ),
-                                  itemBuilder: (context, index) {
-                                    final group = _userGroups[index];
-                                    return _buildGroupCard(group);
-                                  },
-                                );
-                              },
-                            ),
-            ),
+            _buildStatisticsTab(),
+            _buildGroupsAndPermissionsTab(),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildStatisticsTab() {
+    return DefaultTabController(
+      length: 4,
+      child: Column(
+        children: [
+          Container(
+            color: const Color(0xFFE8F5E8),
+            child: const TabBar(
+              isScrollable: true,
+              labelColor: Color(0xFF2E7D32),
+              unselectedLabelColor: Colors.black54,
+              indicatorColor: Color(0xFF2E7D32),
+              tabs: [
+                Tab(text: 'เข้า-ออกงาน'),
+                Tab(text: 'ตารางงาน'),
+                Tab(text: 'ค่าตอบแทน'),
+                Tab(text: 'แจ้งปัญหา'),
+              ],
+            ),
+          ),
+          Expanded(
+            child: TabBarView(
+              children: [
+                _buildStatsPlaceholder('เข้า-ออกงาน'),
+                _buildStatsPlaceholder('ตารางงาน'),
+                _buildStatsPlaceholder('ค่าตอบแทน'),
+                _buildStatsPlaceholder('แจ้งปัญหา'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatsPlaceholder(String title) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.insights, size: 48, color: Colors.grey[500]),
+          const SizedBox(height: 12),
+          Text(
+            'ส่วน$title',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey[700],
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'อยู่ระหว่างพัฒนา',
+            style: TextStyle(color: Colors.grey[600]),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGroupsAndPermissionsTab() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFFE8F5E8),
+            Color(0xFFF1F8E9),
+            Colors.white,
+          ],
+        ),
+      ),
+      child: Column(
+        children: [
+          // Header Section
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'กลุ่มผู้ใช้งาน',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF2E7D32),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'จัดการกลุ่มและประเภทของผู้ใช้งานในระบบ',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Action Buttons
+          Container(
+            padding: EdgeInsets.all(20),
+            child: Row(
+              children: [
+                Expanded(
+                  child: GlassButton(
+                    text: 'สร้างกลุ่มใหม่',
+                    onPressed: _showCreateGroupDialog,
+                    backgroundColor: Color(0xFF2E7D32),
+                    textColor: Colors.white,
+                    icon: Icons.add,
+                    width: double.infinity,
+                    opacity: 0.85, // เพิ่มความทึบให้เห็นชัด
+                    blurStrength: 5,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: GlassButton(
+                    text: 'จัดการฟอร์มกลุ่ม',
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const GroupFormManagerPage(),
+                      ),
+                    ),
+                    backgroundColor: Colors.blueGrey[700]!,
+                    textColor: Colors.white,
+                    icon: Icons.format_list_bulleted,
+                    width: double.infinity,
+                    opacity: 0.85,
+                    blurStrength: 5,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: GlassButton(
+                    text: 'จัดลำดับกลุ่ม',
+                    onPressed: () => checkPermissionAndExecute(
+                      context,
+                      'user_groups_sort_order',
+                      'จัดลำดับกลุ่ม',
+                      () => _showSortGroupsDialog(),
+                    ),
+                    backgroundColor: Colors.deepPurple[600]!,
+                    textColor: Colors.white,
+                    icon: Icons.swap_vert,
+                    width: double.infinity,
+                    opacity: 0.85,
+                    blurStrength: 5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Content Section
+          Expanded(
+            child: _isLoading
+                ? _buildSkeletonLoader()
+                : _errorMessage != null
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.error_outline,
+                              size: 64,
+                              color: Colors.red[400],
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              _errorMessage!,
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.red[600],
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 16),
+                            GlassButton(
+                              text: 'ลองใหม่',
+                              onPressed: _loadUserGroups,
+                              backgroundColor: Color(0xFF2E7D32),
+                            ),
+                          ],
+                        ),
+                      )
+                    : _userGroups.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.group_outlined,
+                                  size: 64,
+                                  color: Colors.grey[400],
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'ยังไม่มีกลุ่มผู้ใช้',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'กด "สร้างกลุ่มใหม่" เพื่อเริ่มต้น',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey[500],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : LayoutBuilder(
+                            builder: (context, constraints) {
+                              final width = constraints.maxWidth;
+                              final crossAxisCount = width >= 1000
+                                  ? 3
+                                  : width >= 720
+                                      ? 2
+                                      : 1;
+                              return GridView.builder(
+                                padding: EdgeInsets.fromLTRB(20, 4, 20, 20),
+                                itemCount: _userGroups.length,
+                                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: crossAxisCount,
+                                  crossAxisSpacing: 16,
+                                  mainAxisSpacing: 16,
+                                  childAspectRatio: crossAxisCount == 1 ? 1.9 : 1.7,
+                                ),
+                                itemBuilder: (context, index) {
+                                  final group = _userGroups[index];
+                                  return _buildGroupCard(group);
+                                },
+                              );
+                            },
+                          ),
+          ),
+        ],
       ),
     );
   }

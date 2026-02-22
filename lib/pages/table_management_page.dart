@@ -69,7 +69,9 @@ class _TableManagementPageState extends State<TableManagementPage> {
         ],
       ),
     );
+
   }
+
 
   void _confirmDeleteZone(Map<String, dynamic> zone) {
     showDialog(
@@ -89,6 +91,7 @@ class _TableManagementPageState extends State<TableManagementPage> {
     );
   }
 
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -101,7 +104,7 @@ class _TableManagementPageState extends State<TableManagementPage> {
               IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => Navigator.pop(context)),
               const SizedBox(width: 4),
               const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('จัดการโต๊ะและร้าน', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                Text('ที่นั่งของแต่ละร้าน', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                 Text('ออกแบบผังโต๊ะก่อนเปิดร้าน', style: TextStyle(color: Colors.white70, fontSize: 12)),
               ])),
               if (PermissionService.canAccessTabSync('table_management_types'))
@@ -215,6 +218,7 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
   bool _hasElementChanges = false;
   String? _selectedElementId;
   static const double _tableSize = 56;
+  bool _openTabShowPlan = true;
 
   // Toolbar tool: null=select, 'text', 'rect', 'circle', 'rounded'
   String? _activeTool;
@@ -229,7 +233,7 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
   void initState() {
     super.initState();
     final showLayout = PermissionService.canAccessTabSync('table_management_layout');
-    _tabController = TabController(length: showLayout ? 2 : 1, vsync: this);
+    _tabController = TabController(length: showLayout ? 3 : 2, vsync: this);
     _loadAll();
   }
 
@@ -252,6 +256,54 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
   Future<void> _loadElements() async {
     final elements = await TableManagementService.getElementsForZone(widget.zone['id']);
     if (mounted) setState(() => _elements = elements);
+  }
+
+  Widget _buildLoadingSkeleton(bool showLayout) {
+    Widget skeletonBox({double width = double.infinity, double height = 16, EdgeInsets margin = EdgeInsets.zero}) {
+      return Container(
+        width: width,
+        height: height,
+        margin: margin,
+        decoration: BoxDecoration(
+          color: Colors.grey.shade300,
+          borderRadius: BorderRadius.circular(8),
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: skeletonBox(height: 18, margin: const EdgeInsets.only(right: 8))),
+          skeletonBox(width: 70, height: 18),
+        ]),
+        const SizedBox(height: 12),
+        skeletonBox(height: 140, margin: const EdgeInsets.only(bottom: 16)),
+        ...List.generate(3, (i) =>
+          Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            elevation: 1,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(children: [
+                skeletonBox(width: 44, height: 44, margin: const EdgeInsets.only(right: 12)),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  skeletonBox(height: 14, width: 120, margin: const EdgeInsets.only(bottom: 6)),
+                  skeletonBox(height: 12, width: 180),
+                ])),
+                const SizedBox(width: 12),
+                skeletonBox(width: 32, height: 32, margin: const EdgeInsets.only(right: 8)),
+                skeletonBox(width: 32, height: 32),
+              ]),
+            ),
+          ),
+        ),
+        if (showLayout)
+          skeletonBox(height: 220, margin: const EdgeInsets.only(top: 8)),
+      ]),
+    );
   }
 
   @override
@@ -301,7 +353,7 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
           setState(() { _hasChanges = false; _hasElementChanges = false; });
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('บันทึกผังร้านสำเร็จ ($savedTables โต๊ะ + ${_elements.length} องค์ประกอบ)'), backgroundColor: Colors.green));
-          _tabController.animateTo(0);
+          _tabController.animateTo(1);
         }
       } else {
         if (mounted) {
@@ -681,7 +733,8 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
               labelColor: Colors.white,
               unselectedLabelColor: Colors.white54,
               tabs: const [
-                Tab(icon: Icon(Icons.table_restaurant, size: 18), text: 'จัดการโต๊ะ'),
+                Tab(icon: Icon(Icons.meeting_room, size: 18), text: 'เปิดโต๊ะ'),
+                Tab(icon: Icon(Icons.table_restaurant, size: 18), text: 'เพิ่มโต๊ะ'),
                 Tab(icon: Icon(Icons.grid_view, size: 18), text: 'ผังร้าน'),
               ],
             )
@@ -691,13 +744,16 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
             child: Container(
               decoration: const BoxDecoration(color: Color(0xFFF1F5F9), borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
               child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? _buildLoadingSkeleton(showLayout)
                   : showLayout
                       ? TabBarView(
                           controller: _tabController,
-                          children: [_buildTableListTab(), _buildFloorPlanTab()],
+                          children: [_buildOpenTableTab(), _buildTableListTab(), _buildFloorPlanTab()],
                         )
-                      : _buildTableListTab(),
+                      : TabBarView(
+                          controller: _tabController,
+                          children: [_buildOpenTableTab(), _buildTableListTab()],
+                        ),
             ),
           ),
         ])),
@@ -705,7 +761,7 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
       floatingActionButton: AnimatedBuilder(
         animation: _tabController,
         builder: (context, _) {
-          final onTableTab = _tabController.index == 0;
+          final onTableTab = _tabController.index == 1;
           if (onTableTab && PermissionService.canAccessActionSync('table_management_tables_add')) {
             return FloatingActionButton.extended(
               onPressed: () => _showTableDialog(),
@@ -813,6 +869,144 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
         ),
       ),
     ]);
+  }
+
+  Widget _buildOpenTableTab() {
+    final placed = _placedTables;
+    final unplaced = _unplacedTables;
+
+    // scale height based on y positions to reduce overlap (similar to booking mini plan)
+    const baseHeight = 320.0;
+    const tableSize = 52.0;
+    double minY = 0, maxY = 0, minDelta = double.infinity;
+    if (placed.isNotEmpty) {
+      final sorted = [...placed]
+        ..sort((a, b) => ((a['pos_y'] ?? 0) as num).compareTo((b['pos_y'] ?? 0) as num));
+      minY = (sorted.first['pos_y'] as num?)?.toDouble() ?? 0;
+      maxY = (sorted.last['pos_y'] as num?)?.toDouble() ?? 0;
+      for (int i = 0; i < sorted.length - 1; i++) {
+        final dy = ((sorted[i + 1]['pos_y'] ?? 0) as num).toDouble() - ((sorted[i]['pos_y'] ?? 0) as num).toDouble();
+        if (dy > 0 && dy < minDelta) minDelta = dy;
+      }
+    }
+    double scaleByDelta = 1.0;
+    if (minDelta != double.infinity && minDelta > 0) {
+      scaleByDelta = (tableSize * 1.4) / (minDelta * baseHeight);
+    }
+    final span = (maxY - minY).abs();
+    final scaleBySpan = span > 0 ? (span + 0.4) : 1.0;
+    final canvasHeight = baseHeight * math.max(1.0, math.max(scaleByDelta, scaleBySpan));
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Row(
+            children: [
+              Text('มุมมอง', style: TextStyle(color: Colors.grey[800], fontWeight: FontWeight.w600)),
+              const SizedBox(width: 12),
+              ChoiceChip(
+                label: const Text('ผังร้าน'),
+                selected: _openTabShowPlan,
+                onSelected: (_) => setState(() => _openTabShowPlan = true),
+              ),
+              const SizedBox(width: 8),
+              ChoiceChip(
+                label: const Text('รายการ'),
+                selected: !_openTabShowPlan,
+                onSelected: (_) => setState(() => _openTabShowPlan = false),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: _openTabShowPlan
+              ? SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final canvasW = constraints.maxWidth;
+                          final availableH = canvasHeight - tableSize * 0.2;
+                          final normSpan = span <= 0 ? 1.0 : span;
+                          return Container(
+                            width: canvasW,
+                            height: canvasHeight,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.grey[200]!),
+                            ),
+                            child: Stack(
+                              children: [
+                                CustomPaint(size: Size(canvasW, canvasHeight), painter: _ZoneGridPainter()),
+                                ...placed.map((t) {
+                                  final px = (t['pos_x'] as num).toDouble();
+                                  final py = (t['pos_y'] as num).toDouble();
+                                  final normY = (py - minY) / normSpan;
+                                  final left = px * canvasW;
+                                  final top = normY * availableH + tableSize * 0.1;
+                                  final type = t['table_type'] as String? ?? 'small';
+                                  final status = t['status'] as String? ?? 'available';
+                                  final isUnavailable = status == 'unavailable';
+                                  final color = isUnavailable ? Colors.grey : _typeColor(type);
+                                  return Positioned(
+                                    left: left.clamp(0, canvasW - tableSize),
+                                    top: top.clamp(0, canvasHeight - tableSize),
+                                    child: GestureDetector(
+                                      onLongPress: _canEditLayout ? () => _showRemoveFromPlanDialog(t) : null,
+                                      child: Container(
+                                        width: tableSize,
+                                        height: tableSize,
+                                        decoration: BoxDecoration(
+                                          color: color.withValues(alpha: 0.7),
+                                          borderRadius: BorderRadius.circular(type == 'bar' ? 6 : 10),
+                                          border: Border.all(color: color, width: 1.5),
+                                        ),
+                                        child: Center(
+                                          child: Text(
+                                            (t['name'] ?? '').toString(),
+                                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                                            textAlign: TextAlign.center,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }),
+                                if (placed.isEmpty)
+                                  const Center(child: Text('ยังไม่มีโต๊ะบนผัง', style: TextStyle(color: Colors.grey))),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                      if (unplaced.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Text('โต๊ะที่ยังไม่ได้วางบนผัง', style: TextStyle(color: Colors.grey[700])),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: unplaced
+                              .map((t) => _chip(
+                                    t['name']?.toString() ?? '-',
+                                    _typeColor(t['table_type'] as String? ?? 'small'),
+                                  ))
+                              .toList(),
+                        ),
+                      ],
+                    ],
+                  ),
+                )
+              : _buildTableListTab(),
+        ),
+      ],
+    );
   }
 
   Widget _buildFloorPlanTab() {
