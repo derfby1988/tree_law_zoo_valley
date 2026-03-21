@@ -45,5 +45,11 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>แอปต้องใช้กล้องเพื่อถ่ายรูปสินค้าและรูปโปรไฟล์</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>แอปต้องเข้าถึงคลังรูปเพื่อเลือกรูปสินค้าและรูปโปรไฟล์</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>แอปอาจบันทึกรูปภาพที่ถ่ายลงในคลังรูปของคุณ</string>
 </dict>
 </plist>

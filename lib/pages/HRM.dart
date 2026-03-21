@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../services/approval_hierarchy_service.dart';
 import '../services/supabase_service.dart';
 import '../services/user_group_service.dart';
 import '../utils/permission_helpers.dart';
@@ -31,6 +32,9 @@ class _HRMPageState extends State<HRMPage> {
   List<Map<String, dynamic>> _permissions = [];
   Map<String, dynamic>? _selectedGroup;
   int? _currentUserSortOrder;
+  bool _isApprovalLoading = false;
+  String? _approvalErrorMessage;
+  List<Map<String, dynamic>> _approvalRules = [];
 
   // รายการสีที่แนะนำ
   final List<Color> _presetColors = [
@@ -63,6 +67,233 @@ class _HRMPageState extends State<HRMPage> {
   /// แปลง Color เป็น HEX string
   String _colorToHex(Color color) {
     return '#${color.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
+  }
+
+  Future<void> _loadApprovalRules({bool showLoading = true}) async {
+    if (showLoading) {
+      setState(() {
+        _isApprovalLoading = true;
+        _approvalErrorMessage = null;
+      });
+    } else {
+      setState(() {
+        _approvalErrorMessage = null;
+      });
+    }
+
+    try {
+      await ApprovalHierarchyService.seedDefaultRulesIfNeeded(_userGroups);
+      final rules = await ApprovalHierarchyService.getRules();
+
+      if (!mounted) return;
+      setState(() {
+        _approvalRules = rules;
+        _isApprovalLoading = false;
+      });
+    } on PostgrestException catch (e) {
+      if (!mounted) return;
+      final isMissingTable = e.code == '42P01';
+      setState(() {
+        _approvalErrorMessage = isMissingTable
+            ? 'ยังไม่พบตาราง approval_hierarchy_rules กรุณารัน migration ของ Approval Hierarchy ก่อนใช้งาน'
+            : 'ไม่สามารถโหลดกฎอนุมัติ: ${e.message}';
+        _isApprovalLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _approvalErrorMessage = 'ไม่สามารถโหลดกฎอนุมัติ: $e';
+        _isApprovalLoading = false;
+      });
+    }
+  }
+
+  Map<String, dynamic>? _getRuleForGroup(String groupId) {
+    for (final rule in _approvalRules) {
+      final mappedGroup = rule['group'] as Map<String, dynamic>?;
+      final mappedGroupId = mappedGroup?['id']?.toString() ?? rule['group_id']?.toString();
+      if (mappedGroupId == groupId) {
+        return rule;
+      }
+    }
+    return null;
+  }
+
+  String _formatApprovalLimit(Map<String, dynamic>? rule) {
+    if (rule == null) return 'ยังไม่กำหนด';
+    final isUnlimited = rule['is_unlimited'] == true;
+    if (isUnlimited) return 'ไม่จำกัดวงเงิน';
+
+    final amount = (rule['max_amount'] as num?)?.toDouble();
+    if (amount == null) return 'ยังไม่กำหนด';
+    return '${amount.toStringAsFixed(0)} บาท';
+  }
+
+  String _buildCurrentBehaviorSummary(List<Map<String, dynamic>> groups) {
+    final segments = <String>[];
+
+    for (final group in groups) {
+      final groupId = group['id']?.toString();
+      if (groupId == null) continue;
+
+      final rule = _getRuleForGroup(groupId);
+      if (rule == null || rule['is_active'] != true) continue;
+
+      final groupName = group['group_name']?.toString() ?? '-';
+      final isUnlimited = rule['is_unlimited'] == true;
+      final amount = (rule['max_amount'] as num?)?.toDouble();
+
+      if (isUnlimited) {
+        segments.add('$groupName ไม่จำกัด');
+      } else if (amount != null) {
+        segments.add('$groupName ≤ ${amount.toStringAsFixed(0)} บาท');
+      }
+    }
+
+    if (segments.isEmpty) {
+      return 'Current Behavior: ยังไม่พบกฎอนุมัติที่เปิดใช้งานในฐานข้อมูล';
+    }
+
+    return 'Current Behavior: ${segments.join(' · ')}';
+  }
+
+  String _buildProcurementUsageIndicator() {
+    if (_approvalErrorMessage != null) {
+      return 'สถานะเชื่อมโยง Procurement: ยังไม่พร้อมใช้งาน (โหลดกฎไม่สำเร็จ)';
+    }
+
+    final hasActiveRule = _approvalRules.any((rule) => rule['is_active'] == true);
+    if (!hasActiveRule) {
+      return 'สถานะเชื่อมโยง Procurement: ยังไม่พบกฎที่เปิดใช้งาน';
+    }
+
+    return 'สถานะเชื่อมโยง Procurement: เปิดใช้งานแล้ว (ใช้กฎจากตาราง approval_hierarchy_rules)';
+  }
+
+  Future<void> _showEditApprovalRuleDialog(Map<String, dynamic> group) async {
+    final existingRule = _getRuleForGroup(group['id'] as String);
+    bool isUnlimited = existingRule?['is_unlimited'] == true;
+    bool isActive = existingRule == null ? true : existingRule['is_active'] == true;
+    int priority = (existingRule?['priority'] as int?) ?? ((group['sort_order'] as int?) ?? 99);
+    final amountController = TextEditingController(
+      text: ((existingRule?['max_amount'] as num?)?.toDouble() ?? 0).toStringAsFixed(0),
+    );
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: Text('ตั้งกฎอนุมัติ: ${group['group_name'] ?? ''}'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('เปิดใช้งานกฎนี้'),
+                      value: isActive,
+                      onChanged: (value) => setDialogState(() => isActive = value),
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('ไม่จำกัดวงเงิน'),
+                      value: isUnlimited,
+                      onChanged: (value) => setDialogState(() => isUnlimited = value),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: amountController,
+                      enabled: !isUnlimited,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: 'วงเงินอนุมัติสูงสุด (บาท)',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<int>(
+                      value: priority,
+                      decoration: const InputDecoration(
+                        labelText: 'ลำดับอนุมัติ (Priority)',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: List.generate(10, (index) => index + 1)
+                          .map(
+                            (value) => DropdownMenuItem<int>(
+                              value: value,
+                              child: Text('ลำดับ $value'),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        if (value != null) setDialogState(() => priority = value);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('ยกเลิก'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    final parsedAmount = double.tryParse(amountController.text.trim());
+                    if (!isUnlimited && (parsedAmount == null || parsedAmount < 0)) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('กรุณาระบุวงเงินที่ถูกต้อง'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                      return;
+                    }
+
+                    try {
+                      await ApprovalHierarchyService.upsertRule(
+                        groupId: group['id'] as String,
+                        isUnlimited: isUnlimited,
+                        maxAmount: isUnlimited ? null : parsedAmount,
+                        priority: priority,
+                        isActive: isActive,
+                      );
+
+                      if (!mounted) return;
+                      Navigator.of(context).pop(true);
+                    } on PostgrestException catch (e) {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('บันทึกไม่สำเร็จ: ${e.message}'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    } catch (e) {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('บันทึกไม่สำเร็จ: $e'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  },
+                  child: const Text('บันทึก'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (saved == true) {
+      await _loadApprovalRules();
+    }
   }
 
   /// แปลง HEX string เป็น Color
@@ -156,6 +387,8 @@ class _HRMPageState extends State<HRMPage> {
         print('✅ Loaded ${_userGroups.length} groups (sorted by sort_order), current user sort_order: $currentSortOrder');
         _isLoading = false;
       });
+
+      await _loadApprovalRules(showLoading: false);
     } catch (e) {
       print('❌ Error loading user groups: $e');
       setState(() {
@@ -952,7 +1185,7 @@ class _HRMPageState extends State<HRMPage> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           title: Row(
@@ -972,6 +1205,7 @@ class _HRMPageState extends State<HRMPage> {
             tabs: [
               Tab(text: 'สถิติ'),
               Tab(text: 'กลุ่มและสิทธิ์'),
+              Tab(text: 'Approval Hierarchy'),
             ],
           ),
         ),
@@ -979,6 +1213,7 @@ class _HRMPageState extends State<HRMPage> {
           children: [
             _buildStatisticsTab(),
             _buildGroupsAndPermissionsTab(),
+            _buildApprovalHierarchyTab(),
           ],
         ),
       ),
@@ -1097,63 +1332,6 @@ class _HRMPageState extends State<HRMPage> {
             ),
           ),
 
-          // Action Buttons
-          Container(
-            padding: EdgeInsets.all(20),
-            child: Row(
-              children: [
-                Expanded(
-                  child: GlassButton(
-                    text: 'สร้างกลุ่มใหม่',
-                    onPressed: _showCreateGroupDialog,
-                    backgroundColor: Color(0xFF2E7D32),
-                    textColor: Colors.white,
-                    icon: Icons.add,
-                    width: double.infinity,
-                    opacity: 0.85, // เพิ่มความทึบให้เห็นชัด
-                    blurStrength: 5,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: GlassButton(
-                    text: 'จัดการฟอร์มกลุ่ม',
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const GroupFormManagerPage(),
-                      ),
-                    ),
-                    backgroundColor: Colors.blueGrey[700]!,
-                    textColor: Colors.white,
-                    icon: Icons.format_list_bulleted,
-                    width: double.infinity,
-                    opacity: 0.85,
-                    blurStrength: 5,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: GlassButton(
-                    text: 'จัดลำดับกลุ่ม',
-                    onPressed: () => checkPermissionAndExecute(
-                      context,
-                      'user_groups_sort_order',
-                      'จัดลำดับกลุ่ม',
-                      () => _showSortGroupsDialog(),
-                    ),
-                    backgroundColor: Colors.deepPurple[600]!,
-                    textColor: Colors.white,
-                    icon: Icons.swap_vert,
-                    width: double.infinity,
-                    opacity: 0.85,
-                    blurStrength: 5,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
           // Content Section
           Expanded(
             child: _isLoading
@@ -1223,23 +1401,343 @@ class _HRMPageState extends State<HRMPage> {
                                   : width >= 720
                                       ? 2
                                       : 1;
-                              return GridView.builder(
-                                padding: EdgeInsets.fromLTRB(20, 4, 20, 20),
-                                itemCount: _userGroups.length,
-                                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: crossAxisCount,
-                                  crossAxisSpacing: 16,
-                                  mainAxisSpacing: 16,
-                                  childAspectRatio: crossAxisCount == 1 ? 1.9 : 1.7,
-                                ),
-                                itemBuilder: (context, index) {
-                                  final group = _userGroups[index];
-                                  return _buildGroupCard(group);
-                                },
+                              final mobileCardAspectRatio = width < 420 ? 1.0 : 1.3;
+
+                              return CustomScrollView(
+                                slivers: [
+                                  SliverToBoxAdapter(
+                                    child: Container(
+                                      padding: EdgeInsets.fromLTRB(20, 16, 20, 12),
+                                      child: Row(
+                                        children: [
+                                          Expanded(
+                                            child: GlassButton(
+                                              text: 'สร้างกลุ่มใหม่',
+                                              onPressed: _showCreateGroupDialog,
+                                              backgroundColor: Color(0xFF2E7D32),
+                                              textColor: Colors.white,
+                                              icon: Icons.add,
+                                              fontSize: 11,
+                                              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                                              width: double.infinity,
+                                              opacity: 0.85,
+                                              blurStrength: 5,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: GlassButton(
+                                              text: 'จัดการฟอร์มกลุ่ม',
+                                              onPressed: () => Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                  builder: (_) => const GroupFormManagerPage(),
+                                                ),
+                                              ),
+                                              backgroundColor: Colors.blueGrey[700]!,
+                                              textColor: Colors.white,
+                                              icon: Icons.format_list_bulleted,
+                                              fontSize: 11,
+                                              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                                              width: double.infinity,
+                                              opacity: 0.85,
+                                              blurStrength: 5,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: GlassButton(
+                                              text: 'จัดลำดับกลุ่ม',
+                                              onPressed: () => checkPermissionAndExecute(
+                                                context,
+                                                'user_groups_sort_order',
+                                                'จัดลำดับกลุ่ม',
+                                                () => _showSortGroupsDialog(),
+                                              ),
+                                              backgroundColor: Colors.deepPurple[600]!,
+                                              textColor: Colors.white,
+                                              icon: Icons.swap_vert,
+                                              fontSize: 11,
+                                              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                                              width: double.infinity,
+                                              opacity: 0.85,
+                                              blurStrength: 5,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  SliverPadding(
+                                    padding: EdgeInsets.fromLTRB(20, 4, 20, 20),
+                                    sliver: SliverGrid(
+                                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                        crossAxisCount: crossAxisCount,
+                                        crossAxisSpacing: 16,
+                                        mainAxisSpacing: 16,
+                                        childAspectRatio: crossAxisCount == 1 ? mobileCardAspectRatio : 1.7,
+                                      ),
+                                      delegate: SliverChildBuilderDelegate(
+                                        (context, index) {
+                                          final group = _userGroups[index];
+                                          return _buildGroupCard(group);
+                                        },
+                                        childCount: _userGroups.length,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               );
                             },
                           ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildApprovalHierarchyTab() {
+    final groups = List<Map<String, dynamic>>.from(_userGroups)
+      ..sort((a, b) => ((a['sort_order'] as int?) ?? 999).compareTo((b['sort_order'] as int?) ?? 999));
+
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFFE8F5E8), Color(0xFFF1F8E9), Colors.white],
+        ),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.rule_folder, color: Color(0xFF2E7D32)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Approval Hierarchy',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF2E7D32),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'รีเฟรช',
+                      onPressed: _isApprovalLoading ? null : () => _loadApprovalRules(),
+                      icon: const Icon(Icons.refresh, color: Color(0xFF2E7D32)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'กำหนดวงเงินอนุมัติ ลำดับการอนุมัติ และสถานะการใช้งานของแต่ละกลุ่มผู้ใช้',
+                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: _isApprovalLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _approvalErrorMessage != null
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.error_outline, color: Colors.red[400], size: 56),
+                              const SizedBox(height: 12),
+                              Text(
+                                _approvalErrorMessage!,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: Colors.red[700]),
+                              ),
+                              const SizedBox(height: 16),
+                              ElevatedButton.icon(
+                                onPressed: () => _loadApprovalRules(),
+                                icon: const Icon(Icons.refresh),
+                                label: const Text('ลองใหม่'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : ListView(
+                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.blueGrey[50],
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.blueGrey[100]!),
+                            ),
+                            child: Text(
+                              _buildCurrentBehaviorSummary(groups),
+                              style: TextStyle(color: Colors.blueGrey[800], fontSize: 12.5),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: Colors.green[50],
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.green[100]!),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.verified, size: 16, color: Colors.green[700]),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _buildProcurementUsageIndicator(),
+                                    style: TextStyle(
+                                      color: Colors.green[800],
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          if (groups.isEmpty)
+                            Container(
+                              padding: const EdgeInsets.all(20),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                'ยังไม่มีกลุ่มผู้ใช้สำหรับกำหนด hierarchy',
+                                style: TextStyle(color: Colors.grey[700]),
+                              ),
+                            ),
+                          ...groups.map((group) {
+                            final groupId = group['id'] as String;
+                            final groupColor = _hexToColor(group['color']?.toString() ?? '#4CAF50');
+                            final rule = _getRuleForGroup(groupId);
+                            final isActive = rule?['is_active'] == true;
+
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: groupColor.withOpacity(0.25)),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.04),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        width: 30,
+                                        height: 30,
+                                        decoration: BoxDecoration(
+                                          color: groupColor.withOpacity(0.12),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Icon(Icons.groups, color: groupColor, size: 18),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(
+                                          group['group_name']?.toString() ?? '-',
+                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                                        ),
+                                      ),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: isActive ? Colors.green[50] : Colors.grey[200],
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Text(
+                                          isActive ? 'ใช้งาน' : 'ปิดใช้งาน',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: isActive ? Colors.green[800] : Colors.grey[700],
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: [
+                                      _buildInfoChip(Icons.payments, 'วงเงิน: ${_formatApprovalLimit(rule)}'),
+                                      _buildInfoChip(Icons.format_list_numbered, 'ลำดับ: ${(rule?['priority'] as int?) ?? '-'}'),
+                                      _buildInfoChip(Icons.toggle_on, 'สถานะกฎ: ${isActive ? 'เปิด' : 'ปิด'}'),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Align(
+                                    alignment: Alignment.centerRight,
+                                    child: OutlinedButton.icon(
+                                      onPressed: () => _showEditApprovalRuleDialog(group),
+                                      icon: const Icon(Icons.edit, size: 16),
+                                      label: Text(rule == null ? 'ตั้งค่ากฎ' : 'แก้ไขกฎ'),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }),
+                        ],
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoChip(IconData icon, String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: Colors.grey[700]),
+          const SizedBox(width: 6),
+          Text(text, style: TextStyle(fontSize: 12, color: Colors.grey[800])),
         ],
       ),
     );
@@ -1271,7 +1769,7 @@ class _HRMPageState extends State<HRMPage> {
             crossAxisCount: crossAxisCount,
             crossAxisSpacing: 16,
             mainAxisSpacing: 16,
-            childAspectRatio: crossAxisCount == 1 ? 1.9 : 1.7,
+            childAspectRatio: crossAxisCount == 1 ? 1.0 : 1.7,
           ),
           itemBuilder: (context, index) {
             return Container(

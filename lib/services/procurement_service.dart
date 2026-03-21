@@ -1,0 +1,799 @@
+import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'supabase_service.dart';
+
+/// ProcurementService - บริการจัดการระบบจัดซื้อจัดจ้าง
+/// 
+/// ใช้งาน:
+/// ```dart
+/// // สร้าง PO
+/// final po = await ProcurementService.createPurchaseOrder(supplierId, items);
+/// 
+/// // รับสินค้า
+/// await ProcurementService.receivePurchaseOrder(poId, receivedItems);
+/// 
+/// // สร้างใบโอนย้าย
+/// final transfer = await ProcurementService.createStockTransfer(fromId, toId, items);
+/// ```
+class ProcurementService {
+  static SupabaseClient get _client => SupabaseService.client;
+
+  static const String statusDraft = 'draft';
+  static const String statusSent = 'sent';
+  static const String statusConfirmed = 'confirmed';
+  static const String statusPartialReceived = 'partial_received';
+  static const String statusCompleted = 'completed';
+  static const String statusCancelled = 'cancelled';
+
+  static const Map<String, double> _approvalLimitsByRole = {
+    'store_manager': 5000.0,
+    'manager': 50000.0,
+    'admin': double.infinity,
+  };
+
+  static double approvalLimitForRole(String approverRole) {
+    return _approvalLimitsByRole[approverRole] ?? 0.0;
+  }
+
+  static bool canApproveAmount(String approverRole, double poAmount) {
+    return poAmount <= approvalLimitForRole(approverRole);
+  }
+
+  static bool canApproveAmountByRule(Map<String, dynamic> rule, double poAmount) {
+    if (rule['is_unlimited'] == true) return true;
+    final amount = (rule['max_amount'] as num?)?.toDouble();
+    if (amount == null) return false;
+    return poAmount <= amount;
+  }
+
+  static String _normalizeRoleKey(String raw) {
+    final value = raw.trim().toLowerCase();
+
+    if (value == 'store_manager' ||
+        value.contains('หัวหน้าร้าน') ||
+        value.contains('store manager')) {
+      return 'store_manager';
+    }
+    if (value == 'manager' || value.contains('ผู้จัดการ')) {
+      return 'manager';
+    }
+    if (value == 'admin' || value.contains('ผู้บริหาร') || value.contains('แอดมิน')) {
+      return 'admin';
+    }
+
+    return value;
+  }
+
+  static String _extractRoleKeyFromRule(Map<String, dynamic> rule) {
+    final group = rule['group'] as Map<String, dynamic>?;
+    final groupName = group?['group_name']?.toString() ?? '';
+    return _normalizeRoleKey(groupName);
+  }
+
+  static List<Map<String, dynamic>> _requiredRulesForAmount(
+    List<Map<String, dynamic>> rules,
+    double poAmount,
+  ) {
+    if (rules.isEmpty) return const [];
+
+    final eligible = rules.where((rule) => canApproveAmountByRule(rule, poAmount)).toList();
+    if (eligible.isEmpty) return const [];
+
+    eligible.sort((a, b) {
+      final aPriority = (a['priority'] as num?)?.toInt() ?? 999;
+      final bPriority = (b['priority'] as num?)?.toInt() ?? 999;
+      return aPriority.compareTo(bPriority);
+    });
+
+    final firstRequiredPriority = (eligible.first['priority'] as num?)?.toInt() ?? 999;
+
+    return eligible
+        .where((rule) => ((rule['priority'] as num?)?.toInt() ?? 999) <= firstRequiredPriority)
+        .toList();
+  }
+
+  static List<Map<String, dynamic>> _sortByPriority(List<Map<String, dynamic>> items) {
+    final sorted = List<Map<String, dynamic>>.from(items);
+    sorted.sort((a, b) {
+      final aPriority = (a['priority'] as num?)?.toInt() ?? 999;
+      final bPriority = (b['priority'] as num?)?.toInt() ?? 999;
+      return aPriority.compareTo(bPriority);
+    });
+    return sorted;
+  }
+
+  static Future<List<Map<String, dynamic>>> _loadActiveHierarchyRules() async {
+    final response = await _client
+        .from('approval_hierarchy_rules')
+        .select('''
+          id,
+          group_id,
+          max_amount,
+          is_unlimited,
+          is_active,
+          priority,
+          group:user_groups(id, group_name)
+        ''')
+        .eq('is_active', true);
+
+    return _sortByPriority(List<Map<String, dynamic>>.from(response));
+  }
+
+  static Future<void> _insertApprovalAuditLog({
+    required String poId,
+    required String action,
+    required String actorUserId,
+    required String actorRole,
+    required int? priority,
+    required String message,
+  }) async {
+    try {
+      await _client.from('procurement_po_approval_audit_logs').insert({
+        'po_id': poId,
+        'action': action,
+        'actor_user_id': actorUserId,
+        'actor_role': actorRole,
+        'priority': priority,
+        'message': message,
+      });
+    } catch (e) {
+      debugPrint('ProcurementService._insertApprovalAuditLog: $e');
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> _ensureApprovalSteps({
+    required String poId,
+    required double poAmount,
+    required List<Map<String, dynamic>> activeRules,
+  }) async {
+    try {
+      final existing = await _client
+          .from('procurement_po_approval_steps')
+          .select('*')
+          .eq('po_id', poId)
+          .order('priority', ascending: true);
+
+      final existingSteps = List<Map<String, dynamic>>.from(existing);
+      if (existingSteps.isNotEmpty) {
+        return existingSteps;
+      }
+
+      final requiredRules = _requiredRulesForAmount(activeRules, poAmount);
+      if (requiredRules.isEmpty) {
+        return const [];
+      }
+
+      final rows = requiredRules.map((rule) {
+        final roleKey = _extractRoleKeyFromRule(rule);
+        return {
+          'po_id': poId,
+          'group_id': rule['group_id'],
+          'role_key': roleKey,
+          'priority': (rule['priority'] as num?)?.toInt() ?? 999,
+          'status': 'pending',
+        };
+      }).toList();
+
+      await _client.from('procurement_po_approval_steps').insert(rows);
+
+      final created = await _client
+          .from('procurement_po_approval_steps')
+          .select('*')
+          .eq('po_id', poId)
+          .order('priority', ascending: true);
+      return List<Map<String, dynamic>>.from(created);
+    } catch (e) {
+      debugPrint('ProcurementService._ensureApprovalSteps fallback: $e');
+      return const [];
+    }
+  }
+
+  static double approvalLimitForRoleFromRules(
+    String approverRole,
+    List<Map<String, dynamic>> rules,
+  ) {
+    final normalizedRole = _normalizeRoleKey(approverRole);
+    final activeRules = rules
+        .where((rule) => rule['is_active'] == true)
+        .toList();
+
+    final sortedRules = _sortByPriority(activeRules);
+    for (final rule in sortedRules) {
+      final roleKey = _extractRoleKeyFromRule(rule);
+      if (roleKey != normalizedRole) continue;
+      if (rule['is_unlimited'] == true) return double.infinity;
+      final amount = (rule['max_amount'] as num?)?.toDouble();
+      if (amount != null) return amount;
+    }
+
+    return approvalLimitForRole(normalizedRole);
+  }
+
+  static String? nextStatusAfterSend(String currentStatus) {
+    if (currentStatus == statusDraft) return statusSent;
+    return null;
+  }
+
+  static String? nextStatusAfterApprove(String currentStatus) {
+    if (currentStatus == statusSent) return statusConfirmed;
+    return null;
+  }
+
+  static String? nextStatusAfterReceive(String currentStatus, {required bool isFullyReceived}) {
+    if (currentStatus != statusConfirmed) return null;
+    return isFullyReceived ? statusCompleted : statusPartialReceived;
+  }
+
+  // =============================================
+  // Supplier Management
+  // =============================================
+
+  /// ดึงรายการ supplier ทั้งหมด
+  static Future<List<Map<String, dynamic>>> getSuppliers({bool activeOnly = true}) async {
+    try {
+      final response = await _client
+          .from('procurement_suppliers')
+          .select('*')
+          .order('code');
+      
+      if (activeOnly) {
+        return List<Map<String, dynamic>>.from(response)
+            .where((s) => s['is_active'] == true)
+            .toList();
+      }
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('ProcurementService.getSuppliers error: $e');
+      return [];
+    }
+  }
+
+  /// สร้าง supplier ใหม่
+  static Future<Map<String, dynamic>?> createSupplier(Map<String, dynamic> supplier) async {
+    try {
+      final response = await _client
+          .from('procurement_suppliers')
+          .insert(supplier)
+          .select()
+          .single();
+      return response;
+    } catch (e) {
+      debugPrint('ProcurementService.createSupplier error: $e');
+      return null;
+    }
+  }
+
+  /// อัปเดตข้อมูล supplier
+  static Future<bool> updateSupplier(String id, Map<String, dynamic> supplier) async {
+    try {
+      await _client
+          .from('procurement_suppliers')
+          .update(supplier)
+          .eq('id', id);
+      return true;
+    } catch (e) {
+      debugPrint('ProcurementService.updateSupplier error: $e');
+      return false;
+    }
+  }
+
+  // =============================================
+  // Purchase Order Management
+  // =============================================
+
+  /// ดึงรายการใบสั่งซื้อ
+  static Future<List<Map<String, dynamic>>> getPurchaseOrders({
+    String? status,
+    String? supplierId,
+    DateTime? fromDate,
+    DateTime? toDate,
+  }) async {
+    try {
+      var query = _client
+          .from('procurement_purchase_orders')
+          .select('''
+            *,
+            supplier:procurement_suppliers(*),
+            creator:auth.users(email)
+          ''')
+          .order('order_date', ascending: false);
+
+      final response = await query;
+      List<Map<String, dynamic>> allOrders = List<Map<String, dynamic>>.from(response);
+      
+      // Apply filters in Dart instead of SQL
+      if (status != null) {
+        allOrders = allOrders.where((order) => order['status'] == status).toList();
+      }
+      if (supplierId != null) {
+        allOrders = allOrders.where((order) => order['supplier_id'] == supplierId).toList();
+      }
+      if (fromDate != null) {
+        allOrders = allOrders.where((order) {
+          final orderDate = DateTime.tryParse(order['order_date'] ?? '');
+          return orderDate != null && orderDate.isAfter(fromDate.subtract(const Duration(days: 1)));
+        }).toList();
+      }
+      if (toDate != null) {
+        allOrders = allOrders.where((order) {
+          final orderDate = DateTime.tryParse(order['order_date'] ?? '');
+          return orderDate != null && orderDate.isBefore(toDate.add(const Duration(days: 1)));
+        }).toList();
+      }
+      
+      return allOrders;
+    } catch (e) {
+      debugPrint('ProcurementService.getPurchaseOrders error: $e');
+      return [];
+    }
+  }
+
+  /// สร้าง PO ใหม่
+  static Future<Map<String, dynamic>?> createPurchaseOrder({
+    required String supplierId,
+    required List<Map<String, dynamic>> items,
+    DateTime? expectedDate,
+    String? notes,
+    String? createdBy,
+  }) async {
+    try {
+      // Generate PO number
+      final orderNumberResponse = await _client.rpc('generate_po_number');
+      final orderNumber = orderNumberResponse as String;
+
+      // Calculate totals
+      double subtotal = 0;
+      for (final item in items) {
+        final lineTotal = (item['quantity'] as num) * (item['unit_price'] as num);
+        item['line_total'] = lineTotal;
+        subtotal += lineTotal;
+      }
+
+      // Create PO
+      final poData = {
+        'order_number': orderNumber,
+        'supplier_id': supplierId,
+        'status': 'draft',
+        'expected_date': expectedDate?.toIso8601String(),
+        'subtotal': subtotal,
+        'tax_amount': 0, // TODO: Calculate tax based on items
+        'discount_amount': 0,
+        'total_amount': subtotal,
+        'notes': notes,
+        'created_by': createdBy,
+      };
+
+      final poResponse = await _client
+          .from('procurement_purchase_orders')
+          .insert(poData)
+          .select()
+          .single();
+
+      // Create PO lines
+      final poLines = items.map((item) => {
+        ...item,
+        'po_id': poResponse['id'],
+        'received_quantity': 0,
+      }).toList();
+
+      await _client
+          .from('procurement_purchase_order_lines')
+          .insert(poLines);
+
+      return poResponse;
+    } catch (e) {
+      debugPrint('ProcurementService.createPurchaseOrder error: $e');
+      return null;
+    }
+  }
+
+  /// ดึงรายละเอียด PO พร้อม lines
+  static Future<Map<String, dynamic>?> getPurchaseOrderDetail(String poId) async {
+    try {
+      final poResponse = await _client
+          .from('procurement_purchase_orders')
+          .select('''
+            *,
+            supplier:procurement_suppliers(*),
+            creator:auth.users(email),
+            approver:auth.users(email)
+          ''')
+          .eq('id', poId)
+          .single();
+
+      final linesResponse = await _client
+          .from('procurement_purchase_order_lines')
+          .select('''
+            *,
+            product:inventory_products(name, code, unit_id)
+          ''')
+          .eq('po_id', poId)
+          .order('created_at');
+
+      return {
+        ...poResponse,
+        'lines': linesResponse,
+      };
+    } catch (e) {
+      debugPrint('ProcurementService.getPurchaseOrderDetail error: $e');
+      return null;
+    }
+  }
+
+  /// อัปเดตสถานะ PO
+  static Future<bool> updatePurchaseOrderStatus(String poId, String status, {
+    String? approvedBy,
+  }) async {
+    try {
+      final updateData = {'status': status};
+      if (approvedBy != null) {
+        updateData['approved_by'] = approvedBy;
+        updateData['approved_at'] = DateTime.now().toIso8601String();
+      }
+
+      await _client
+          .from('procurement_purchase_orders')
+          .update(updateData)
+          .eq('id', poId);
+      return true;
+    } catch (e) {
+      debugPrint('ProcurementService.updatePurchaseOrderStatus error: $e');
+      return false;
+    }
+  }
+
+  /// รับสินค้า PO
+  static Future<bool> receivePurchaseOrder(String poId, List<Map<String, dynamic>> receivedItems) async {
+    try {
+      // Update PO lines with received quantities
+      for (final receivedItem in receivedItems) {
+        await _client
+            .from('procurement_purchase_order_lines')
+            .update({
+              'received_quantity': receivedItem['received_quantity'],
+            })
+            .eq('id', receivedItem['line_id']);
+      }
+
+      // Update inventory quantities
+      for (final receivedItem in receivedItems) {
+        final productId = receivedItem['product_id'];
+        final quantity = receivedItem['received_quantity'];
+        
+        // Get current product quantity
+        final productResponse = await _client
+            .from('inventory_products')
+            .select('quantity')
+            .eq('id', productId)
+            .single();
+
+        final currentQuantity = productResponse['quantity'] as num;
+        final newQuantity = currentQuantity + (quantity as num);
+
+        // Update product quantity
+        await _client
+            .from('inventory_products')
+            .update({'quantity': newQuantity})
+            .eq('id', productId);
+      }
+
+      // Check if PO is fully received
+      final poDetail = await getPurchaseOrderDetail(poId);
+      if (poDetail != null) {
+        final lines = poDetail['lines'] as List;
+        final isFullyReceived = lines.every((line) => 
+            (line['quantity'] as num) <= (line['received_quantity'] as num));
+
+        if (isFullyReceived) {
+          await updatePurchaseOrderStatus(poId, statusCompleted);
+        } else {
+          await updatePurchaseOrderStatus(poId, statusPartialReceived);
+        }
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('ProcurementService.receivePurchaseOrder error: $e');
+      return false;
+    }
+  }
+
+  /// ส่ง PO (Draft → Sent)
+  static Future<bool> sendPurchaseOrder(String poId, {String? sentBy}) async {
+    try {
+      final updated = await _client
+          .from('procurement_purchase_orders')
+          .update({
+            'status': statusSent,
+            'sent_at': DateTime.now().toIso8601String(),
+            'sent_by': sentBy,
+          })
+          .eq('id', poId)
+          .eq('status', statusDraft)
+          .select('id')
+          .maybeSingle(); // Only allow sending from draft status
+      if (updated == null) {
+        debugPrint('ProcurementService.sendPurchaseOrder: PO not found or not in draft status');
+        return false;
+      }
+      return true;
+    } catch (e) {
+      debugPrint('ProcurementService.sendPurchaseOrder error: $e');
+      return false;
+    }
+  }
+
+  /// อนุมัติ PO (Sent → Confirmed) พร้อมตรวจสอบสิทธิ์ตามวงเงิน
+  static Future<Map<String, dynamic>> approvePurchaseOrder(
+    String poId,
+    String approvedBy,
+    String approverRole,
+    double poAmount,
+  ) async {
+    try {
+      final normalizedRole = _normalizeRoleKey(approverRole);
+      final activeRules = await _loadActiveHierarchyRules();
+      final requiredRules = _requiredRulesForAmount(activeRules, poAmount);
+
+      final limit = approvalLimitForRoleFromRules(normalizedRole, activeRules);
+
+      if (poAmount > limit) {
+        final limitLabel = limit.isInfinite ? 'ไม่จำกัด' : '${limit.toStringAsFixed(0)} บาท';
+        return {
+          'success': false,
+          'message': 'วงเงินอนุมัติไม่เพียงพอ (จำกัด $limitLabel)',
+        };
+      }
+
+      // Enforce approval sequence by priority (when hierarchy tables are available)
+      if (requiredRules.isNotEmpty) {
+        final steps = await _ensureApprovalSteps(
+          poId: poId,
+          poAmount: poAmount,
+          activeRules: activeRules,
+        );
+
+        if (steps.isNotEmpty) {
+          final approverStep = steps.where((step) {
+            final roleKey = step['role_key']?.toString() ?? '';
+            return roleKey == normalizedRole;
+          }).firstOrNull;
+
+          if (approverStep == null) {
+            return {
+              'success': false,
+              'message': 'บทบาทของคุณไม่อยู่ในลำดับการอนุมัติของ PO นี้',
+            };
+          }
+
+          final pendingSteps = steps.where((step) => (step['status']?.toString() ?? 'pending') == 'pending').toList();
+          if (pendingSteps.isNotEmpty) {
+            pendingSteps.sort((a, b) {
+              final aPriority = (a['priority'] as num?)?.toInt() ?? 999;
+              final bPriority = (b['priority'] as num?)?.toInt() ?? 999;
+              return aPriority.compareTo(bPriority);
+            });
+
+            final nextStep = pendingSteps.first;
+            final nextPriority = (nextStep['priority'] as num?)?.toInt() ?? 999;
+            final approverPriority = (approverStep['priority'] as num?)?.toInt() ?? 999;
+
+            if (approverPriority != nextPriority) {
+              return {
+                'success': false,
+                'message': 'ยังไม่ถึงลำดับอนุมัติของบทบาทนี้ (รอลำดับ $nextPriority)',
+              };
+            }
+          }
+
+          await _client
+              .from('procurement_po_approval_steps')
+              .update({
+                'status': 'approved',
+                'approved_by': approvedBy,
+                'approved_at': DateTime.now().toIso8601String(),
+              })
+              .eq('id', approverStep['id']);
+
+          final approvedPriority = (approverStep['priority'] as num?)?.toInt();
+          await _insertApprovalAuditLog(
+            poId: poId,
+            action: 'approved_step',
+            actorUserId: approvedBy,
+            actorRole: normalizedRole,
+            priority: approvedPriority,
+            message: 'อนุมัติขั้นตอนลำดับ ${approvedPriority ?? '-'} สำเร็จ',
+          );
+
+          final remainingPending = await _client
+              .from('procurement_po_approval_steps')
+              .select('id')
+              .eq('po_id', poId)
+              .eq('status', 'pending')
+              .limit(1);
+
+          if (remainingPending.isNotEmpty) {
+            return {
+              'success': true,
+              'message': 'อนุมัติขั้นตอนสำเร็จ และรอลำดับถัดไป',
+            };
+          }
+        }
+      }
+
+      final updated = await _client
+          .from('procurement_purchase_orders')
+          .update({
+            'status': statusConfirmed,
+            'approved_by': approvedBy,
+            'approved_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', poId)
+          .eq('status', statusSent)
+          .select('id')
+          .maybeSingle(); // Only approve sent POs
+
+      if (updated == null) {
+        return {
+          'success': false,
+          'message': 'PO ไม่อยู่ในสถานะที่อนุมัติได้ (ต้องเป็น Sent)',
+        };
+      }
+
+      await _insertApprovalAuditLog(
+        poId: poId,
+        action: 'approved_final',
+        actorUserId: approvedBy,
+        actorRole: normalizedRole,
+        priority: requiredRules.isEmpty ? null : ((requiredRules.first['priority'] as num?)?.toInt()),
+        message: 'อนุมัติ PO สำเร็จและเปลี่ยนสถานะเป็น Confirmed',
+      );
+
+      return {'success': true, 'message': 'อนุมัติ PO สำเร็จ'};
+    } catch (e) {
+      debugPrint('ProcurementService.approvePurchaseOrder error: $e');
+      return {'success': false, 'message': 'เกิดข้อผิดพลาด: $e'};
+    }
+  }
+
+  /// แก้ไข PO (เฉพาะสถานะ Draft)
+  static Future<bool> updatePurchaseOrder(
+    String poId,
+    Map<String, dynamic> data,
+    List<Map<String, dynamic>>? items,
+  ) async {
+    try {
+      // Check if PO is still in draft status
+      final po = await getPurchaseOrderDetail(poId);
+      if (po == null || po['status'] != statusDraft) {
+        debugPrint('ProcurementService.updatePurchaseOrder: PO not found or not in draft status');
+        return false;
+      }
+
+      // Update PO header
+      data['updated_at'] = DateTime.now().toIso8601String();
+      await _client
+          .from('procurement_purchase_orders')
+          .update(data)
+          .eq('id', poId);
+
+      // Update PO lines if provided
+      if (items != null && items.isNotEmpty) {
+        // Delete old lines
+        await _client
+            .from('procurement_purchase_order_lines')
+            .delete()
+            .eq('po_id', poId);
+
+        // Insert new lines
+        final poLines = items.map((item) => {
+          ...item,
+          'po_id': poId,
+          'received_quantity': 0,
+        }).toList();
+
+        await _client
+            .from('procurement_purchase_order_lines')
+            .insert(poLines);
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('ProcurementService.updatePurchaseOrder error: $e');
+      return false;
+    }
+  }
+
+  /// ยกเลิก PO (Draft, Sent, Confirmed → Cancelled)
+  static Future<bool> cancelPurchaseOrder(String poId, String cancelledBy, String reason) async {
+    try {
+      // Fetch all POs and filter in Dart instead of using .in_()
+      final response = await _client
+          .from('procurement_purchase_orders')
+          .select('id, status, order_number')
+          .eq('id', poId);
+      
+      final po = response.firstOrNull;
+      if (po == null) return false;
+      
+      final currentStatus = po['status'] as String?;
+      if (![statusDraft, statusSent, statusConfirmed].contains(currentStatus)) {
+        debugPrint('ProcurementService.cancelPurchaseOrder: Cannot cancel PO with status $currentStatus');
+        return false;
+      }
+
+      await _client
+          .from('procurement_purchase_orders')
+          .update({
+            'status': statusCancelled,
+            'cancelled_by': cancelledBy,
+            'cancelled_at': DateTime.now().toIso8601String(),
+            'cancellation_reason': reason,
+          })
+          .eq('id', poId);
+      return true;
+    } catch (e) {
+      debugPrint('ProcurementService.cancelPurchaseOrder error: $e');
+      return false;
+    }
+  }
+
+  /// ลบ PO (เฉพาะสถานะ Draft)
+  static Future<bool> deletePurchaseOrder(String poId) async {
+    try {
+      // Check if PO is in draft status
+      final po = await _client
+          .from('procurement_purchase_orders')
+          .select('status')
+          .eq('id', poId)
+          .single();
+
+      if (po['status'] != statusDraft) {
+        debugPrint('ProcurementService.deletePurchaseOrder: Can only delete draft POs');
+        return false;
+      }
+
+      // Delete PO lines first (cascade)
+      await _client
+          .from('procurement_purchase_order_lines')
+          .delete()
+          .eq('po_id', poId);
+
+      // Delete PO
+      await _client
+          .from('procurement_purchase_orders')
+          .delete()
+          .eq('id', poId);
+
+      return true;
+    } catch (e) {
+      debugPrint('ProcurementService.deletePurchaseOrder error: $e');
+      return false;
+    }
+  }
+
+  // =============================================
+  // Store Location Management
+  // =============================================
+
+  /// ดึงรายการสถานที่เก็บของ
+  static Future<List<Map<String, dynamic>>> getStoreLocations({bool activeOnly = true}) async {
+    try {
+      final response = await _client
+          .from('procurement_store_locations')
+          .select('*')
+          .order('is_main_warehouse', ascending: false)
+          .order('code');
+      
+      if (activeOnly) {
+        return List<Map<String, dynamic>>.from(response)
+            .where((l) => l['is_active'] == true)
+            .toList();
+      }
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('ProcurementService.getStoreLocations error: $e');
+      return [];
+    }
+  }
+}

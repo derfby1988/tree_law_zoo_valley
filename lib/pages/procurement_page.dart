@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
-import 'procurement/request_tab.dart';
-import 'procurement/order_tab.dart';
-import 'procurement/confirm_tab.dart';
-import 'procurement/ship_tab.dart';
+import 'procurement/purchase_tab.dart';
+import 'procurement/tracking_tab.dart';
 import 'procurement/receive_tab.dart';
 import '../services/permission_service.dart';
 
 class ProcurementPage extends StatefulWidget {
-  const ProcurementPage({super.key});
+  final String? initialTabId;
+
+  const ProcurementPage({super.key, this.initialTabId});
 
   @override
   State<ProcurementPage> createState() => _ProcurementPageState();
@@ -19,11 +19,9 @@ class _ProcurementPageState extends State<ProcurementPage> with SingleTickerProv
 
   // Tab definitions with permission IDs
   static const _allTabs = [
-    {'id': 'procurement_request', 'label': 'ขอซื้อ', 'icon': Icons.request_page},
-    {'id': 'procurement_order', 'label': 'วางใบสั่งซื้อ', 'icon': Icons.description},
-    {'id': 'procurement_confirm', 'label': 'Confirm รับออเดอร์', 'icon': Icons.check_circle},
-    {'id': 'procurement_ship', 'label': 'ส่งสินค้า', 'icon': Icons.local_shipping},
-    {'id': 'procurement_receive', 'label': 'รับสินค้า', 'icon': Icons.inventory_2},
+    {'id': 'procurement_purchase', 'label': 'สั่งซื้อ', 'icon': Icons.shopping_cart},
+    {'id': 'procurement_tracking', 'label': 'ติดตาม', 'icon': Icons.track_changes},
+    {'id': 'procurement_receive', 'label': 'รับสินค้า', 'icon': Icons.inventory},
   ];
 
   List<Map<String, dynamic>> _visibleTabs = [];
@@ -48,23 +46,35 @@ class _ProcurementPageState extends State<ProcurementPage> with SingleTickerProv
       visible.addAll(_allTabs);
     }
 
+    final initialIndex = _resolveInitialIndex(visible);
+
     setState(() {
       _visibleTabs = visible;
-      _tabController = TabController(length: visible.length, vsync: this);
+      _tabController = TabController(
+        length: visible.length,
+        vsync: this,
+        initialIndex: initialIndex,
+      );
       _isLoadingPermissions = false;
     });
   }
 
+  int _resolveInitialIndex(List<Map<String, dynamic>> visibleTabs) {
+    final initialTabId = widget.initialTabId;
+    if (initialTabId == null) {
+      return 0;
+    }
+
+    final targetIndex = visibleTabs.indexWhere((tab) => tab['id'] == initialTabId);
+    return targetIndex >= 0 ? targetIndex : 0;
+  }
+
   Widget _buildTabContent(String tabId) {
     switch (tabId) {
-      case 'procurement_request':
-        return RequestTab();
-      case 'procurement_order':
-        return OrderTab();
-      case 'procurement_confirm':
-        return ConfirmTab();
-      case 'procurement_ship':
-        return ShipTab();
+      case 'procurement_purchase':
+        return PurchaseTab();
+      case 'procurement_tracking':
+        return TrackingTab();
       case 'procurement_receive':
         return ReceiveTab();
       default:

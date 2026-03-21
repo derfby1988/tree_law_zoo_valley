@@ -99,6 +99,8 @@ class GlassButton extends StatelessWidget {
               fontSize: fontSize,
               fontWeight: FontWeight.w600,
             ),
+            maxLines: 1,
+            softWrap: false,
             overflow: TextOverflow.ellipsis,
           ),
         ),

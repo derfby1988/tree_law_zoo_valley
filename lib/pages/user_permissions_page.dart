@@ -1582,6 +1582,7 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> with SingleTi
   Widget _buildPagePermissionsSection(Map<String, dynamic> group) {
     final groupColor = _hexToColor(group['color']);
     final groupId = group['id'] as String;
+    final isCompact = MediaQuery.of(context).size.width < 420;
     
     // สิทธิ์ปัจจุบัน
     final enabledPages = _pagePermissions
@@ -1668,20 +1669,24 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> with SingleTi
               child: Theme(
                 data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
                 child: ExpansionTile(
-                  leading: isPageUpdating
-                      ? SizedBox(
-                          width: 24, height: 24,
-                          child: CupertinoActivityIndicator(color: groupColor),
-                        )
-                      : Icon(
-                          page['icon'] as IconData,
-                          color: hasPagePerm ? groupColor : Colors.grey[400],
-                        ),
+                  leading: isCompact
+                      ? null
+                      : isPageUpdating
+                          ? SizedBox(
+                              width: 24, height: 24,
+                              child: CupertinoActivityIndicator(color: groupColor),
+                            )
+                          : Icon(
+                              page['icon'] as IconData,
+                              color: hasPagePerm ? groupColor : Colors.grey[400],
+                            ),
                   title: Row(
                     children: [
                       Expanded(
                         child: Text(
                           page['name'] as String,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontWeight: FontWeight.w600,
                             fontSize: 14,
@@ -1689,7 +1694,7 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> with SingleTi
                           ),
                         ),
                       ),
-                      if (hasPagePerm && tabsForPage.isNotEmpty)
+                      if (!isCompact && hasPagePerm && tabsForPage.isNotEmpty)
                         Container(
                           padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
@@ -1697,18 +1702,25 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> with SingleTi
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Text(
-                            '$enabledTabCount/${tabsForPage.length} tab · $enabledActionCount/$totalActionCount ปุ่ม',
+                            '$enabledTabCount/${tabsForPage.length} tab · $enabledActionCount/$totalActionCount',
                             style: TextStyle(fontSize: 10, color: groupColor),
                           ),
                         ),
                     ],
                   ),
-                  trailing: Switch(
-                    value: hasPagePerm,
-                    activeColor: groupColor,
-                    onChanged: isPageUpdating ? null : (value) async {
-                      await _togglePagePermission(groupId, pageId, value);
-                    },
+                  trailing: SizedBox(
+                    height: 32,
+                    child: FittedBox(
+                      fit: BoxFit.contain,
+                      child: Switch(
+                        value: hasPagePerm,
+                        activeColor: groupColor,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        onChanged: isPageUpdating ? null : (value) async {
+                          await _togglePagePermission(groupId, pageId, value);
+                        },
+                      ),
+                    ),
                   ),
                   children: [
                     if (hasPagePerm && tabsForPage.isNotEmpty)
@@ -1730,18 +1742,22 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> with SingleTi
                           child: Theme(
                             data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
                             child: ExpansionTile(
-                              leading: isTabUpdating
-                                  ? SizedBox(
-                                      width: 20, height: 20,
-                                      child: CupertinoActivityIndicator(color: groupColor),
-                                    )
-                                  : Icon(
-                                      tab['icon'] as IconData,
-                                      size: 20,
-                                      color: hasTabPerm ? groupColor : Colors.grey[400],
-                                    ),
+                              leading: isCompact
+                                  ? null
+                                  : isTabUpdating
+                                      ? SizedBox(
+                                          width: 20, height: 20,
+                                          child: CupertinoActivityIndicator(color: groupColor),
+                                        )
+                                      : Icon(
+                                          tab['icon'] as IconData,
+                                          size: 20,
+                                          color: hasTabPerm ? groupColor : Colors.grey[400],
+                                        ),
                               title: Text(
                                 tab['name'] as String,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   fontWeight: FontWeight.w500,
                                   fontSize: 13,
@@ -1751,9 +1767,11 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> with SingleTi
                               trailing: SizedBox(
                                 height: 32,
                                 child: FittedBox(
+                                  fit: BoxFit.contain,
                                   child: Switch(
                                     value: hasTabPerm,
                                     activeColor: groupColor,
+                                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                     onChanged: isTabUpdating ? null : (value) async {
                                       await _toggleTabPermission(groupId, tabId, value);
                                     },
@@ -1797,6 +1815,7 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> with SingleTi
                                               child: Switch(
                                                 value: hasActionPerm,
                                                 activeColor: groupColor,
+                                                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                                 onChanged: isActionUpdating ? null : (value) async {
                                                   await _toggleActionPermission(groupId, actionId, value);
                                                 },

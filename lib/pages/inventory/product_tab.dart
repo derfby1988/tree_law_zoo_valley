@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import '../../services/inventory_service.dart';
-import '../../services/permission_service.dart';
 import '../../services/account_chart_service.dart';
 import '../../utils/permission_helpers.dart';
 import 'inventory_filter_widget.dart';
 import 'product_action_buttons_card.dart';
-import '../procurement_page.dart';
+import '../procurement/purchase_tab.dart';
+import '../procurement/tracking_tab.dart';
+import '../procurement/receive_tab.dart';
 import 'category_management_page.dart';
 import 'add_product_page.dart';
 
@@ -223,7 +224,10 @@ class _ProductTabState extends State<ProductTab> {
               onShowUnitDialog: _showUnitDialog,
               onShowAddProductDialog: _showAddProductDialog,
               onShowProduceProductDialog: _showProduceProductDialog,
-              onNavigateToProcurement: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ProcurementPage())),
+              onNavigateToProcurementPurchase: () => _openProcurementTab('procurement_purchase'),
+              onNavigateToProcurementTracking: () => _openProcurementTab('procurement_tracking'),
+              onNavigateToProcurementReceive: () => _openProcurementTab('procurement_receive'),
+              onNavigateToProcurementApprove: () => _openProcurementTab('procurement_purchase'),
             ),
             SizedBox(height: 16),
             _buildNoShelfCard(),
@@ -676,5 +680,26 @@ class _ProductTabState extends State<ProductTab> {
     if (result == true) {
       await _loadData();
     }
+  }
+
+  void _openProcurementTab(String tabId) {
+    Widget page;
+    switch (tabId) {
+      case 'procurement_tracking':
+        page = const TrackingTab();
+        break;
+      case 'procurement_receive':
+        page = const ReceiveTab();
+        break;
+      case 'procurement_purchase':
+      default:
+        page = const PurchaseTab();
+        break;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => page),
+    );
   }
 }

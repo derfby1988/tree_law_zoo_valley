@@ -17,7 +17,6 @@ import 'widgets/home_left_drawer.dart';
 import 'widgets/home_end_drawer.dart';
 import 'widgets/drawer_clippers.dart';
 import 'pages/inventory_page.dart';
-import 'pages/procurement_page.dart';
 import 'pages/HRM.dart';
 import 'pages/user_permissions_page.dart';
 import 'pages/inventory/tax_rules_admin_page.dart';
