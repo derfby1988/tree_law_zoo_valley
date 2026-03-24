@@ -7,7 +7,16 @@ CREATE TABLE IF NOT EXISTS pos_orders (
   order_number TEXT NOT NULL UNIQUE,
   user_id UUID REFERENCES auth.users(id),
   user_name TEXT,
+  order_type TEXT NOT NULL DEFAULT 'walk_in',
   table_number TEXT,
+  table_id UUID,
+  table_session_id UUID,
+  responsible_user_id UUID REFERENCES users(id),
+  responsible_user_name TEXT,
+  cashier_user_id UUID REFERENCES users(id),
+  cashier_user_name TEXT,
+  customer_user_id UUID REFERENCES users(id),
+  customer_name TEXT,
   subtotal DOUBLE PRECISION DEFAULT 0,
   discount_amount DOUBLE PRECISION DEFAULT 0,
   discount_note TEXT,
@@ -16,6 +25,9 @@ CREATE TABLE IF NOT EXISTS pos_orders (
   service_rate DOUBLE PRECISION DEFAULT 0,
   service_amount DOUBLE PRECISION DEFAULT 0,
   net_total DOUBLE PRECISION DEFAULT 0,
+  paid_total DOUBLE PRECISION DEFAULT 0,
+  balance_due DOUBLE PRECISION DEFAULT 0,
+  payment_status TEXT NOT NULL DEFAULT 'paid',
   payment_method TEXT NOT NULL DEFAULT 'cash',
   status TEXT NOT NULL DEFAULT 'completed',
   created_at TIMESTAMPTZ DEFAULT now(),
@@ -41,6 +53,8 @@ CREATE TABLE IF NOT EXISTS pos_order_lines (
 CREATE INDEX IF NOT EXISTS idx_pos_orders_created ON pos_orders(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pos_orders_status ON pos_orders(status);
 CREATE INDEX IF NOT EXISTS idx_pos_orders_user ON pos_orders(user_id);
+CREATE INDEX IF NOT EXISTS idx_pos_orders_table ON pos_orders(table_id);
+CREATE INDEX IF NOT EXISTS idx_pos_orders_table_session ON pos_orders(table_session_id);
 CREATE INDEX IF NOT EXISTS idx_pos_order_lines_order ON pos_order_lines(order_id);
 CREATE INDEX IF NOT EXISTS idx_pos_order_lines_product ON pos_order_lines(product_id);
 
@@ -48,7 +62,9 @@ CREATE INDEX IF NOT EXISTS idx_pos_order_lines_product ON pos_order_lines(produc
 ALTER TABLE pos_orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pos_order_lines ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "pos_orders_all" ON pos_orders;
 CREATE POLICY "pos_orders_all" ON pos_orders FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "pos_order_lines_all" ON pos_order_lines;
 CREATE POLICY "pos_order_lines_all" ON pos_order_lines FOR ALL USING (true) WITH CHECK (true);
 
 -- Auto-generate order number

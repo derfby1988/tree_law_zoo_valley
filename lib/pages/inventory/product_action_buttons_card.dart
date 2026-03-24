@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../theme/app_design_system.dart';
 import '../../services/permission_service.dart';
 import '../../utils/permission_helpers.dart';
 
@@ -27,49 +28,60 @@ class ProductActionButtonsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      elevation: 2,
+      elevation: 0,
+      color: AppDesignSystem.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppDesignSystem.radiusMd),
+        side: const BorderSide(color: AppDesignSystem.border),
+      ),
       child: Padding(
-        padding: EdgeInsets.all(12),
+        padding: const EdgeInsets.all(AppDesignSystem.spacingMd),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('จัดการข้อมูลสินค้า', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            SizedBox(height: 12),
+            Text(
+              'จัดการข้อมูลสินค้า',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: AppDesignSystem.spacingMd),
             Wrap(
-              spacing: 8,
-              runSpacing: 8,
+              spacing: AppDesignSystem.spacingSm,
+              runSpacing: AppDesignSystem.spacingSm,
               children: [
                 if (PermissionService.canAccessActionSync('inventory_products_category'))
-                  _buildActionButton('ประเภท', Colors.blue, Icons.folder, () => 
+                  _buildActionButton('ประเภท', AppDesignSystem.secondary, Icons.folder, () => 
                     checkPermissionAndExecute(context, 'inventory_products_category', 'จัดการประเภท', onShowCategoryDialog)),
                 if (PermissionService.canAccessActionSync('inventory_products_unit'))
-                  _buildActionButton('หน่วยนับ', Colors.teal, Icons.scale, () => 
+                  _buildActionButton('หน่วยนับ', AppDesignSystem.primary, Icons.scale, () => 
                     checkPermissionAndExecute(context, 'inventory_products_unit', 'จัดการหน่วยนับ', onShowUnitDialog)),
                 if (PermissionService.canAccessActionSync('inventory_products_add'))
-                  _buildActionButton('เพิ่มสินค้า/วัตถุดิบ', Colors.orange, Icons.add_circle, () => 
+                  _buildActionButton('เพิ่มสินค้า/วัตถุดิบ', AppDesignSystem.warning, Icons.add_circle, () => 
                     checkPermissionAndExecute(context, 'inventory_products_add', 'เพิ่มสินค้า/วัตถุดิบ', onShowAddProductDialog)),
                 if (PermissionService.canAccessActionSync('inventory_products_produce'))
-                  _buildActionButton('ผลิตสินค้า', Colors.purple, Icons.factory, () => 
+                  _buildActionButton('ผลิตสินค้า', AppDesignSystem.secondary, Icons.factory, () => 
                     checkPermissionAndExecute(context, 'inventory_products_produce', 'ผลิตสินค้า', onShowProduceProductDialog)),
               ],
             ),
-            SizedBox(height: 14),
-            Divider(height: 1, color: Colors.grey[300]),
-            SizedBox(height: 14),
-            Text('เครื่องมือจัดซื้อจัดจ้าง', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            SizedBox(height: 12),
+            const SizedBox(height: AppDesignSystem.spacingLg),
+            const Divider(height: 1, color: AppDesignSystem.border),
+            const SizedBox(height: AppDesignSystem.spacingLg),
+            Text(
+              'เครื่องมือจัดซื้อจัดจ้าง',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: AppDesignSystem.spacingMd),
             Wrap(
-              spacing: 8,
-              runSpacing: 8,
+              spacing: AppDesignSystem.spacingSm,
+              runSpacing: AppDesignSystem.spacingSm,
               children: [
                 if (PermissionService.canAccessTabSync('procurement_purchase'))
-                  _buildActionButton('สั่งซื้อสินค้า', Colors.green, Icons.shopping_cart, onNavigateToProcurementPurchase),
+                  _buildActionButton('สั่งซื้อสินค้า', AppDesignSystem.success, Icons.shopping_cart, onNavigateToProcurementPurchase),
                 if (PermissionService.canAccessTabSync('procurement_tracking'))
-                  _buildActionButton('ติดตาม PO', Colors.indigo, Icons.track_changes, onNavigateToProcurementTracking),
+                  _buildActionButton('ติดตาม PO', AppDesignSystem.secondary, Icons.track_changes, onNavigateToProcurementTracking),
                 if (PermissionService.canAccessTabSync('procurement_receive'))
-                  _buildActionButton('รับสินค้า', Colors.brown, Icons.inventory, onNavigateToProcurementReceive),
+                  _buildActionButton('รับสินค้า', AppDesignSystem.warning, Icons.inventory, onNavigateToProcurementReceive),
                 if (PermissionService.canAccessActionSync('procurement_purchase_approve'))
-                  _buildActionButton('อนุมัติ PO', Colors.deepPurple, Icons.verified, onNavigateToProcurementApprove),
+                  _buildActionButton('อนุมัติ PO', AppDesignSystem.primary, Icons.verified, onNavigateToProcurementApprove),
               ],
             ),
           ],
@@ -86,7 +98,7 @@ class ProductActionButtonsCard extends StatelessWidget {
       style: ElevatedButton.styleFrom(
         backgroundColor: color,
         foregroundColor: Colors.white,
-        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: AppDesignSystem.spacingLg, vertical: AppDesignSystem.spacingMd),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );

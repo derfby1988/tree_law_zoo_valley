@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../theme/app_design_system.dart';
 
 class InventoryFilterWidget extends StatelessWidget {
   final TextEditingController searchController;
@@ -38,20 +39,25 @@ class InventoryFilterWidget extends StatelessWidget {
     }
 
     return Card(
-      elevation: 2,
+      elevation: 0,
+      color: AppDesignSystem.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppDesignSystem.radiusMd),
+        side: const BorderSide(color: AppDesignSystem.border),
+      ),
       child: Padding(
-        padding: EdgeInsets.all(12),
+        padding: const EdgeInsets.all(AppDesignSystem.spacingMd),
         child: Column(
           children: [
             TextField(
               controller: searchController,
               decoration: InputDecoration(
                 hintText: 'ค้นหาสินค้า...',
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                prefixIcon: const Icon(Icons.search),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppDesignSystem.radiusSm)),
               ),
             ),
-            SizedBox(height: 12),
+            const SizedBox(height: AppDesignSystem.spacingMd),
             Row(
               children: [
                 Expanded(
@@ -59,21 +65,21 @@ class InventoryFilterWidget extends StatelessWidget {
                     value: selectedWarehouse,
                     decoration: InputDecoration(
                       labelText: 'คลังสินค้า',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppDesignSystem.radiusSm)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: AppDesignSystem.spacingMd, vertical: AppDesignSystem.spacingSm),
                     ),
                     items: warehouses.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                     onChanged: onWarehouseChanged,
                   ),
                 ),
-                SizedBox(width: 12),
+                const SizedBox(width: AppDesignSystem.spacingMd),
                 Expanded(
                   child: DropdownButtonFormField<String>(
                     value: selectedShelf,
                     decoration: InputDecoration(
                       labelText: 'ชั้นวาง',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppDesignSystem.radiusSm)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: AppDesignSystem.spacingMd, vertical: AppDesignSystem.spacingSm),
                     ),
                     items: shelves.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                     onChanged: onShelfChanged,

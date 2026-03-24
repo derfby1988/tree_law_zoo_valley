@@ -225,6 +225,234 @@ class TableManagementService {
     }
   }
 
+  static Future<bool> lockTableForBooking({
+    required String tableId,
+    required String bookingId,
+  }) async {
+    try {
+      final table = await _client
+          .from('restaurant_tables')
+          .select('status, current_session_id, current_booking_id')
+          .eq('id', tableId)
+          .maybeSingle();
+
+      if (table == null) {
+        return false;
+      }
+
+      final currentStatus = table['status']?.toString();
+      final currentSessionId = table['current_session_id']?.toString();
+      final currentBookingId = table['current_booking_id']?.toString();
+      if (currentStatus != 'available' || (currentSessionId != null && currentSessionId.isNotEmpty) || (currentBookingId != null && currentBookingId.isNotEmpty)) {
+        return false;
+      }
+
+      await _client.from('restaurant_tables').update({
+        'status': 'unavailable',
+        'current_booking_id': bookingId,
+      }).eq('id', tableId);
+      return true;
+    } catch (e) {
+      debugPrint('Error lockTableForBooking: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> releaseTableFromBooking({
+    required String tableId,
+    required String bookingId,
+  }) async {
+    try {
+      final table = await _client
+          .from('restaurant_tables')
+          .select('current_session_id, current_order_id, current_booking_id')
+          .eq('id', tableId)
+          .maybeSingle();
+
+      if (table != null) {
+        final currentBookingId = table['current_booking_id']?.toString();
+        if (currentBookingId != null && currentBookingId != bookingId) {
+          return true;
+        }
+      }
+
+      final openSession = await _client
+          .from('restaurant_table_sessions')
+          .select('id, current_order_id')
+          .eq('table_id', tableId)
+          .eq('status', 'open')
+          .maybeSingle();
+
+      final tableUpdate = <String, dynamic>{
+        'current_booking_id': null,
+      };
+
+      if (openSession == null) {
+        tableUpdate.addAll({
+          'status': 'available',
+          'current_session_id': null,
+          'current_order_id': null,
+        });
+      } else {
+        tableUpdate.addAll({
+          'status': 'occupied',
+          'current_session_id': openSession['id']?.toString(),
+          'current_order_id': openSession['current_order_id']?.toString(),
+        });
+      }
+
+      await _client.from('restaurant_tables').update(tableUpdate).eq('id', tableId);
+      return true;
+    } catch (e) {
+      debugPrint('Error releaseTableFromBooking: $e');
+      return false;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> getActiveSessionForTable(String tableId) async {
+    try {
+      final response = await _client
+          .from('restaurant_table_sessions')
+          .select('*')
+          .eq('table_id', tableId)
+          .eq('status', 'open')
+          .order('opened_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+      return response == null ? null : Map<String, dynamic>.from(response);
+    } catch (e) {
+      debugPrint('Error getActiveSessionForTable: $e');
+      return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> openTableSession({
+    required String tableId,
+    String? zoneId,
+    String? bookingId,
+    String? customerUserId,
+    String? customerName,
+    String? customerPhone,
+    String? notes,
+  }) async {
+    try {
+      final openedByUserId = _client.auth.currentUser?.id;
+      final sessionPayload = {
+        'table_id': tableId,
+        'booking_id': bookingId,
+        'customer_user_id': customerUserId,
+        'customer_name': customerName,
+        'customer_phone': customerPhone,
+        'status': 'open',
+        'opened_by_user_id': openedByUserId,
+        'notes': notes,
+        if (zoneId != null && zoneId.isNotEmpty) 'zone_id': zoneId,
+      };
+      final session = await _client.from('restaurant_table_sessions').insert(sessionPayload).select().single();
+
+      await _client.from('restaurant_tables').update({
+        'status': 'occupied',
+        'current_session_id': session['id'],
+        'current_order_id': null,
+      }).eq('id', tableId);
+
+      return Map<String, dynamic>.from(session);
+    } on PostgrestException catch (e) {
+      if (e.code == '23505') {
+        final existingSession = await getActiveSessionForTable(tableId);
+        if (existingSession != null) {
+          await syncTableWithSession(
+            tableId: tableId,
+            sessionId: existingSession['id'].toString(),
+            currentOrderId: existingSession['current_order_id']?.toString(),
+          );
+          return existingSession;
+        }
+      }
+      debugPrint('Error openTableSession: $e');
+      return null;
+    } catch (e) {
+      debugPrint('Error openTableSession: $e');
+      return null;
+    }
+  }
+
+  static Future<bool> attachOrderToTableSession({
+    required String tableId,
+    required String sessionId,
+    required String orderId,
+  }) async {
+    try {
+      await _client.from('restaurant_table_sessions').update({
+        'current_order_id': orderId,
+        'status': 'open',
+      }).eq('id', sessionId).eq('table_id', tableId);
+
+      await _client.from('restaurant_tables').update({
+        'current_order_id': orderId,
+        'current_session_id': sessionId,
+        'status': 'occupied',
+      }).eq('id', tableId);
+
+      return true;
+    } catch (e) {
+      debugPrint('Error attachOrderToTableSession: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> syncTableWithSession({
+    required String tableId,
+    required String sessionId,
+    String? currentOrderId,
+  }) async {
+    try {
+      final tableUpdate = <String, dynamic>{
+        'status': 'occupied',
+        'current_session_id': sessionId,
+        'current_order_id': currentOrderId,
+      };
+
+      await _client.from('restaurant_tables').update(tableUpdate).eq('id', tableId);
+      return true;
+    } catch (e) {
+      debugPrint('Error syncTableWithSession: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> closeTableSession({
+    required String tableId,
+    required String sessionId,
+    String? orderId,
+  }) async {
+    try {
+      final sessionUpdate = <String, dynamic>{
+        'status': 'closed',
+        'closed_at': DateTime.now().toUtc().toIso8601String(),
+      };
+      if (orderId != null && orderId.isNotEmpty) {
+        sessionUpdate['current_order_id'] = orderId;
+      }
+
+      await _client.from('restaurant_table_sessions').update(sessionUpdate).eq('id', sessionId).eq('table_id', tableId);
+
+      final tableUpdate = <String, dynamic>{
+        'status': 'available',
+        'current_session_id': null,
+      };
+      if (orderId != null && orderId.isNotEmpty) {
+        tableUpdate['current_order_id'] = orderId;
+      }
+
+      await _client.from('restaurant_tables').update(tableUpdate).eq('id', tableId);
+      return true;
+    } catch (e) {
+      debugPrint('Error closeTableSession: $e');
+      return false;
+    }
+  }
+
   // =============================================
   // FLOOR PLAN ELEMENTS (Text & Shapes)
   // =============================================

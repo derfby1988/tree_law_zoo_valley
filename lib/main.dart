@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'services/supabase_service.dart';
 import 'services/otp_service.dart';
+import 'config/business_settings.dart';
 import 'register_page_clean.dart';
 import 'pages/user_profile_page.dart';
 import 'widgets/forgot_password_dialog.dart';
@@ -26,6 +27,7 @@ import 'pages/table_management_page.dart';
 import 'pages/pos_page.dart';
 import 'services/permission_service.dart';
 import 'services/user_group_service.dart';
+import 'theme/app_design_system.dart';
 
 // Helper function to validate email or phone
 bool isValidEmailOrPhone(String input) {
@@ -62,14 +64,11 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'TREE LAW ZOO valley',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
-      ),
+      title: AppBusinessSettings.restaurantName,
+      theme: AppDesignSystem.theme(),
       home: const AuthStateObserver(
         child: MyHomePage(
-          title: 'TREE LAW ZOO valley',
+          title: AppBusinessSettings.restaurantName,
           isGuestMode: true, // ✅ เริ่มต้นที่ Home Page โดยตรง
         ),
       ),
@@ -129,9 +128,9 @@ class _AuthWrapperState extends State<AuthWrapper> {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Color(0xFF81D4FA),
-                Color(0xFF80CBC4),
-                Color(0xFF81C784),
+                Color(0xFF4992E7),
+                Color(0xFF68CB9C),
+                Color(0xFF2AD49B),
               ],
             ),
           ),
@@ -163,7 +162,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
     if (user != null) {
       // User is logged in, show main app
       return const MyHomePage(
-        title: 'TREE LAW ZOO valley',
+        title: AppBusinessSettings.restaurantName,
         isGuestMode: false,
       );
     } else {
@@ -235,7 +234,7 @@ class _MyHomePageState extends State<MyHomePage> {
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (context) => const MyHomePage(
-            title: 'TREE LAW ZOO valley',
+            title: AppBusinessSettings.restaurantName,
             isGuestMode: true,
           ),
         ),
@@ -300,9 +299,9 @@ class _MyHomePageState extends State<MyHomePage> {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Color(0xFF81D4FA),
-                Color(0xFF80CBC4),
-                Color(0xFF81C784),
+                AppDesignSystem.secondary,
+                AppDesignSystem.primary,
+                Color(0xFF68CB9C),
               ],
             ),
           ),
@@ -687,7 +686,7 @@ class _MyHomePageState extends State<MyHomePage> {
         ),
         SizedBox(height: compact ? 4 : 10),
         Text(
-          'TREE LAW ZOO valley',
+          AppBusinessSettings.restaurantName,
           style: TextStyle(
             fontSize: compact ? 12 : 16,
             color: Colors.white70,
@@ -1126,7 +1125,7 @@ class _LoginPageState extends State<LoginPage> {
           // กลับไปหน้า Home (User Mode)
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(
-              builder: (context) => const MyHomePage(title: 'TREE LAW ZOO valley', isGuestMode: false),
+              builder: (context) => const MyHomePage(title: AppBusinessSettings.restaurantName, isGuestMode: false),
             ),
             (route) => false,
           );
@@ -1160,8 +1159,8 @@ class _LoginPageState extends State<LoginPage> {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Color(0xFF4FC3F7), // ฟ้า
-              Color(0xFF81C784), // เขียว
+              Color(0xFF4992E7),
+              Color(0xFF68CB9C),
             ],
           ),
         ),
@@ -1179,7 +1178,7 @@ class _LoginPageState extends State<LoginPage> {
                           Navigator.of(context).pushReplacement(
                             MaterialPageRoute(
                               builder: (context) => const MyHomePage(
-                                title: 'TREE LAW ZOO valley',
+                                title: AppBusinessSettings.restaurantName,
                                 isGuestMode: true,
                               ),
                             ),
@@ -1209,7 +1208,7 @@ class _LoginPageState extends State<LoginPage> {
                   
                   const SizedBox(height: 20),
                   const Text(
-                    'TREE LAW ZOO valley',
+                    AppBusinessSettings.restaurantName,
                     style: TextStyle(
                       fontSize: 18,
                       color: Colors.white,

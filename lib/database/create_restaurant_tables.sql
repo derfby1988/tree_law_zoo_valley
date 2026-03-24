@@ -22,8 +22,11 @@ CREATE TABLE IF NOT EXISTS restaurant_tables (
   name VARCHAR(50) NOT NULL,          -- เช่น "A1", "B2"
   table_type VARCHAR(20) DEFAULT 'small',  -- large | small | bar
   capacity INTEGER DEFAULT 2,
-  status VARCHAR(20) DEFAULT 'available',  -- available | unavailable | reserved
+  status VARCHAR(20) DEFAULT 'available',  -- available | occupied | reserved | unavailable
   is_bookable BOOLEAN DEFAULT true,        -- false = walk-in only
+  current_session_id UUID,
+  current_order_id UUID,
+  current_booking_id UUID,
   sort_order INTEGER DEFAULT 0,
   pos_x DOUBLE PRECISION,                 -- ตำแหน่ง X บนผังร้าน (0.0 - 1.0 relative)
   pos_y DOUBLE PRECISION,                 -- ตำแหน่ง Y บนผังร้าน (0.0 - 1.0 relative)
@@ -36,6 +39,9 @@ CREATE TABLE IF NOT EXISTS restaurant_tables (
 CREATE INDEX IF NOT EXISTS idx_restaurant_zones_active ON restaurant_zones(is_active);
 CREATE INDEX IF NOT EXISTS idx_restaurant_tables_zone ON restaurant_tables(zone_id);
 CREATE INDEX IF NOT EXISTS idx_restaurant_tables_status ON restaurant_tables(status);
+CREATE INDEX IF NOT EXISTS idx_restaurant_tables_current_session ON restaurant_tables(current_session_id);
+CREATE INDEX IF NOT EXISTS idx_restaurant_tables_current_order ON restaurant_tables(current_order_id);
+CREATE INDEX IF NOT EXISTS idx_restaurant_tables_current_booking ON restaurant_tables(current_booking_id);
 
 -- Updated_at trigger
 CREATE OR REPLACE FUNCTION update_updated_at_column()

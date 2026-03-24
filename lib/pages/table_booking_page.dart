@@ -2,10 +2,12 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../config/business_settings.dart';
 import '../services/table_management_service.dart';
 import '../services/table_booking_service.dart';
 import '../services/permission_service.dart';
 import '../utils/permission_helpers.dart';
+import '../theme/app_design_system.dart';
 import '../widgets/home_left_drawer.dart';
 
 class TableBookingPage extends StatefulWidget {
@@ -22,6 +24,7 @@ class _TableBookingPageState extends State<TableBookingPage> {
   String? _selectedTable;
   String? _selectedZoneName;
   String? _activeBookingId;
+  bool _activeBookingPaid = false;
   String _remainingText = '';
   Timer? _countdownTimer;
   bool _isLoading = true;
@@ -34,6 +37,7 @@ class _TableBookingPageState extends State<TableBookingPage> {
     if (mounted) {
       setState(() {
         _activeBookingId = null;
+        _activeBookingPaid = false;
         _selectedTable = null;
         _selectedZoneName = null;
         _remainingText = '';
@@ -57,6 +61,7 @@ class _TableBookingPageState extends State<TableBookingPage> {
         _selectedTable = null;
         _selectedZoneName = null;
         _activeBookingId = null;
+        _activeBookingPaid = false;
         _remainingText = '';
       });
       _loadData();
@@ -86,84 +91,111 @@ class _TableBookingPageState extends State<TableBookingPage> {
     final phoneCtrl = TextEditingController();
     final sizeCtrl = TextEditingController(text: '2');
     final noteCtrl = TextEditingController();
+    bool isPrepaid = false;
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('จองโต๊ะ ${info.name}'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameCtrl,
-                decoration: const InputDecoration(labelText: 'ชื่อลูกค้า *', border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: phoneCtrl,
-                decoration: const InputDecoration(labelText: 'เบอร์โทร *', border: OutlineInputBorder()),
-                keyboardType: TextInputType.phone,
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: sizeCtrl,
-                decoration: const InputDecoration(labelText: 'จำนวนคน', border: OutlineInputBorder()),
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: noteCtrl,
-                decoration: const InputDecoration(labelText: 'หมายเหตุ', border: OutlineInputBorder()),
-                maxLines: 2,
-              ),
-            ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Text('จองโต๊ะ ${info.name}'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(labelText: 'ชื่อลูกค้า *', border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: phoneCtrl,
+                  decoration: const InputDecoration(labelText: 'เบอร์โทร *', border: OutlineInputBorder()),
+                  keyboardType: TextInputType.phone,
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: sizeCtrl,
+                  decoration: const InputDecoration(labelText: 'จำนวนคน', border: OutlineInputBorder()),
+                  keyboardType: TextInputType.number,
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: noteCtrl,
+                  decoration: const InputDecoration(labelText: 'หมายเหตุ', border: OutlineInputBorder()),
+                  maxLines: 2,
+                ),
+                const SizedBox(height: 10),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: isPrepaid,
+                  onChanged: (value) {
+                    setDialogState(() {
+                      isPrepaid = value ?? false;
+                    });
+                  },
+                  title: const Text('ชำระล่วงหน้าแล้ว'),
+                  subtitle: const Text('ล็อกโต๊ะไว้ให้ลูกค้าจนกว่าจะมีการยกเลิกการจองอย่างสมบูรณ์'),
+                  controlAffinity: ListTileControlAffinity.leading,
+                ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('ยกเลิก')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF3B82F6), foregroundColor: Colors.white),
+              onPressed: () async {
+                if (nameCtrl.text.trim().isEmpty || phoneCtrl.text.trim().isEmpty) return;
+                Navigator.pop(ctx);
+                final booking = await TableBookingService.createBooking(
+                  zoneId: info.zoneId!,
+                  tableId: info.id!,
+                  customerName: nameCtrl.text.trim(),
+                  phone: phoneCtrl.text.trim(),
+                  partySize: int.tryParse(sizeCtrl.text) ?? 2,
+                  note: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
+                  expiresInMinutes: 15,
+                  isPrepaid: isPrepaid,
+                );
+                if (booking != null) {
+                  final expiresAtStr = booking['expires_at'] as String?;
+                  DateTime? expiresAt;
+                  if (expiresAtStr != null) {
+                    expiresAt = DateTime.parse(expiresAtStr).toLocal();
+                  }
+                  final paymentStatus = booking['payment_status'] as String? ?? 'unpaid';
+                  setState(() {
+                    _activeBookingId = booking['id'] as String?;
+                    _activeBookingPaid = paymentStatus == 'paid';
+                    _selectedTable = info.name;
+                    _selectedZoneName = zoneName;
+                    _remainingText = '';
+                  });
+                  if (!_activeBookingPaid && expiresAt != null) _startCountdown(expiresAt);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          _activeBookingPaid
+                              ? 'จองโต๊ะ ${info.name} และชำระล่วงหน้าแล้ว'
+                              : 'จองโต๊ะ ${info.name} สำเร็จ',
+                        ),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                  _loadData();
+                } else {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('จองไม่สำเร็จ'), backgroundColor: Colors.red),
+                    );
+                  }
+                }
+              },
+              child: const Text('ยืนยันจอง'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('ยกเลิก')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF3B82F6), foregroundColor: Colors.white),
-            onPressed: () async {
-              if (nameCtrl.text.trim().isEmpty || phoneCtrl.text.trim().isEmpty) return;
-              Navigator.pop(ctx);
-              final booking = await TableBookingService.createBooking(
-                zoneId: info.zoneId!,
-                tableId: info.id!,
-                customerName: nameCtrl.text.trim(),
-                phone: phoneCtrl.text.trim(),
-                partySize: int.tryParse(sizeCtrl.text) ?? 2,
-                note: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
-                expiresInMinutes: 15,
-              );
-              if (booking != null) {
-                final expiresAtStr = booking['expires_at'] as String?;
-                DateTime? expiresAt;
-                if (expiresAtStr != null) {
-                  expiresAt = DateTime.parse(expiresAtStr).toLocal();
-                }
-                setState(() {
-                  _activeBookingId = booking['id'] as String?;
-                  _selectedTable = info.name;
-                  _selectedZoneName = zoneName;
-                });
-                if (expiresAt != null) _startCountdown(expiresAt);
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('จองโต๊ะ ${info.name} สำเร็จ'), backgroundColor: Colors.green),
-                  );
-                }
-                _loadData();
-              } else {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('จองไม่สำเร็จ'), backgroundColor: Colors.red),
-                  );
-                }
-              }
-            },
-            child: const Text('ยืนยันจอง'),
-          ),
-        ],
       ),
     );
   }
@@ -266,13 +298,13 @@ class _TableBookingPageState extends State<TableBookingPage> {
           Navigator.pop(context);
         },
       ),
-      backgroundColor: Colors.transparent,
+      backgroundColor: AppDesignSystem.background,
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFFEAF0FC), Color(0xFF79FFB6)],
+            colors: [AppDesignSystem.background, AppDesignSystem.selectedSurface],
           ),
         ),
         child: SafeArea(
@@ -289,9 +321,9 @@ class _TableBookingPageState extends State<TableBookingPage> {
                             child: Column(
                               children: const [
                                 SizedBox(height: 120),
-                                Icon(Icons.table_restaurant, size: 72, color: Colors.grey),
+                                Icon(Icons.table_restaurant, size: 72, color: AppDesignSystem.textSecondary),
                                 SizedBox(height: 12),
-                                Text('ยังไม่มีร้าน/โต๊ะ', style: TextStyle(fontSize: 16, color: Colors.black54)),
+                                Text('ยังไม่มีร้าน/โต๊ะ', style: TextStyle(fontSize: 16, color: AppDesignSystem.textSecondary)),
                               ],
                             ),
                           )
@@ -305,33 +337,33 @@ class _TableBookingPageState extends State<TableBookingPage> {
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
                                     IconButton(
-                                      icon: const Icon(Icons.menu, color: Colors.deepPurple),
+                                      icon: const Icon(Icons.menu, color: AppDesignSystem.secondary),
                                       onPressed: () => _scaffoldKey.currentState?.openDrawer(),
                                     ),
                                     if (widget.isGuestMode)
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                         decoration: BoxDecoration(
-                                          color: Colors.orange.withValues(alpha: 0.1),
-                                          borderRadius: BorderRadius.circular(12),
+                                          color: AppDesignSystem.warning.withValues(alpha: 0.12),
+                                          borderRadius: BorderRadius.circular(AppDesignSystem.radiusMd),
                                         ),
                                         child: Row(
                                           children: const [
-                                            Icon(Icons.lock_open, color: Colors.orange, size: 18),
+                                            Icon(Icons.lock_open, color: AppDesignSystem.warning, size: 18),
                                             SizedBox(width: 6),
-                                            Text('โหมดผู้เยี่ยม', style: TextStyle(color: Colors.orange, fontSize: 12)),
+                                            Text('โหมดผู้เยี่ยม', style: TextStyle(color: AppDesignSystem.warning, fontSize: 12)),
                                           ],
                                         ),
                                       )
                                   ],
                                 ),
                                 const SizedBox(height: 8),
-                                const Center(
+                                Center(
                                   child: Column(
                                     children: [
-                                      Text('เลือก ร้าน & โต๊ะ', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.black)),
+                                      Text('เลือก ร้าน & โต๊ะ', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: AppDesignSystem.textPrimary)),
                                       SizedBox(height: 4),
-                                      Text('TREE LAW ZOO valley', style: TextStyle(fontSize: 14, color: Colors.black54)),
+                                      Text(AppBusinessSettings.restaurantName, style: TextStyle(fontSize: 14, color: AppDesignSystem.textSecondary)),
                                     ],
                                   ),
                                 ),
@@ -350,8 +382,8 @@ class _TableBookingPageState extends State<TableBookingPage> {
                                       ? 'บางโต๊ะ Walk in เท่านั้น'
                                       : 'เลือกโต๊ะเพื่อจอง';
                                   final noteColor = (tables.any((t) => !(t['is_bookable'] as bool? ?? true)))
-                                      ? const Color(0xFFE5A000)
-                                      : const Color(0xFF1493FF);
+                                      ? AppDesignSystem.warning
+                                      : AppDesignSystem.secondary;
 
                                   return Padding(
                                     padding: const EdgeInsets.only(bottom: 22),
@@ -372,7 +404,7 @@ class _TableBookingPageState extends State<TableBookingPage> {
                                 Center(
                                   child: Text(
                                     '*จองได้ครั้งละ 1 โต๊ะ ต่อ 1 ใบเสร็จ\n**ร้านที่เลือก ส่งผลต่อรายการอาหารที่สามารถเลือกได้',
-                                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                                    style: TextStyle(color: AppDesignSystem.textSecondary, fontSize: 12),
                                     textAlign: TextAlign.center,
                                   ),
                                 ),
@@ -395,28 +427,36 @@ class _TableBookingPageState extends State<TableBookingPage> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text('ร้าน ', style: TextStyle(color: Colors.grey[700], fontSize: 16)),
-                        Text(_selectedZoneName ?? 'X', style: const TextStyle(color: Color(0xFFAF52DE), fontSize: 16)),
+                        Text('ร้าน ', style: TextStyle(color: AppDesignSystem.textSecondary, fontSize: 16)),
+                        Text(_selectedZoneName ?? 'X', style: const TextStyle(color: AppDesignSystem.secondary, fontSize: 16)),
                         const SizedBox(width: 12),
-                        Text('โต๊ะที่ ', style: TextStyle(color: Colors.grey[700], fontSize: 16)),
-                        Text(_selectedTable ?? 'X', style: const TextStyle(color: Color(0xFFAF52DE), fontSize: 16)),
+                        Text('โต๊ะที่ ', style: TextStyle(color: AppDesignSystem.textSecondary, fontSize: 16)),
+                        Text(_selectedTable ?? 'X', style: const TextStyle(color: AppDesignSystem.secondary, fontSize: 16)),
                         const SizedBox(width: 8),
-                        Icon(Icons.close, color: const Color(0xFFAF52DE), size: 18),
+                        const Icon(Icons.close, color: AppDesignSystem.secondary, size: 18),
                       ],
                     ),
                     if (_remainingText.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
                         child: Text('เวลาที่เหลือในการชำระเงิน: $_remainingText',
-                            style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
+                            style: const TextStyle(color: AppDesignSystem.danger, fontSize: 12)),
+                      ),
+                    if (_activeBookingPaid)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          'ชำระล่วงหน้าแล้ว • โต๊ะถูกล็อกไว้ให้ลูกค้ารายนี้',
+                          style: const TextStyle(color: AppDesignSystem.success, fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
                       ),
                     if (_activeBookingId != null && PermissionService.canAccessActionSync('table_booking_cancel'))
                       Padding(
                         padding: const EdgeInsets.only(top: 8),
                         child: OutlinedButton.icon(
-                          icon: const Icon(Icons.cancel, color: Colors.red),
-                          label: const Text('ยกเลิกการจอง', style: TextStyle(color: Colors.red)),
-                          style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.red)),
+                          icon: const Icon(Icons.cancel, color: AppDesignSystem.danger),
+                          label: const Text('ยกเลิกการจอง', style: TextStyle(color: AppDesignSystem.danger)),
+                          style: OutlinedButton.styleFrom(side: const BorderSide(color: AppDesignSystem.danger)),
                           onPressed: _cancelActiveBooking,
                         ),
                       ),
@@ -448,8 +488,8 @@ class _TableBookingPageState extends State<TableBookingPage> {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(18),
+        color: AppDesignSystem.surface.withValues(alpha: 0.95),
+        borderRadius: BorderRadius.circular(AppBusinessSettings.defaultPosCardRadius),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.05),
@@ -469,9 +509,9 @@ class _TableBookingPageState extends State<TableBookingPage> {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                  Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppDesignSystem.textPrimary)),
                   const SizedBox(width: 6),
-                  Text(time, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                  Text(time, style: const TextStyle(fontSize: 12, color: AppDesignSystem.textSecondary)),
                 ],
               ),
             ],
@@ -481,18 +521,18 @@ class _TableBookingPageState extends State<TableBookingPage> {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 6),
             decoration: BoxDecoration(
-              color: const Color(0xFFD2E5FF),
-              borderRadius: BorderRadius.circular(12),
+              color: AppDesignSystem.secondary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(AppBusinessSettings.defaultPosCardRadius),
             ),
             child: Column(
               children: [
-                Text(headerLabel, style: const TextStyle(fontSize: 14, color: Colors.black54)),
+                Text(headerLabel, style: const TextStyle(fontSize: 14, color: AppDesignSystem.textSecondary)),
                 const SizedBox(height: 4),
                 Container(
                   padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
                   decoration: BoxDecoration(
                     color: noteColor,
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(AppBusinessSettings.defaultPosChipRadius),
                   ),
                   child: Text(note, style: const TextStyle(fontSize: 12, color: Colors.white)),
                 ),
@@ -511,7 +551,7 @@ class _TableBookingPageState extends State<TableBookingPage> {
                       if (group.label != null)
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 4),
-                          child: Text(group.label!, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                          child: Text(group.label!, style: const TextStyle(color: AppDesignSystem.textSecondary, fontSize: 13)),
                         ),
                       Wrap(
                         spacing: 10,

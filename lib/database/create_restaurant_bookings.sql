@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS restaurant_bookings (
   party_size INTEGER DEFAULT 2,
   note TEXT,
   status VARCHAR(20) DEFAULT 'pending', -- pending | confirmed | expired | canceled
+  payment_status VARCHAR(20) DEFAULT 'unpaid', -- unpaid | paid | refunded
+  paid_at TIMESTAMPTZ,
   expires_at TIMESTAMPTZ,
   order_id UUID, -- future POS order reference
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -19,6 +21,9 @@ CREATE TABLE IF NOT EXISTS restaurant_bookings (
 
 CREATE INDEX IF NOT EXISTS idx_bookings_table_status ON restaurant_bookings(table_id, status);
 CREATE INDEX IF NOT EXISTS idx_bookings_expires ON restaurant_bookings(expires_at);
+CREATE INDEX IF NOT EXISTS idx_bookings_payment_status ON restaurant_bookings(payment_status);
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_bookings_active_table ON restaurant_bookings(table_id)
+  WHERE status IN ('pending', 'confirmed');
 
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$

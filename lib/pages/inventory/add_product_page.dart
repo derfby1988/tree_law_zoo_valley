@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../config/business_settings.dart';
 import '../../services/inventory_service.dart';
 
 enum ItemType { product, ingredient }
@@ -33,7 +34,7 @@ class _AddProductPageState extends State<AddProductPage> {
   final _productionQtyController = TextEditingController(text: '1');
   final _qtyController = TextEditingController(text: '0');
   final _minQtyController = TextEditingController(text: '0');
-  final _taxRateController = TextEditingController(text: '7');
+  final _taxRateController = TextEditingController(text: AppBusinessSettings.defaultTaxRateLabel);
 
   // Toggle: สินค้า / วัตถุดิบ
   ItemType _itemType = ItemType.product;
@@ -141,7 +142,7 @@ class _AddProductPageState extends State<AddProductPage> {
         !_isTaxAutoMode ||
         _isTaxExempt ||
         _taxInclusion != 'included' ||
-        _taxRateController.text.trim() != '7' ||
+        _taxRateController.text.trim() != AppBusinessSettings.defaultTaxRateLabel ||
         _imageSlots.any((img) => img != null);
   }
 
@@ -222,7 +223,7 @@ class _AddProductPageState extends State<AddProductPage> {
       return;
     }
     _isTaxExempt = false;
-    _taxRateController.text = '7';
+    _taxRateController.text = AppBusinessSettings.defaultTaxRateLabel;
     _taxInclusion = 'included';
   }
 

@@ -14,6 +14,7 @@ class TableBookingService {
     int partySize = 2,
     String? note,
     int expiresInMinutes = 15,
+    bool isPrepaid = false,
   }) async {
     try {
       final expiresAt = DateTime.now().add(Duration(minutes: expiresInMinutes)).toUtc();
@@ -26,14 +27,29 @@ class TableBookingService {
             'phone': phone,
             'party_size': partySize,
             'note': note,
-            'status': 'pending',
+            'status': isPrepaid ? 'confirmed' : 'pending',
+            'payment_status': isPrepaid ? 'paid' : 'unpaid',
+            'paid_at': isPrepaid ? DateTime.now().toUtc().toIso8601String() : null,
             'expires_at': expiresAt.toIso8601String(),
           })
           .select()
           .single();
 
-      // Mark table unavailable
-      await TableManagementService.setTableStatus(tableId, 'unavailable');
+      final locked = await TableManagementService.lockTableForBooking(
+        tableId: tableId,
+        bookingId: booking['id'].toString(),
+      );
+      if (!locked) {
+        await _client
+            .from('restaurant_bookings')
+            .update({
+              'status': 'canceled',
+              'payment_status': isPrepaid ? 'refunded' : 'unpaid',
+            })
+            .eq('id', booking['id']);
+        return null;
+      }
+
       return booking;
     } catch (e) {
       debugPrint('Error createBooking: $e');
@@ -56,7 +72,10 @@ class TableBookingService {
             .from('restaurant_bookings')
             .update({'status': 'expired'})
             .eq('id', bookingId);
-        await TableManagementService.setTableStatus(booking['table_id'] as String, 'available');
+        await TableManagementService.releaseTableFromBooking(
+          tableId: booking['table_id'] as String,
+          bookingId: bookingId,
+        );
       }
       return true;
     } catch (e) {
@@ -69,17 +88,31 @@ class TableBookingService {
     try {
       final booking = await _client
           .from('restaurant_bookings')
-          .select('table_id, status')
+          .select('table_id, status, payment_status')
           .eq('id', bookingId)
           .maybeSingle();
       if (booking == null) return true;
-      if (booking['status'] == 'pending') {
-        await _client
-            .from('restaurant_bookings')
-            .update({'status': 'canceled'})
-            .eq('id', bookingId);
-        await TableManagementService.setTableStatus(booking['table_id'] as String, 'available');
+
+      if (booking['status'] == 'canceled' || booking['status'] == 'expired') {
+        await TableManagementService.releaseTableFromBooking(
+          tableId: booking['table_id'] as String,
+          bookingId: bookingId,
+        );
+        return true;
       }
+
+      await _client
+          .from('restaurant_bookings')
+          .update({
+            'status': 'canceled',
+            'payment_status': booking['payment_status'] == 'paid' ? 'refunded' : 'unpaid',
+          })
+          .eq('id', bookingId);
+
+      await TableManagementService.releaseTableFromBooking(
+        tableId: booking['table_id'] as String,
+        bookingId: bookingId,
+      );
       return true;
     } catch (e) {
       debugPrint('Error cancelBooking: $e');
@@ -91,7 +124,12 @@ class TableBookingService {
     try {
       await _client
           .from('restaurant_bookings')
-          .update({'status': 'confirmed', if (orderId != null) 'order_id': orderId})
+          .update({
+            'status': 'confirmed',
+            'payment_status': 'paid',
+            'paid_at': DateTime.now().toUtc().toIso8601String(),
+            if (orderId != null) 'order_id': orderId,
+          })
           .eq('id', bookingId);
       return true;
     } catch (e) {

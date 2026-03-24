@@ -489,6 +489,37 @@ class _HRMPageState extends State<HRMPage> {
     }
   }
 
+  Future<void> _updateGroupFlag(String groupId, String column, bool value) async {
+    final label = column == 'is_customer_group'
+        ? 'กลุ่มลูกค้า'
+        : column == 'is_sales_staff_group'
+            ? 'กลุ่มพนักงานขาย'
+            : column;
+    try {
+      await SupabaseService.client
+          .from('user_groups')
+          .update({column: value})
+          .eq('id', groupId);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(value ? 'เปิดใช้งาน $label สำเร็จ' : 'ปิดใช้งาน $label สำเร็จ'),
+          backgroundColor: value ? Colors.green : Colors.orange,
+        ),
+      );
+
+      _loadUserGroups();
+    } catch (e) {
+      print('❌ Error updating group flag: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('ไม่สามารถอัปเดต $label: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   void _showCreateGroupDialog() {
     // Clear controllers for empty fields
     _groupNameController.clear();
@@ -1996,6 +2027,52 @@ class _HRMPageState extends State<HRMPage> {
               ],
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilterChip(
+                  label: const Text('ลูกค้า'),
+                  selected: group['is_customer_group'] == true,
+                  avatar: Icon(
+                    Icons.person,
+                    size: 16,
+                    color: group['is_customer_group'] == true ? groupColor : Colors.grey[700],
+                  ),
+                  selectedColor: groupColor.withOpacity(0.18),
+                  backgroundColor: Colors.grey[100],
+                  labelStyle: TextStyle(
+                    color: group['is_customer_group'] == true ? groupColor : Colors.grey[800],
+                    fontWeight: FontWeight.w600,
+                  ),
+                  onSelected: canManageThisGroup
+                      ? (value) => _updateGroupFlag(group['id'], 'is_customer_group', value)
+                      : null,
+                ),
+                FilterChip(
+                  label: const Text('พนักงานขาย'),
+                  selected: group['is_sales_staff_group'] == true,
+                  avatar: Icon(
+                    Icons.badge,
+                    size: 16,
+                    color: group['is_sales_staff_group'] == true ? headerColor : Colors.grey[700],
+                  ),
+                  selectedColor: headerColor.withOpacity(0.18),
+                  backgroundColor: Colors.grey[100],
+                  labelStyle: TextStyle(
+                    color: group['is_sales_staff_group'] == true ? headerColor : Colors.grey[800],
+                    fontWeight: FontWeight.w600,
+                  ),
+                  onSelected: canManageThisGroup
+                      ? (value) => _updateGroupFlag(group['id'], 'is_sales_staff_group', value)
+                      : null,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 4),
           // Description - removed to save space
           // Members list - removed to save space, count shown in header
           // Action buttons - compact

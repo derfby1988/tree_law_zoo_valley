@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../services/inventory_service.dart';
 import '../../services/account_chart_service.dart';
 import '../../utils/permission_helpers.dart';
+import '../../theme/app_design_system.dart';
 import 'inventory_filter_widget.dart';
 import 'product_action_buttons_card.dart';
 import '../procurement/purchase_tab.dart';
@@ -45,6 +46,17 @@ class _ProductTabState extends State<ProductTab> {
 
   // Sorting
   String _sortBy = 'qty_desc';
+
+  Color get _surface => AppDesignSystem.surface;
+  Color get _surfaceAlt => AppDesignSystem.background;
+  Color get _textPrimary => AppDesignSystem.textPrimary;
+  Color get _textSecondary => AppDesignSystem.textSecondary;
+  Color get _borderColor => AppDesignSystem.border;
+  Color get _primaryColor => AppDesignSystem.primary;
+  Color get _secondaryColor => AppDesignSystem.secondary;
+  Color get _warningColor => AppDesignSystem.warning;
+  Color get _successColor => AppDesignSystem.success;
+  Color get _dangerColor => AppDesignSystem.danger;
 
   @override
   void initState() {
@@ -183,12 +195,29 @@ class _ProductTabState extends State<ProductTab> {
       return Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()));
     }
     if (_errorMessage != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.error_outline, size: 48, color: _dangerColor),
+              const SizedBox(height: 8),
+              Text(_errorMessage!, style: TextStyle(color: _dangerColor)),
+              const SizedBox(height: 12),
+              ElevatedButton(onPressed: _loadData, child: const Text('ลองใหม่')),
+            ],
+          ),
+        ),
+      );
+    }
+    if (_accountErrorMessage != null) {
       return Center(child: Padding(padding: EdgeInsets.all(32), child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Icon(Icons.error_outline, size: 48, color: Colors.red),
-        SizedBox(height: 8),
-        Text(_errorMessage!, style: TextStyle(color: Colors.red)),
-        SizedBox(height: 12),
-        ElevatedButton(onPressed: _loadData, child: Text('ลองใหม่')),
+        Icon(Icons.error_outline, size: 48, color: _dangerColor),
+        const SizedBox(height: 8),
+        Text(_accountErrorMessage!, style: TextStyle(color: _dangerColor)),
+        const SizedBox(height: 12),
+        ElevatedButton(onPressed: _loadData, child: const Text('ลองใหม่')),
       ])));
     }
 
@@ -217,7 +246,7 @@ class _ProductTabState extends State<ProductTab> {
             if (_accountErrorMessage != null)
               Padding(
                 padding: EdgeInsets.only(bottom: 8),
-                child: Text(_accountErrorMessage!, style: TextStyle(color: Colors.red)),
+                child: Text(_accountErrorMessage!, style: TextStyle(color: _dangerColor)),
               ),
             ProductActionButtonsCard(
               onShowCategoryDialog: _showCategoryDialog,
@@ -247,27 +276,31 @@ class _ProductTabState extends State<ProductTab> {
     final allSelected = noShelfItems.isNotEmpty && noShelfItems.every((p) => _selectedNoShelfIds.contains(p['id']));
 
     return Card(
-      elevation: 2,
-      color: Colors.orange[50],
+      elevation: 0,
+      color: _surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppDesignSystem.radiusMd),
+        side: const BorderSide(color: AppDesignSystem.border),
+      ),
       child: Padding(
-        padding: EdgeInsets.all(12),
+        padding: const EdgeInsets.all(AppDesignSystem.spacingMd),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Header
             Row(
               children: [
-                Icon(Icons.warning_amber_rounded, color: Colors.orange[700], size: 20),
-                SizedBox(width: 8),
+                Icon(Icons.warning_amber_rounded, color: _warningColor, size: 20),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'สินค้ายังไม่มีชั้นวาง (${noShelfItems.length} รายการ)',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.orange[800]),
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: _textPrimary),
                   ),
                 ),
               ],
             ),
-            SizedBox(height: 8),
+            const SizedBox(height: AppDesignSystem.spacingSm),
             // Select all + Assign button
             Row(
               children: [
@@ -284,26 +317,26 @@ class _ProductTabState extends State<ProductTab> {
                         }
                       });
                     },
-                    child: Text('เลือกทั้งหมด', style: TextStyle(fontSize: 13)),
+                    child: Text('เลือกทั้งหมด', style: TextStyle(fontSize: 13, color: _textPrimary)),
                   ),
                 ),
-                Spacer(),
+                const Spacer(),
                 if (_selectedNoShelfIds.isNotEmpty)
                   ElevatedButton.icon(
                     onPressed: () => _showAssignShelfDialog(),
                     icon: Icon(Icons.shelves, size: 16),
                     label: Text('จัดเข้าชั้นวาง (${_selectedNoShelfIds.length})'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
+                      backgroundColor: _secondaryColor,
                       foregroundColor: Colors.white,
-                      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      textStyle: TextStyle(fontSize: 13),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(horizontal: AppDesignSystem.spacingMd, vertical: AppDesignSystem.spacingSm),
+                      textStyle: const TextStyle(fontSize: 13),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppDesignSystem.radiusSm)),
                     ),
                   ),
               ],
             ),
-            SizedBox(height: 8),
+            const SizedBox(height: AppDesignSystem.spacingSm),
             // Scrollable list
             ConstrainedBox(
               constraints: BoxConstraints(maxHeight: noShelfItems.length > 5 ? 280 : double.infinity),
@@ -320,16 +353,16 @@ class _ProductTabState extends State<ProductTab> {
                     final id = item['id'] as String;
                     final qty = (item['quantity'] as num?)?.toDouble() ?? 0;
                     final status = _getProductStatus(item);
-                    final statusColor = status == 'พร้อม' ? Colors.green : status == 'ใกล้หมด' ? Colors.orange : Colors.red;
+                    final statusColor = status == 'พร้อม' ? _successColor : status == 'ใกล้หมด' ? _warningColor : _dangerColor;
                     final unitAbbr = item['unit']?['abbreviation'] ?? '';
 
                     return Container(
-                      margin: EdgeInsets.only(bottom: 4),
-                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      margin: const EdgeInsets.only(bottom: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                       decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: Colors.orange[200]!),
+                        color: _surface,
+                        borderRadius: BorderRadius.circular(AppDesignSystem.radiusSm),
+                        border: Border.all(color: _borderColor),
                       ),
                       child: Row(
                         children: [
@@ -349,14 +382,14 @@ class _ProductTabState extends State<ProductTab> {
                               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             ),
                           ),
-                          SizedBox(width: 8),
+                          const SizedBox(width: 8),
                           Expanded(
                             flex: 3,
-                            child: Text(item['name'] ?? '', style: TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
+                            child: Text(item['name'] ?? '', style: TextStyle(fontSize: 13, color: _textPrimary), overflow: TextOverflow.ellipsis),
                           ),
-                          SizedBox(width: 4),
-                          Text('${qty.toStringAsFixed(qty == qty.roundToDouble() ? 0 : 1)} $unitAbbr', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                          SizedBox(width: 8),
+                          const SizedBox(width: 4),
+                          Text('${qty.toStringAsFixed(qty == qty.roundToDouble() ? 0 : 1)} $unitAbbr', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _textPrimary)),
+                          const SizedBox(width: 8),
                           Container(width: 8, height: 8, decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle)),
                         ],
                       ),
@@ -379,19 +412,15 @@ class _ProductTabState extends State<ProductTab> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: Row(children: [
-            Icon(Icons.shelves, color: Colors.blue),
-            SizedBox(width: 8),
-            Text('จัดเข้าชั้นวาง'),
-          ]),
+          title: Row(children: [Icon(Icons.shelves, color: _secondaryColor), const SizedBox(width: 8), const Text('จัดเข้าชั้นวาง')]),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('เลือก ${_selectedNoShelfIds.length} รายการ', style: TextStyle(color: Colors.grey[600])),
-              SizedBox(height: 16),
+              Text('เลือก ${_selectedNoShelfIds.length} รายการ', style: TextStyle(color: _textSecondary)),
+              const SizedBox(height: 16),
               DropdownButtonFormField<String>(
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   labelText: 'เลือกชั้นวาง *',
                   border: OutlineInputBorder(),
                 ),
@@ -427,14 +456,14 @@ class _ProductTabState extends State<ProductTab> {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text('จัดเข้าชั้นวางสำเร็จ $success รายการ'),
-                      backgroundColor: Colors.green,
+                      backgroundColor: _successColor,
                     ),
                   );
                 }
               },
               child: isLoading
-                  ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : Text('บันทึก'),
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('บันทึก'),
             ),
           ],
         ),
@@ -447,9 +476,14 @@ class _ProductTabState extends State<ProductTab> {
     final paginated = _paginatedProducts;
     final totalPages = _totalPages;
     return Card(
-      elevation: 2,
+      elevation: 0,
+      color: _surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppDesignSystem.radiusMd),
+        side: const BorderSide(color: AppDesignSystem.border),
+      ),
       child: Padding(
-        padding: EdgeInsets.all(12),
+        padding: const EdgeInsets.all(AppDesignSystem.spacingMd),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -457,15 +491,15 @@ class _ProductTabState extends State<ProductTab> {
             Row(
               children: [
                 Expanded(
-                  child: Text('รายการสินค้า (${filtered.length} รายการ)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  child: Text('รายการสินค้า (${filtered.length} รายการ)', style: Theme.of(context).textTheme.titleMedium),
                 ),
                 SizedBox(
                   height: 36,
                   child: DropdownButton<String>(
                     value: _sortBy,
-                    underline: SizedBox(),
+                    underline: const SizedBox(),
                     icon: Icon(Icons.sort, size: 18),
-                    style: TextStyle(fontSize: 13, color: Colors.black87),
+                    style: TextStyle(fontSize: 13, color: _textPrimary),
                     isDense: true,
                     items: [
                       DropdownMenuItem(value: 'qty_desc', child: Text('จำนวนมากสุด')),
@@ -480,11 +514,11 @@ class _ProductTabState extends State<ProductTab> {
                 ),
               ],
             ),
-            SizedBox(height: 12),
+            const SizedBox(height: AppDesignSystem.spacingMd),
             if (filtered.isEmpty)
               Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(child: Text('ไม่พบสินค้า', style: TextStyle(color: Colors.grey[600]))),
+                padding: const EdgeInsets.all(AppDesignSystem.spacingLg),
+                child: Center(child: Text('ไม่พบสินค้า', style: TextStyle(color: _textSecondary))),
               )
             else ...
               [
@@ -492,7 +526,7 @@ class _ProductTabState extends State<ProductTab> {
                 // Pagination controls
                 if (totalPages > 1)
                   Padding(
-                    padding: EdgeInsets.only(top: 12),
+                    padding: const EdgeInsets.only(top: AppDesignSystem.spacingMd),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -502,7 +536,7 @@ class _ProductTabState extends State<ProductTab> {
                           onPressed: _currentPage > 0 ? () => setState(() => _currentPage = 0) : null,
                           tooltip: 'หน้าแรก',
                           padding: EdgeInsets.zero,
-                          constraints: BoxConstraints(minWidth: 36, minHeight: 36),
+                          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                         ),
                         // Previous page
                         IconButton(
@@ -510,11 +544,11 @@ class _ProductTabState extends State<ProductTab> {
                           onPressed: _currentPage > 0 ? () => setState(() => _currentPage--) : null,
                           tooltip: 'ก่อนหน้า',
                           padding: EdgeInsets.zero,
-                          constraints: BoxConstraints(minWidth: 36, minHeight: 36),
+                          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                         ),
                         Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 12),
-                          child: Text('${_currentPage + 1} / $totalPages', style: TextStyle(fontWeight: FontWeight.bold)),
+                          padding: const EdgeInsets.symmetric(horizontal: AppDesignSystem.spacingMd),
+                          child: Text('${_currentPage + 1} / $totalPages', style: TextStyle(fontWeight: FontWeight.bold, color: _textPrimary)),
                         ),
                         // Next page
                         IconButton(
@@ -522,7 +556,7 @@ class _ProductTabState extends State<ProductTab> {
                           onPressed: _currentPage < totalPages - 1 ? () => setState(() => _currentPage++) : null,
                           tooltip: 'ถัดไป',
                           padding: EdgeInsets.zero,
-                          constraints: BoxConstraints(minWidth: 36, minHeight: 36),
+                          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                         ),
                         // Last page
                         IconButton(
@@ -530,7 +564,7 @@ class _ProductTabState extends State<ProductTab> {
                           onPressed: _currentPage < totalPages - 1 ? () => setState(() => _currentPage = totalPages - 1) : null,
                           tooltip: 'หน้าสุดท้าย',
                           padding: EdgeInsets.zero,
-                          constraints: BoxConstraints(minWidth: 36, minHeight: 36),
+                          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                         ),
                       ],
                     ),
@@ -544,37 +578,37 @@ class _ProductTabState extends State<ProductTab> {
 
   Widget _buildProductItem(Map<String, dynamic> product) {
     final status = _getProductStatus(product);
-    final statusColor = status == 'พร้อม' ? Colors.green : status == 'ใกล้หมด' ? Colors.orange : Colors.red;
+    final statusColor = status == 'พร้อม' ? _successColor : status == 'ใกล้หมด' ? _warningColor : _dangerColor;
     final qty = (product['quantity'] as num?)?.toDouble() ?? 0;
     final price = (product['price'] as num?)?.toDouble() ?? 0;
     final unitAbbr = product['unit']?['abbreviation'] ?? '';
 
     return Container(
-      margin: EdgeInsets.only(bottom: 8),
-      padding: EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: AppDesignSystem.spacingSm),
+      padding: const EdgeInsets.all(AppDesignSystem.spacingMd),
       decoration: BoxDecoration(
-        color: Colors.grey[50],
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey[300]!),
+        color: _surface,
+        borderRadius: BorderRadius.circular(AppDesignSystem.radiusSm),
+        border: Border.all(color: _borderColor),
       ),
       child: Row(
         children: [
-          Icon(Icons.inventory_2, color: Colors.grey[600]),
-          SizedBox(width: 12),
+          Icon(Icons.inventory_2, color: _textSecondary),
+          const SizedBox(width: 12),
           Expanded(
             flex: 3,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(product['name'] ?? '', style: TextStyle(fontWeight: FontWeight.w500)),
-                Text('฿${price.toStringAsFixed(0)}/$unitAbbr', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                Text(product['name'] ?? '', style: TextStyle(fontWeight: FontWeight.w500, color: _textPrimary)),
+                Text('฿${price.toStringAsFixed(0)}/$unitAbbr', style: TextStyle(color: _textSecondary, fontSize: 12)),
               ],
             ),
           ),
-          Expanded(child: Text('${qty.toStringAsFixed(qty == qty.roundToDouble() ? 0 : 1)}', style: TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
+          Expanded(child: Text('${qty.toStringAsFixed(qty == qty.roundToDouble() ? 0 : 1)}', style: TextStyle(fontWeight: FontWeight.bold, color: _textPrimary), textAlign: TextAlign.center)),
           Container(width: 8, height: 8, decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle)),
-          SizedBox(width: 8),
-          IconButton(icon: Icon(Icons.edit, size: 20), onPressed: () => checkPermissionAndExecute(context, 'inventory_products_edit', 'แก้ไขสินค้า', () => _showEditProductDialog(product)), padding: EdgeInsets.zero, constraints: BoxConstraints()),
+          const SizedBox(width: 8),
+          IconButton(icon: Icon(Icons.edit, size: 20, color: _secondaryColor), onPressed: () => checkPermissionAndExecute(context, 'inventory_products_edit', 'แก้ไขสินค้า', () => _showEditProductDialog(product)), padding: EdgeInsets.zero, constraints: const BoxConstraints()),
         ],
       ),
     );
@@ -609,23 +643,23 @@ class _ProductTabState extends State<ProductTab> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('แก้ไขสินค้า')]),
+          title: Row(children: [Icon(Icons.edit, color: _secondaryColor), const SizedBox(width: 8), const Text('แก้ไขสินค้า')]),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextField(controller: nameController, decoration: InputDecoration(labelText: 'ชื่อสินค้า', border: OutlineInputBorder())),
-                SizedBox(height: 12),
+                TextField(controller: nameController, decoration: const InputDecoration(labelText: 'ชื่อสินค้า', border: OutlineInputBorder())),
+                const SizedBox(height: AppDesignSystem.spacingMd),
                 Row(children: [
-                  Expanded(child: TextField(controller: qtyController, decoration: InputDecoration(labelText: 'จำนวน', border: OutlineInputBorder()), keyboardType: TextInputType.number)),
-                  SizedBox(width: 12),
-                  Expanded(child: TextField(controller: priceController, decoration: InputDecoration(labelText: 'ราคา', border: OutlineInputBorder()), keyboardType: TextInputType.number)),
+                  Expanded(child: TextField(controller: qtyController, decoration: const InputDecoration(labelText: 'จำนวน', border: OutlineInputBorder()), keyboardType: TextInputType.number)),
+                  const SizedBox(width: AppDesignSystem.spacingMd),
+                  Expanded(child: TextField(controller: priceController, decoration: const InputDecoration(labelText: 'ราคา', border: OutlineInputBorder()), keyboardType: TextInputType.number)),
                 ]),
               ],
             ),
           ),
           actions: [
-            TextButton(onPressed: isLoading ? null : () => Navigator.pop(context), child: Text('ยกเลิก')),
+            TextButton(onPressed: isLoading ? null : () => Navigator.pop(context), child: const Text('ยกเลิก')),
             ElevatedButton(
               onPressed: isLoading ? null : () async {
                 setDialogState(() => isLoading = true);
@@ -638,11 +672,11 @@ class _ProductTabState extends State<ProductTab> {
                   Navigator.pop(context);
                   if (ok) {
                     _loadData();
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('แก้ไขสินค้าสำเร็จ'), backgroundColor: Colors.green));
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('แก้ไขสินค้าสำเร็จ'), backgroundColor: _successColor));
                   }
                 }
               },
-              child: isLoading ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text('บันทึก'),
+              child: isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('บันทึก'),
             ),
           ],
         ),
@@ -653,14 +687,14 @@ class _ProductTabState extends State<ProductTab> {
   void _showProduceProductDialog() {
     // TODO: Implement produce product dialog
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('ผลิตสินค้ายังไม่พร้อมใช้งาน')),
+      const SnackBar(content: Text('ผลิตสินค้ายังไม่พร้อมใช้งาน')),
     );
   }
 
   void _showUnitDialog() {
     // TODO: Implement unit dialog
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('จัดการหน่วยนับยังไม่พร้อมใช้งาน')),
+      const SnackBar(content: Text('จัดการหน่วยนับยังไม่พร้อมใช้งาน')),
     );
   }
 

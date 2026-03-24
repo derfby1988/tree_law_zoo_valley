@@ -1,9 +1,12 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import '../config/business_settings.dart';
 import '../services/table_management_service.dart';
 import '../services/permission_service.dart';
 import '../utils/permission_helpers.dart';
+import 'pos_page.dart';
 import 'table_types_page.dart';
+import '../theme/app_design_system.dart';
 
 // =============================================
 // Main Page: จัดการร้าน/โซน
@@ -17,6 +20,17 @@ class TableManagementPage extends StatefulWidget {
 class _TableManagementPageState extends State<TableManagementPage> {
   List<Map<String, dynamic>> _zones = [];
   bool _isLoading = true;
+
+  Color get _pageBgStart => AppDesignSystem.secondary;
+  Color get _pageBgEnd => AppDesignSystem.primary;
+  Color get _surface => AppDesignSystem.surface;
+  Color get _surfaceAlt => AppDesignSystem.background;
+  Color get _textPrimary => AppDesignSystem.textPrimary;
+  Color get _textSecondary => AppDesignSystem.textSecondary;
+  Color get _borderColor => AppDesignSystem.border;
+  Color get _successColor => AppDesignSystem.success;
+  Color get _warningColor => AppDesignSystem.warning;
+  Color get _dangerColor => AppDesignSystem.danger;
 
   @override
   void initState() {
@@ -53,7 +67,7 @@ class _TableManagementPageState extends State<TableManagementPage> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('ยกเลิก')),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF3B82F6), foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(backgroundColor: _pageBgEnd, foregroundColor: Colors.white),
             onPressed: () async {
               if (nameCtrl.text.trim().isEmpty) return;
               Navigator.pop(ctx);
@@ -82,7 +96,7 @@ class _TableManagementPageState extends State<TableManagementPage> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('ยกเลิก')),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(backgroundColor: _dangerColor, foregroundColor: Colors.white),
             onPressed: () async { Navigator.pop(ctx); await TableManagementService.deleteZone(zone['id']); _loadZones(); },
             child: const Text('ลบ'),
           ),
@@ -96,7 +110,7 @@ class _TableManagementPageState extends State<TableManagementPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6)])),
+        decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [_pageBgStart, _pageBgEnd])),
         child: SafeArea(child: Column(children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 12, 16, 20),
@@ -118,16 +132,16 @@ class _TableManagementPageState extends State<TableManagementPage> {
           ),
           Expanded(
             child: Container(
-              decoration: const BoxDecoration(color: Color(0xFFF1F5F9), borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+              decoration: BoxDecoration(color: _surfaceAlt, borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : _zones.isEmpty
                       ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          Icon(Icons.store_mall_directory, size: 64, color: Colors.grey[300]),
+                          Icon(Icons.store_mall_directory, size: 64, color: _borderColor),
                           const SizedBox(height: 16),
-                          Text('ยังไม่มีร้าน/โซน', style: TextStyle(color: Colors.grey[500], fontSize: 16)),
+                          Text('ยังไม่มีร้าน/โซน', style: TextStyle(color: _textSecondary, fontSize: 16)),
                           const SizedBox(height: 8),
-                          Text('กด + เพิ่มร้าน เพื่อเริ่มต้น', style: TextStyle(color: Colors.grey[400], fontSize: 13)),
+                          Text('กด + เพิ่มร้าน เพื่อเริ่มต้น', style: TextStyle(color: _textSecondary.withValues(alpha: 0.8), fontSize: 13)),
                         ]))
                       : ReorderableListView.builder(
                           padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
@@ -149,10 +163,10 @@ class _TableManagementPageState extends State<TableManagementPage> {
                               key: ValueKey(zone['id']),
                               margin: const EdgeInsets.only(bottom: 10),
                               elevation: 2,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppBusinessSettings.defaultPosCardRadius)),
                               child: InkWell(
                                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ZoneTablesPage(zone: zone))).then((_) => _loadZones()),
-                                borderRadius: BorderRadius.circular(14),
+                                borderRadius: BorderRadius.circular(AppBusinessSettings.defaultPosCardRadius),
                                 child: Padding(
                                   padding: const EdgeInsets.all(14),
                                   child: Row(children: [
@@ -160,21 +174,21 @@ class _TableManagementPageState extends State<TableManagementPage> {
                                     const SizedBox(width: 10),
                                     Container(
                                       width: 44, height: 44,
-                                      decoration: BoxDecoration(color: const Color(0xFF3B82F6).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
-                                      child: const Icon(Icons.store, color: Color(0xFF3B82F6), size: 22),
+                                      decoration: BoxDecoration(color: _pageBgEnd.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(AppBusinessSettings.defaultPosProductRadius)),
+                                      child: Icon(Icons.store, color: _pageBgEnd, size: 22),
                                     ),
                                     const SizedBox(width: 12),
                                     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                       Text(zone['name'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                                      if (timeStr.isNotEmpty) Text('เปิด $timeStr', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                                      if (timeStr.isNotEmpty) Text('เปิด $timeStr', style: TextStyle(fontSize: 12, color: _textSecondary)),
                                       if ((zone['description'] as String?)?.isNotEmpty == true)
-                                        Text(zone['description'], style: TextStyle(fontSize: 11, color: Colors.grey[500]), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                        Text(zone['description'], style: TextStyle(fontSize: 11, color: _textSecondary.withValues(alpha: 0.9)), maxLines: 1, overflow: TextOverflow.ellipsis),
                                     ])),
                                     if (PermissionService.canAccessActionSync('table_management_zones_edit'))
-                                      IconButton(icon: const Icon(Icons.edit, size: 18, color: Color(0xFF3B82F6)), onPressed: () => _showZoneDialog(existing: zone)),
+                                      IconButton(icon: Icon(Icons.edit, size: 18, color: _pageBgEnd), onPressed: () => _showZoneDialog(existing: zone)),
                                     if (PermissionService.canAccessActionSync('table_management_zones_delete'))
-                                      IconButton(icon: const Icon(Icons.delete, size: 18, color: Colors.red), onPressed: () => _confirmDeleteZone(zone)),
-                                    const Icon(Icons.chevron_right, color: Colors.grey),
+                                      IconButton(icon: Icon(Icons.delete, size: 18, color: _dangerColor), onPressed: () => _confirmDeleteZone(zone)),
+                                    Icon(Icons.chevron_right, color: _textSecondary),
                                   ]),
                                 ),
                               ),
@@ -188,7 +202,7 @@ class _TableManagementPageState extends State<TableManagementPage> {
       floatingActionButton: PermissionService.canAccessActionSync('table_management_zones_add')
           ? FloatingActionButton.extended(
               onPressed: () => _showZoneDialog(),
-              backgroundColor: const Color(0xFF3B82F6),
+              backgroundColor: _pageBgEnd,
               foregroundColor: Colors.white,
               icon: const Icon(Icons.add_business),
               label: const Text('เพิ่มร้าน'),
@@ -223,10 +237,21 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
   // Toolbar tool: null=select, 'text', 'rect', 'circle', 'rounded'
   String? _activeTool;
 
+  Color get _pageBgStart => AppDesignSystem.secondary;
+  Color get _pageBgEnd => AppDesignSystem.primary;
+  Color get _surface => AppDesignSystem.surface;
+  Color get _surfaceAlt => AppDesignSystem.background;
+  Color get _textPrimary => AppDesignSystem.textPrimary;
+  Color get _textSecondary => AppDesignSystem.textSecondary;
+  Color get _borderColor => AppDesignSystem.border;
+  Color get _successColor => AppDesignSystem.success;
+  Color get _warningColor => AppDesignSystem.warning;
+  Color get _dangerColor => AppDesignSystem.danger;
+
   static const _typeOptions = [
-    {'value': 'large', 'label': 'โต๊ะใหญ่ (6-10)', 'color': Color(0xFF1493FF)},
-    {'value': 'small', 'label': 'โต๊ะเล็ก (2)', 'color': Color(0xFFF19EDC)},
-    {'value': 'bar', 'label': 'บาร์/พิเศษ', 'color': Color(0xFFF0B400)},
+    {'value': 'large', 'label': 'โต๊ะใหญ่ (6-10)', 'color': AppDesignSystem.secondary},
+    {'value': 'small', 'label': 'โต๊ะเล็ก (2)', 'color': AppDesignSystem.primary},
+    {'value': 'bar', 'label': 'บาร์/พิเศษ', 'color': AppDesignSystem.warning},
   ];
 
   @override
@@ -258,6 +283,116 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
     if (mounted) setState(() => _elements = elements);
   }
 
+  String _tableStatusLabel(String status) {
+    switch (status) {
+      case 'occupied':
+        return 'Occupied';
+      case 'reserved':
+        return 'Reserved';
+      case 'unavailable':
+        return 'Unavailable';
+      default:
+        return 'Available';
+    }
+  }
+
+  Color _tableStatusColor(String status, Color fallback) {
+    switch (status) {
+      case 'occupied':
+        return _warningColor;
+      case 'reserved':
+        return AppDesignSystem.secondary;
+      case 'unavailable':
+        return AppDesignSystem.textSecondary;
+      default:
+        return fallback;
+    }
+  }
+
+  Future<void> _openTablePos(Map<String, dynamic> table) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+
+    if (!PermissionService.canAccessPageSync('pos')) {
+      messenger.showSnackBar(
+        SnackBar(content: const Text('คุณไม่มีสิทธิ์เข้าหน้า POS'), backgroundColor: _dangerColor),
+      );
+      return;
+    }
+
+    final tableId = table['id']?.toString();
+    final tableNumber = table['name']?.toString();
+    final currentBookingId = table['current_booking_id']?.toString();
+    final status = table['status']?.toString() ?? 'available';
+    if (tableId == null || tableId.isEmpty || tableNumber == null || tableNumber.isEmpty) {
+      messenger.showSnackBar(
+        SnackBar(content: const Text('ข้อมูลโต๊ะไม่ครบ'), backgroundColor: _dangerColor),
+      );
+      return;
+    }
+
+    if (currentBookingId != null && currentBookingId.isNotEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('โต๊ะนี้ถูกล็อกจากการจอง กรุณายกเลิกการจองหรือคืนโต๊ะก่อน'),
+          backgroundColor: AppDesignSystem.warning,
+        ),
+      );
+      return;
+    }
+
+    if (status == 'unavailable' || status == 'reserved') {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('โต๊ะนี้ยังไม่พร้อมใช้งาน'),
+          backgroundColor: AppDesignSystem.warning,
+        ),
+      );
+      return;
+    }
+
+    Map<String, dynamic>? session = await TableManagementService.getActiveSessionForTable(tableId);
+    session ??= await TableManagementService.openTableSession(
+        tableId: tableId,
+        zoneId: widget.zone['id']?.toString() ?? '',
+        customerUserId: table['customer_user_id']?.toString(),
+        customerName: table['customer_name']?.toString(),
+        customerPhone: table['customer_phone']?.toString(),
+        notes: table['notes']?.toString(),
+      );
+
+    if (session == null) {
+      messenger.showSnackBar(
+        SnackBar(content: const Text('เปิดเซสชันโต๊ะไม่สำเร็จ'), backgroundColor: _dangerColor),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    await TableManagementService.syncTableWithSession(
+      tableId: tableId,
+      sessionId: session['id']?.toString() ?? '',
+      currentOrderId: session['current_order_id']?.toString(),
+    );
+
+    if (!mounted) return;
+
+    navigator.push(
+      MaterialPageRoute(
+        builder: (_) => PosPage(
+          initialOrderType: 'dine_in',
+          initialTableId: tableId,
+          initialTableNumber: tableNumber,
+          initialZoneName: widget.zone['name']?.toString(),
+          initialTableSessionId: session?['id']?.toString(),
+          initialCustomerUserId: session?['customer_user_id']?.toString(),
+          initialCustomerName: session?['customer_name']?.toString(),
+          initialCustomerPhone: session?['customer_phone']?.toString(),
+        ),
+      ),
+    ).then((_) => _loadTables());
+  }
+
   Widget _buildLoadingSkeleton(bool showLayout) {
     Widget skeletonBox({double width = double.infinity, double height = 16, EdgeInsets margin = EdgeInsets.zero}) {
       return Container(
@@ -265,8 +400,8 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
         height: height,
         margin: margin,
         decoration: BoxDecoration(
-          color: Colors.grey.shade300,
-          borderRadius: BorderRadius.circular(8),
+          color: _borderColor,
+          borderRadius: BorderRadius.circular(AppBusinessSettings.defaultPosProductRadius),
         ),
       );
     }
@@ -284,7 +419,7 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
           Card(
             margin: const EdgeInsets.only(bottom: 12),
             elevation: 1,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppBusinessSettings.defaultPosCardRadius)),
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: Row(children: [
@@ -352,13 +487,13 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
         if (mounted) {
           setState(() { _hasChanges = false; _hasElementChanges = false; });
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('บันทึกผังร้านสำเร็จ ($savedTables โต๊ะ + ${_elements.length} องค์ประกอบ)'), backgroundColor: Colors.green));
+            SnackBar(content: Text('บันทึกผังร้านสำเร็จ ($savedTables โต๊ะ + ${_elements.length} องค์ประกอบ)'), backgroundColor: _successColor));
           _tabController.animateTo(1);
         }
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(errorMsg!), backgroundColor: Colors.red));
+            SnackBar(content: Text(errorMsg), backgroundColor: _dangerColor));
         }
       }
     } finally {
@@ -422,7 +557,7 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('ยกเลิก')),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF3B82F6), foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(backgroundColor: _pageBgEnd, foregroundColor: Colors.white),
             onPressed: () {
               Navigator.pop(ctx);
               setState(() {
@@ -519,8 +654,8 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
         child: Container(
           width: handleSize, height: handleSize,
           decoration: BoxDecoration(
-            color: const Color(0xFF3B82F6),
-            borderRadius: BorderRadius.circular(4),
+            color: _pageBgEnd,
+            borderRadius: BorderRadius.circular(AppBusinessSettings.defaultPosProductRadius),
             border: Border.all(color: Colors.white, width: 1.5),
           ),
           child: const Icon(Icons.open_in_full, color: Colors.white, size: 10),
@@ -545,7 +680,7 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
         child: Container(
           width: handleSize, height: handleSize,
           decoration: BoxDecoration(
-            color: Colors.orange,
+            color: _warningColor,
             borderRadius: BorderRadius.circular(handleSize / 2),
             border: Border.all(color: Colors.white, width: 1.5),
           ),
@@ -575,19 +710,21 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
     final name = t['name'] ?? '';
     final capacity = t['capacity'] as int? ?? 2;
     final status = t['status'] as String? ?? 'available';
-    final isUnavailable = status == 'unavailable';
+    final statusColor = _tableStatusColor(status, color);
     return Container(
       width: _tableSize, height: _tableSize,
       decoration: BoxDecoration(
-        color: (isUnavailable ? Colors.grey : color).withValues(alpha: isDragging ? 0.9 : 0.7),
-        borderRadius: BorderRadius.circular(type == 'bar' ? 6 : 10),
-        border: Border.all(color: isDragging ? Colors.white : color, width: isDragging ? 2 : 1.5),
-        boxShadow: isDragging ? [BoxShadow(color: color.withValues(alpha: 0.4), blurRadius: 12, offset: const Offset(0, 4))] : null,
+        color: statusColor.withValues(alpha: isDragging ? 0.9 : 0.7),
+        borderRadius: BorderRadius.circular(type == 'bar' ? 6 : AppBusinessSettings.defaultPosProductRadius),
+        border: Border.all(color: isDragging ? Colors.white : statusColor, width: isDragging ? 2 : 1.5),
+        boxShadow: isDragging ? [BoxShadow(color: statusColor.withValues(alpha: 0.4), blurRadius: 12, offset: const Offset(0, 4))] : null,
       ),
       child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
         Icon(_typeIcon(type), color: Colors.white, size: 16),
         const SizedBox(height: 2),
         Text(name, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
+        if (status != 'available')
+          Text(_tableStatusLabel(status), style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 7)),
         Text('$capacity ที่', style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 8)),
       ]),
     );
@@ -603,10 +740,10 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
 
   Color _typeColor(String type) {
     switch (type) {
-      case 'large': return const Color(0xFF1493FF);
-      case 'small': return const Color(0xFFF19EDC);
-      case 'bar': return const Color(0xFFF0B400);
-      default: return Colors.grey;
+      case 'large': return AppDesignSystem.secondary;
+      case 'small': return AppDesignSystem.primary;
+      case 'bar': return AppDesignSystem.warning;
+      default: return _textSecondary;
     }
   }
 
@@ -651,9 +788,9 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
           const Text('สถานะ', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
           const SizedBox(height: 6),
           Row(children: [
-            ChoiceChip(label: const Text('ว่าง'), selected: selStatus == 'available', selectedColor: Colors.green, labelStyle: TextStyle(color: selStatus == 'available' ? Colors.white : null), onSelected: (_) => setS(() => selStatus = 'available')),
+            ChoiceChip(label: const Text('ว่าง'), selected: selStatus == 'available', selectedColor: _successColor, labelStyle: TextStyle(color: selStatus == 'available' ? Colors.white : null), onSelected: (_) => setS(() => selStatus = 'available')),
             const SizedBox(width: 8),
-            ChoiceChip(label: const Text('ไม่ว่าง'), selected: selStatus == 'unavailable', selectedColor: Colors.grey, labelStyle: TextStyle(color: selStatus == 'unavailable' ? Colors.white : null), onSelected: (_) => setS(() => selStatus = 'unavailable')),
+            ChoiceChip(label: const Text('ไม่ว่าง'), selected: selStatus == 'unavailable', selectedColor: _textSecondary, labelStyle: TextStyle(color: selStatus == 'unavailable' ? Colors.white : null), onSelected: (_) => setS(() => selStatus = 'unavailable')),
           ]),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
@@ -667,7 +804,7 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('ยกเลิก')),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF3B82F6), foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(backgroundColor: _pageBgEnd, foregroundColor: Colors.white),
             onPressed: () async {
               if (nameCtrl.text.trim().isEmpty) return;
               Navigator.pop(ctx);
@@ -701,7 +838,7 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
 
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6)])),
+        decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [_pageBgStart, _pageBgEnd])),
         child: SafeArea(child: Column(children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 12, 16, 0),
@@ -720,7 +857,7 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
                     onPressed: _saveAllPositions,
                     icon: const Icon(Icons.save, size: 16),
                     label: const Text('บันทึก'),
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6)),
+                    style: ElevatedButton.styleFrom(backgroundColor: _successColor, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6)),
                   ),
                 ),
               IconButton(icon: const Icon(Icons.refresh, color: Colors.white), onPressed: _loadTables),
@@ -765,7 +902,7 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
           if (onTableTab && PermissionService.canAccessActionSync('table_management_tables_add')) {
             return FloatingActionButton.extended(
               onPressed: () => _showTableDialog(),
-              backgroundColor: const Color(0xFF3B82F6),
+              backgroundColor: _pageBgEnd,
               foregroundColor: Colors.white,
               icon: const Icon(Icons.add),
               label: const Text('เพิ่มโต๊ะ'),
@@ -780,25 +917,25 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
   Widget _buildTableListTab() {
     if (_tables.isEmpty) {
       return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Icon(Icons.table_restaurant, size: 64, color: Colors.grey[300]),
+        Icon(Icons.table_restaurant, size: 64, color: _borderColor),
         const SizedBox(height: 16),
-        Text('ยังไม่มีโต๊ะในร้านนี้', style: TextStyle(color: Colors.grey[500], fontSize: 16)),
+        Text('ยังไม่มีโต๊ะในร้านนี้', style: TextStyle(color: _textSecondary, fontSize: 16)),
       ]));
     }
     return Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
         child: Card(
-          elevation: 0, color: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          elevation: 0, color: _surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppBusinessSettings.defaultPosCardRadius)),
           child: Padding(
             padding: const EdgeInsets.all(10),
             child: Wrap(spacing: 14, runSpacing: 6, children: [
-              _chip('โต๊ะใหญ่', const Color(0xFF1493FF)),
-              _chip('โต๊ะเล็ก', const Color(0xFFF19EDC)),
-              _chip('บาร์', const Color(0xFFF0B400)),
-              _chip('ไม่ว่าง', Colors.grey),
-              _chip('Walk-in', Colors.orange),
+              _chip('โต๊ะใหญ่', AppDesignSystem.secondary),
+              _chip('โต๊ะเล็ก', AppDesignSystem.primary),
+              _chip('บาร์', AppDesignSystem.warning),
+              _chip('ไม่ว่าง', _textSecondary),
+              _chip('Walk-in', AppDesignSystem.warning),
             ]),
           ),
         ),
@@ -822,47 +959,51 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
             final isBookable = table['is_bookable'] as bool? ?? true;
             final capacity = table['capacity'] as int? ?? 2;
             final isUnavailable = status == 'unavailable';
-            final color = isUnavailable ? Colors.grey : _typeColor(type);
+            final color = isUnavailable ? _textSecondary : _typeColor(type);
             return Card(
               key: ValueKey(table['id']),
               margin: const EdgeInsets.only(bottom: 8),
               elevation: 1,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: ListTile(
-                leading: ReorderableDragStartListener(
-                  index: index,
-                  child: Container(
-                    width: 44, height: 44,
-                    decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10), border: Border.all(color: color.withValues(alpha: 0.5))),
-                    child: Center(child: Text(table['name'] ?? '', style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 13), textAlign: TextAlign.center)),
-                  ),
-                ),
-                title: Wrap(spacing: 4, children: [
-                  Text(table['name'] ?? '', style: const TextStyle(fontWeight: FontWeight.w600)),
-                  _chip(_typeLabel(type), color),
-                  if (isUnavailable) _chip('ไม่ว่าง', Colors.grey),
-                  if (!isBookable) _chip('Walk-in', Colors.orange),
-                ]),
-                subtitle: Text('$capacity ที่นั่ง${(table['notes'] as String?)?.isNotEmpty == true ? ' • ${table['notes']}' : ''}', style: const TextStyle(fontSize: 12)),
-                trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                  if (PermissionService.canAccessActionSync('table_management_tables_edit'))
-                    IconButton(icon: const Icon(Icons.edit, size: 18, color: Color(0xFF3B82F6)), onPressed: () => _showTableDialog(existing: table)),
-                  if (PermissionService.canAccessActionSync('table_management_tables_delete'))
-                    IconButton(
-                      icon: const Icon(Icons.delete, size: 18, color: Colors.red),
-                      onPressed: () => checkPermissionAndExecute(context, 'table_management_tables_delete', 'ลบโต๊ะ', () => showDialog(
-                        context: context,
-                        builder: (ctx) => AlertDialog(
-                          title: const Text('ลบโต๊ะ'),
-                          content: Text('ต้องการลบโต๊ะ "${table['name']}" ใช่ไหม?'),
-                          actions: [
-                            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('ยกเลิก')),
-                            ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white), onPressed: () async { Navigator.pop(ctx); await TableManagementService.deleteTable(table['id']); _loadTables(); }, child: const Text('ลบ')),
-                          ],
-                        ),
-                      )),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppBusinessSettings.defaultPosCardRadius)),
+              child: InkWell(
+                onTap: () => _openTablePos(table),
+                borderRadius: BorderRadius.circular(AppBusinessSettings.defaultPosCardRadius),
+                child: ListTile(
+                  leading: ReorderableDragStartListener(
+                    index: index,
+                    child: Container(
+                      width: 44, height: 44,
+                      decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10), border: Border.all(color: color.withValues(alpha: 0.5))),
+                      child: Center(child: Text(table['name'] ?? '', style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 13), textAlign: TextAlign.center)),
                     ),
-                ]),
+                  ),
+                  title: Wrap(spacing: 4, children: [
+                    Text(table['name'] ?? '', style: const TextStyle(fontWeight: FontWeight.w600)),
+                    _chip(_typeLabel(type), color),
+                    if (isUnavailable) _chip('ไม่ว่าง', _textSecondary),
+                    if (!isBookable) _chip('Walk-in', AppDesignSystem.warning),
+                  ]),
+                  subtitle: Text('$capacity ที่นั่ง${(table['notes'] as String?)?.isNotEmpty == true ? ' • ${table['notes']}' : ''}', style: const TextStyle(fontSize: 12)),
+                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                    if (PermissionService.canAccessActionSync('table_management_tables_edit'))
+                      IconButton(icon: Icon(Icons.edit, size: 18, color: _pageBgEnd), onPressed: () => _showTableDialog(existing: table)),
+                    if (PermissionService.canAccessActionSync('table_management_tables_delete'))
+                      IconButton(
+                        icon: Icon(Icons.delete, size: 18, color: _dangerColor),
+                        onPressed: () => checkPermissionAndExecute(context, 'table_management_tables_delete', 'ลบโต๊ะ', () => showDialog(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('ลบโต๊ะ'),
+                            content: Text('ต้องการลบโต๊ะ "${table['name']}" ใช่ไหม?'),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('ยกเลิก')),
+                              ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: _dangerColor, foregroundColor: Colors.white), onPressed: () async { Navigator.pop(ctx); await TableManagementService.deleteTable(table['id']); _loadTables(); }, child: const Text('ลบ')),
+                            ],
+                          ),
+                        )),
+                      ),
+                  ]),
+                ),
               ),
             );
           },
@@ -903,7 +1044,7 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
           child: Row(
             children: [
-              Text('มุมมอง', style: TextStyle(color: Colors.grey[800], fontWeight: FontWeight.w600)),
+              Text('มุมมอง', style: TextStyle(color: _textPrimary, fontWeight: FontWeight.w600)),
               const SizedBox(width: 12),
               ChoiceChip(
                 label: const Text('ผังร้าน'),
@@ -935,9 +1076,9 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
                             width: canvasW,
                             height: canvasHeight,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF8FAFC),
+                              color: _surface,
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.grey[200]!),
+                              border: Border.all(color: _borderColor),
                             ),
                             child: Stack(
                               children: [
@@ -951,11 +1092,12 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
                                   final type = t['table_type'] as String? ?? 'small';
                                   final status = t['status'] as String? ?? 'available';
                                   final isUnavailable = status == 'unavailable';
-                                  final color = isUnavailable ? Colors.grey : _typeColor(type);
+                                  final color = isUnavailable ? _textSecondary : _typeColor(type);
                                   return Positioned(
                                     left: left.clamp(0, canvasW - tableSize),
                                     top: top.clamp(0, canvasHeight - tableSize),
                                     child: GestureDetector(
+                                      onTap: () => _openTablePos(t),
                                       onLongPress: _canEditLayout ? () => _showRemoveFromPlanDialog(t) : null,
                                       child: Container(
                                         width: tableSize,
@@ -1020,8 +1162,8 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
           margin: const EdgeInsets.fromLTRB(12, 10, 12, 0),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
+            color: _surface,
+            borderRadius: BorderRadius.circular(AppBusinessSettings.defaultPosCardRadius),
             boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 6)],
           ),
           child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
@@ -1040,7 +1182,7 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
             const SizedBox(width: 4),
             _toolBtn('line', Icons.horizontal_rule, 'เส้นตรง'),
             const SizedBox(width: 8),
-            Container(width: 1, height: 28, color: Colors.grey[300]),
+            Container(width: 1, height: 28, color: _borderColor),
             const SizedBox(width: 8),
             // Selected element actions
             if (_selectedElementId != null) ...[
@@ -1056,16 +1198,16 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
                         final idx = _elements.indexWhere((e) => e['id'] == _selectedElementId);
                         if (idx >= 0) setState(() { _elements[idx] = {..._elements[idx], 'rotation': (rot - 15) % 360}; _hasElementChanges = true; });
                       },
-                      child: Container(width: 30, height: 30, decoration: BoxDecoration(color: Colors.orange.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.orange.withValues(alpha: 0.4))),
-                        child: const Icon(Icons.rotate_left, size: 16, color: Colors.orange)),
+                      child: Container(width: 30, height: 30, decoration: BoxDecoration(color: _warningColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(AppBusinessSettings.defaultPosProductRadius), border: Border.all(color: _warningColor.withValues(alpha: 0.4))),
+                        child: Icon(Icons.rotate_left, size: 16, color: _warningColor)),
                     ),
                   ),
                   const SizedBox(width: 3),
                   // Rotation display
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                    decoration: BoxDecoration(color: Colors.orange.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(6)),
-                    child: Text('${rot.round()}°', style: const TextStyle(fontSize: 11, color: Colors.orange, fontWeight: FontWeight.bold)),
+                    decoration: BoxDecoration(color: _warningColor.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(AppBusinessSettings.defaultPosProductRadius)),
+                    child: Text('${rot.round()}°', style: TextStyle(fontSize: 11, color: _warningColor, fontWeight: FontWeight.bold)),
                   ),
                   const SizedBox(width: 3),
                   // Rotate +15
@@ -1076,16 +1218,16 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
                         final idx = _elements.indexWhere((e) => e['id'] == _selectedElementId);
                         if (idx >= 0) setState(() { _elements[idx] = {..._elements[idx], 'rotation': (rot + 15) % 360}; _hasElementChanges = true; });
                       },
-                      child: Container(width: 30, height: 30, decoration: BoxDecoration(color: Colors.orange.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.orange.withValues(alpha: 0.4))),
-                        child: const Icon(Icons.rotate_right, size: 16, color: Colors.orange)),
+                      child: Container(width: 30, height: 30, decoration: BoxDecoration(color: _warningColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(AppBusinessSettings.defaultPosProductRadius), border: Border.all(color: _warningColor.withValues(alpha: 0.4))),
+                        child: Icon(Icons.rotate_right, size: 16, color: _warningColor)),
                     ),
                   ),
                   const SizedBox(width: 6),
                 ]);
               }),
               IconButton(
-                icon: const Icon(Icons.edit_outlined, color: Color(0xFF3B82F6), size: 20),
-                tooltip: 'แก้ไของค์ประกอบ',
+                icon: Icon(Icons.edit_outlined, color: _pageBgEnd, size: 20),
+                tooltip: 'แก้ไองค์ประกอบ',
                 padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                 onPressed: () {
                   final el = _elements.firstWhere((e) => e['id'] == _selectedElementId, orElse: () => {});
@@ -1093,7 +1235,7 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
                 },
               ),
               IconButton(
-                icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                icon: Icon(Icons.delete_outline, color: _dangerColor, size: 20),
                 tooltip: 'ลบองค์ประกอบที่เลือก',
                 padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                 onPressed: () async {
@@ -1112,7 +1254,7 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
               ),
               const SizedBox(width: 4),
             ],
-            Text('${_elements.length} องค์ประกอบ', style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+            Text('${_elements.length} องค์ประกอบ', style: TextStyle(fontSize: 11, color: _textSecondary)),
           ])),
         ),
       // ── Unplaced tray ────────────────────────────────────────
@@ -1121,17 +1263,17 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
           margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: Colors.amber.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.amber.withValues(alpha: 0.4)),
+            color: _warningColor.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(AppBusinessSettings.defaultPosCardRadius),
+            border: Border.all(color: _warningColor.withValues(alpha: 0.4)),
           ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              const Icon(Icons.info_outline, size: 16, color: Colors.amber),
+              Icon(Icons.info_outline, size: 16, color: _warningColor),
               const SizedBox(width: 6),
-              Text('โต๊ะที่ยังไม่ได้วาง (${unplaced.length})', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.amber)),
+              Text('โต๊ะที่ยังไม่ได้วาง (${unplaced.length})', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _warningColor)),
               const Spacer(),
-              Text('ลากไปวางบนผังด้านล่าง', style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+              Text('ลากไปวางบนผังด้านล่าง', style: TextStyle(fontSize: 11, color: _textSecondary)),
             ]),
             const SizedBox(height: 8),
             Wrap(
@@ -1154,14 +1296,14 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
           child: Card(
-            elevation: 0, color: Colors.green.withValues(alpha: 0.08),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: Colors.green.withValues(alpha: 0.3))),
+            elevation: 0, color: _successColor.withValues(alpha: 0.08),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppBusinessSettings.defaultPosProductRadius), side: BorderSide(color: _successColor.withValues(alpha: 0.3))),
             child: const Padding(
               padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               child: Row(children: [
-                Icon(Icons.check_circle_outline, size: 14, color: Colors.green),
+                Icon(Icons.check_circle_outline, size: 14, color: AppDesignSystem.success),
                 SizedBox(width: 6),
-                Text('โต๊ะทุกโต๊ะวางบนผังแล้ว', style: TextStyle(fontSize: 11, color: Colors.green)),
+                Text('โต๊ะทุกโต๊ะวางบนผังแล้ว', style: TextStyle(fontSize: 11, color: AppDesignSystem.success)),
               ]),
             ),
           ),
@@ -1170,20 +1312,20 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         child: Card(
-          elevation: 0, color: Colors.white,
+          elevation: 0, color: _surface,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             child: Row(children: [
-              _legendDot(const Color(0xFF1493FF), 'ใหญ่'),
+              _legendDot(AppDesignSystem.secondary, 'ใหญ่'),
               const SizedBox(width: 10),
-              _legendDot(const Color(0xFFF19EDC), 'เล็ก'),
+              _legendDot(AppDesignSystem.primary, 'เล็ก'),
               const SizedBox(width: 10),
-              _legendDot(const Color(0xFFF0B400), 'บาร์'),
+              _legendDot(AppDesignSystem.warning, 'บาร์'),
               const SizedBox(width: 10),
-              _legendDot(Colors.grey, 'ไม่ว่าง'),
+              _legendDot(_textSecondary, 'ไม่ว่าง'),
               const Spacer(),
-              Text('${placed.length}/${_tables.length} โต๊ะ', style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+              Text('${placed.length}/${_tables.length} โต๊ะ', style: TextStyle(fontSize: 11, color: _textSecondary)),
             ]),
           ),
         ),
@@ -1268,26 +1410,26 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
                     width: canvasW, height: canvasH,
                     decoration: BoxDecoration(
                       color: _activeTool != null
-                          ? Colors.blue.withValues(alpha: 0.03)
-                          : isHovering ? Colors.blue.withValues(alpha: 0.05) : Colors.white,
-                      borderRadius: BorderRadius.circular(16),
+                          ? _pageBgEnd.withValues(alpha: 0.03)
+                          : isHovering ? _pageBgEnd.withValues(alpha: 0.05) : _surface,
+                      borderRadius: BorderRadius.circular(AppBusinessSettings.defaultPosCardRadius),
                       border: Border.all(
                         color: _activeTool != null
-                            ? Colors.blue.withValues(alpha: 0.4)
-                            : isHovering ? Colors.blue.withValues(alpha: 0.5) : Colors.grey[300]!,
+                            ? _pageBgEnd.withValues(alpha: 0.4)
+                            : isHovering ? _pageBgEnd.withValues(alpha: 0.5) : _borderColor,
                         width: (_activeTool != null || isHovering) ? 2 : 1,
                       ),
                       boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 2))],
                     ),
                     child: Stack(children: [
                       CustomPaint(size: Size(canvasW, canvasH), painter: _ZoneGridPainter()),
-                      Center(child: Text(widget.zone['name'] ?? '', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.grey.withValues(alpha: 0.07)))),
+                      Center(child: Text(widget.zone['name'] ?? '', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: _textPrimary.withValues(alpha: 0.07)))),
                       // Hint when tool active
                       if (_activeTool != null)
                         Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          Icon(Icons.touch_app, size: 40, color: Colors.blue.withValues(alpha: 0.3)),
+                          Icon(Icons.touch_app, size: 40, color: _pageBgEnd.withValues(alpha: 0.3)),
                           const SizedBox(height: 8),
-                          Text('แตะบนผังเพื่อวาง${_activeTool == 'text' ? 'ข้อความ' : 'รูปทรง'}', style: TextStyle(color: Colors.blue.withValues(alpha: 0.5), fontSize: 13)),
+                          Text('แตะบนผังเพื่อวาง${_activeTool == 'text' ? 'ข้อความ' : 'รูปทรง'}', style: TextStyle(color: _pageBgEnd.withValues(alpha: 0.5), fontSize: 13)),
                         ])),
                       // ── Elements (text/shapes) ──
                       ..._elements.map((el) {
@@ -1392,11 +1534,11 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
         child: Container(
           width: 36, height: 36,
           decoration: BoxDecoration(
-            color: isActive ? const Color(0xFF3B82F6) : Colors.grey[100],
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: isActive ? const Color(0xFF3B82F6) : Colors.grey[300]!),
+            color: isActive ? _pageBgEnd : _surfaceAlt,
+            borderRadius: BorderRadius.circular(AppBusinessSettings.defaultPosProductRadius),
+            border: Border.all(color: isActive ? _pageBgEnd : _borderColor),
           ),
-          child: Icon(icon, size: 18, color: isActive ? Colors.white : Colors.grey[700]),
+          child: Icon(icon, size: 18, color: isActive ? Colors.white : _textSecondary),
         ),
       ),
     );
@@ -1411,7 +1553,7 @@ class _ZoneTablesPageState extends State<ZoneTablesPage> with SingleTickerProvid
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('ยกเลิก')),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(backgroundColor: _dangerColor, foregroundColor: Colors.white),
             onPressed: () {
               Navigator.pop(ctx);
               setState(() {

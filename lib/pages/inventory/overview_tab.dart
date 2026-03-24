@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/inventory_service.dart';
 import 'inventory_filter_widget.dart';
+import '../../theme/app_design_system.dart';
 
 class OverviewTab extends StatefulWidget {
   const OverviewTab({super.key});
@@ -17,6 +18,17 @@ class _OverviewTabState extends State<OverviewTab> {
   Map<String, dynamic> _stats = {};
   bool _isLoading = true;
   String? _errorMessage;
+
+  Color get _surface => AppDesignSystem.surface;
+  Color get _surfaceAlt => AppDesignSystem.background;
+  Color get _textPrimary => AppDesignSystem.textPrimary;
+  Color get _textSecondary => AppDesignSystem.textSecondary;
+  Color get _borderColor => AppDesignSystem.border;
+  Color get _primaryColor => AppDesignSystem.primary;
+  Color get _secondaryColor => AppDesignSystem.secondary;
+  Color get _successColor => AppDesignSystem.success;
+  Color get _warningColor => AppDesignSystem.warning;
+  Color get _dangerColor => AppDesignSystem.danger;
 
   @override
   void initState() {
@@ -37,23 +49,31 @@ class _OverviewTabState extends State<OverviewTab> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()));
+      return const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()));
     }
     if (_errorMessage != null) {
-      return Center(child: Padding(padding: EdgeInsets.all(32), child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Icon(Icons.error_outline, size: 48, color: Colors.red),
-        SizedBox(height: 8),
-        Text(_errorMessage!, style: TextStyle(color: Colors.red)),
-        SizedBox(height: 12),
-        ElevatedButton(onPressed: _loadData, child: Text('ลองใหม่')),
-      ])));
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.error_outline, size: 48, color: _dangerColor),
+              const SizedBox(height: 8),
+              Text(_errorMessage!, style: TextStyle(color: _dangerColor)),
+              const SizedBox(height: 12),
+              ElevatedButton(onPressed: _loadData, child: const Text('ลองใหม่')),
+            ],
+          ),
+        ),
+      );
     }
 
     return RefreshIndicator(
       onRefresh: _loadData,
       child: SingleChildScrollView(
-        physics: AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.all(16),
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(AppDesignSystem.spacingLg),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -64,11 +84,11 @@ class _OverviewTabState extends State<OverviewTab> {
               onWarehouseChanged: (value) => setState(() => _selectedWarehouse = value!),
               onShelfChanged: (value) => setState(() => _selectedShelf = value!),
             ),
-            SizedBox(height: 16),
+            const SizedBox(height: AppDesignSystem.spacingLg),
             _buildSummaryCards(),
-            SizedBox(height: 16),
+            const SizedBox(height: AppDesignSystem.spacingLg),
             _buildExpandableAlerts(),
-            SizedBox(height: 16),
+            const SizedBox(height: AppDesignSystem.spacingLg),
             _buildMovementStatistics(),
           ],
         ),
@@ -85,21 +105,21 @@ class _OverviewTabState extends State<OverviewTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('ภาพรวมคลังสินค้า', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        SizedBox(height: 12),
+        Text('ภาพรวมคลังสินค้า', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: AppDesignSystem.spacingMd),
         Row(
           children: [
-            Expanded(child: _buildSummaryCard('ทั้งหมด', '$total', Colors.blue, Icons.inventory_2)),
-            SizedBox(width: 8),
-            Expanded(child: _buildSummaryCard('พร้อม', '$ready', Colors.green, Icons.check_circle)),
+            Expanded(child: _buildSummaryCard('ทั้งหมด', '$total', _primaryColor, Icons.inventory_2)),
+            const SizedBox(width: AppDesignSystem.spacingSm),
+            Expanded(child: _buildSummaryCard('พร้อม', '$ready', _successColor, Icons.check_circle)),
           ],
         ),
-        SizedBox(height: 8),
+        const SizedBox(height: AppDesignSystem.spacingSm),
         Row(
           children: [
-            Expanded(child: _buildSummaryCard('ใกล้หมด', '$low', Colors.orange, Icons.warning)),
-            SizedBox(width: 8),
-            Expanded(child: _buildSummaryCard('หมด', '$outOfStock', Colors.red, Icons.error)),
+            Expanded(child: _buildSummaryCard('ใกล้หมด', '$low', _warningColor, Icons.warning)),
+            const SizedBox(width: AppDesignSystem.spacingSm),
+            Expanded(child: _buildSummaryCard('หมด', '$outOfStock', _dangerColor, Icons.error)),
           ],
         ),
       ],
@@ -108,20 +128,25 @@ class _OverviewTabState extends State<OverviewTab> {
 
   Widget _buildSummaryCard(String title, String count, Color color, IconData icon) {
     return Card(
-      elevation: 2,
+      elevation: 0,
+      color: _surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppDesignSystem.radiusMd),
+        side: const BorderSide(color: AppDesignSystem.border),
+      ),
       child: Container(
-        padding: EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppDesignSystem.spacingLg),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AppDesignSystem.radiusMd),
           border: Border.all(color: color.withOpacity(0.3)),
         ),
         child: Column(
           children: [
             Icon(icon, color: color, size: 32),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             Text(count, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: color)),
-            Text(title, style: TextStyle(fontSize: 14, color: Colors.grey[600])),
-            Text('รายการ', style: TextStyle(fontSize: 12, color: Colors.grey[500])),
+            Text(title, style: TextStyle(fontSize: 14, color: _textSecondary)),
+            Text('รายการ', style: TextStyle(fontSize: 12, color: _textSecondary.withValues(alpha: 0.8))),
           ],
         ),
       ),
@@ -137,15 +162,15 @@ class _OverviewTabState extends State<OverviewTab> {
         _buildAlertExpansionTile(
           title: 'สินค้าใกล้หมด',
           icon: Icons.warning,
-          color: Colors.orange,
+          color: _warningColor,
           count: lowStockProducts.length,
           child: _buildLowStockContent(lowStockProducts),
         ),
-        SizedBox(height: 8),
+        const SizedBox(height: AppDesignSystem.spacingSm),
         _buildAlertExpansionTile(
           title: 'วัตถุดิบใกล้หมดอายุ',
           icon: Icons.access_time,
-          color: Colors.red,
+          color: _dangerColor,
           count: expiringSoon.length,
           child: _buildExpiringContent(expiringSoon),
         ),
@@ -161,14 +186,19 @@ class _OverviewTabState extends State<OverviewTab> {
     required Widget child,
   }) {
     return Card(
-      elevation: 2,
+      elevation: 0,
+      color: _surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppDesignSystem.radiusMd),
+        side: const BorderSide(color: AppDesignSystem.border),
+      ),
       child: ExpansionTile(
         leading: Icon(icon, color: color),
-        title: Text(title, style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(title, style: TextStyle(fontWeight: FontWeight.bold, color: _textPrimary)),
         subtitle: Text('$count รายการ', style: TextStyle(color: color, fontSize: 12)),
         children: [
           Padding(
-            padding: EdgeInsets.all(12),
+            padding: const EdgeInsets.all(AppDesignSystem.spacingMd),
             child: child,
           ),
         ],
@@ -178,7 +208,7 @@ class _OverviewTabState extends State<OverviewTab> {
 
   Widget _buildLowStockContent(List<Map<String, dynamic>> items) {
     if (items.isEmpty) {
-      return Padding(padding: EdgeInsets.all(12), child: Text('ไม่มีสินค้าใกล้หมด', style: TextStyle(color: Colors.grey[600])));
+      return Padding(padding: const EdgeInsets.all(AppDesignSystem.spacingMd), child: Text('ไม่มีสินค้าใกล้หมด', style: TextStyle(color: _textSecondary)));
     }
     return Column(
       children: items.map((item) {
@@ -186,17 +216,17 @@ class _OverviewTabState extends State<OverviewTab> {
         final unitAbbr = item['unit']?['abbreviation'] ?? '';
         final shelfCode = item['shelf']?['code'] ?? '-';
         return Container(
-          margin: EdgeInsets.only(bottom: 8),
-          padding: EdgeInsets.all(12),
+          margin: const EdgeInsets.only(bottom: AppDesignSystem.spacingSm),
+          padding: const EdgeInsets.all(AppDesignSystem.spacingMd),
           decoration: BoxDecoration(
-            color: Colors.orange.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.orange.withOpacity(0.3)),
+            color: _warningColor.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(AppDesignSystem.radiusSm),
+            border: Border.all(color: _warningColor.withOpacity(0.3)),
           ),
           child: Row(
             children: [
-              Icon(Icons.warning_amber, color: Colors.orange, size: 20),
-              SizedBox(width: 8),
+              Icon(Icons.warning_amber, color: _warningColor, size: 20),
+              const SizedBox(width: 8),
               Expanded(child: Text('${item['name']} (${qty.toStringAsFixed(qty == qty.roundToDouble() ? 0 : 1)} $unitAbbr) ชั้น $shelfCode')),
             ],
           ),
@@ -207,7 +237,7 @@ class _OverviewTabState extends State<OverviewTab> {
 
   Widget _buildExpiringContent(List<Map<String, dynamic>> items) {
     if (items.isEmpty) {
-      return Padding(padding: EdgeInsets.all(12), child: Text('ไม่มีวัตถุดิบใกล้หมดอายุ', style: TextStyle(color: Colors.grey[600])));
+      return Padding(padding: const EdgeInsets.all(AppDesignSystem.spacingMd), child: Text('ไม่มีวัตถุดิบใกล้หมดอายุ', style: TextStyle(color: _textSecondary)));
     }
     final now = DateTime.now();
     return Column(
@@ -219,23 +249,23 @@ class _OverviewTabState extends State<OverviewTab> {
         final color = _getExpiryColor(days);
 
         return Container(
-          margin: EdgeInsets.only(bottom: 8),
-          padding: EdgeInsets.all(12),
+          margin: const EdgeInsets.only(bottom: AppDesignSystem.spacingSm),
+          padding: const EdgeInsets.all(AppDesignSystem.spacingMd),
           decoration: BoxDecoration(
             color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(AppDesignSystem.radiusSm),
             border: Border.all(color: color.withOpacity(0.3)),
           ),
           child: Row(
             children: [
               Icon(Icons.access_time, color: color, size: 20),
-              SizedBox(width: 8),
+              const SizedBox(width: 8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('${item['name']} หมดอายุใน $days วัน', style: TextStyle(fontWeight: FontWeight.w500)),
-                    Text('(${qty.toStringAsFixed(qty == qty.roundToDouble() ? 0 : 1)} $unitAbbr)', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                    Text('(${qty.toStringAsFixed(qty == qty.roundToDouble() ? 0 : 1)} $unitAbbr)', style: TextStyle(color: _textSecondary, fontSize: 12)),
                   ],
                 ),
               ),
@@ -247,9 +277,9 @@ class _OverviewTabState extends State<OverviewTab> {
   }
 
   Color _getExpiryColor(int days) {
-    if (days <= 2) return Colors.red;
-    if (days <= 4) return Colors.orange;
-    return Colors.yellow[700]!;
+    if (days <= 2) return _dangerColor;
+    if (days <= 4) return _warningColor;
+    return _secondaryColor;
   }
 
   Widget _buildMovementStatistics() {
@@ -259,24 +289,29 @@ class _OverviewTabState extends State<OverviewTab> {
     final totalValue = (_stats['totalValue'] as num?)?.toDouble() ?? 0;
 
     return Card(
-      elevation: 2,
+      elevation: 0,
+      color: _surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppDesignSystem.radiusMd),
+        side: const BorderSide(color: AppDesignSystem.border),
+      ),
       child: Padding(
-        padding: EdgeInsets.all(12),
+        padding: const EdgeInsets.all(AppDesignSystem.spacingMd),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(Icons.analytics, color: Colors.purple),
-                SizedBox(width: 8),
-                Text('สถิติการเคลื่อนไหวสินค้า', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                Icon(Icons.analytics, color: _secondaryColor),
+                const SizedBox(width: 8),
+                Text('สถิติการเคลื่อนไหวสินค้า', style: Theme.of(context).textTheme.titleMedium),
               ],
             ),
-            SizedBox(height: 12),
-            _buildStatRow(Icons.download, 'รับเข้าวันนี้', '$inToday รายการ', Colors.green),
-            _buildStatRow(Icons.upload, 'จ่ายออกวันนี้', '$outToday รายการ', Colors.red),
-            _buildStatRow(Icons.sync, 'ปรับปรุงวันนี้', '$adjustToday รายการ', Colors.blue),
-            _buildStatRow(Icons.attach_money, 'มูลค่าคลัง', '฿${totalValue.toStringAsFixed(0)}', Colors.purple),
+            const SizedBox(height: AppDesignSystem.spacingMd),
+            _buildStatRow(Icons.download, 'รับเข้าวันนี้', '$inToday รายการ', _successColor),
+            _buildStatRow(Icons.upload, 'จ่ายออกวันนี้', '$outToday รายการ', _dangerColor),
+            _buildStatRow(Icons.sync, 'ปรับปรุงวันนี้', '$adjustToday รายการ', _secondaryColor),
+            _buildStatRow(Icons.attach_money, 'มูลค่าคลัง', '฿${totalValue.toStringAsFixed(0)}', _warningColor),
           ],
         ),
       ),
@@ -285,11 +320,11 @@ class _OverviewTabState extends State<OverviewTab> {
 
   Widget _buildStatRow(IconData icon, String label, String value, Color color) {
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: AppDesignSystem.spacingSm),
       child: Row(
         children: [
           Icon(icon, color: color, size: 20),
-          SizedBox(width: 12),
+          const SizedBox(width: 12),
           Expanded(child: Text(label)),
           Text(value, style: TextStyle(fontWeight: FontWeight.bold, color: color)),
         ],

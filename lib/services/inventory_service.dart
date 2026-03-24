@@ -1,8 +1,8 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'table_management_service.dart';
 
 class InventoryService {
   static final SupabaseClient _client = Supabase.instance.client;
@@ -1746,13 +1746,11 @@ class InventoryService {
           .maybeSingle();
       
       // ถ้าไม่มีหมวด "วัตถุดิบ" ให้หาหมวดแรก
-      if (categoryResp == null) {
-        categoryResp = await _client
-            .from('inventory_categories')
-            .select('id')
-            .limit(1)
-            .maybeSingle();
-      }
+      categoryResp ??= await _client
+          .from('inventory_categories')
+          .select('id')
+          .limit(1)
+          .maybeSingle();
 
       final response = await _client.from('inventory_products').insert({
         'name': name,
@@ -2003,28 +2001,58 @@ class InventoryService {
     required double serviceAmount,
     required double netTotal,
     required String paymentMethod,
+    required String responsibleUserId,
+    required String responsibleUserName,
+    String? cashierUserId,
+    String? cashierUserName,
+    String orderType = 'walk_in',
     String? tableNumber,
+    String? tableId,
+    String? tableSessionId,
+    String? customerUserId,
+    String? customerName,
     String? userName,
+    List<Map<String, dynamic>>? appliedDiscounts,
+    double totalDiscountAmount = 0,
+    String? customerId,
+    double loyaltyPointsRedeemed = 0,
+    double loyaltyDiscountAmount = 0,
+    String? shiftId,
   }) async {
     try {
       final userId = _client.auth.currentUser?.id;
 
       // 1. สร้าง order header
+      final combinedDiscount = discountAmount + totalDiscountAmount + loyaltyDiscountAmount;
       final orderResp = await _client.from('pos_orders').insert({
         'order_number': '', // trigger จะ generate ให้
         'user_id': userId,
         'user_name': userName ?? 'พนักงาน',
+        'order_type': orderType,
         'table_number': tableNumber,
+        'table_id': tableId,
+        'table_session_id': tableSessionId,
+        'responsible_user_id': responsibleUserId,
+        'responsible_user_name': responsibleUserName,
+        'cashier_user_id': cashierUserId,
+        'cashier_user_name': cashierUserName,
+        'customer_user_id': customerUserId,
+        'customer_name': customerName,
         'subtotal': subtotal,
-        'discount_amount': discountAmount,
+        'discount_amount': combinedDiscount,
         'discount_note': discountNote,
         'tax_rate': taxRate,
         'tax_amount': taxAmount,
         'service_rate': serviceRate,
         'service_amount': serviceAmount,
         'net_total': netTotal,
+        'paid_total': netTotal,
+        'balance_due': 0,
         'payment_method': paymentMethod,
         'status': 'completed',
+        'loyalty_points_redeemed': loyaltyPointsRedeemed,
+        'loyalty_discount_amount': loyaltyDiscountAmount,
+        if (shiftId != null) 'shift_id': shiftId,
       }).select().single();
 
       final orderId = orderResp['id'] as String;
@@ -2082,6 +2110,134 @@ class InventoryService {
           'reference_id': orderId,
           'user_name': userName ?? 'พนักงาน',
         });
+      }
+
+      if (tableId != null && tableSessionId != null) {
+        final attached = await TableManagementService.attachOrderToTableSession(
+          tableId: tableId,
+          sessionId: tableSessionId,
+          orderId: orderId,
+        );
+        if (!attached) {
+          debugPrint('⚠️ POS order created but failed to attach to table session: $orderNumber');
+        }
+      }
+
+      // 3. บันทึก pos_order_discounts (Phase 2A — item #2)
+      if (appliedDiscounts != null && appliedDiscounts.isNotEmpty) {
+        for (final d in appliedDiscounts) {
+          final discountInfo = d['pos_discounts'] as Map<String, dynamic>?;
+          try {
+            await _client.from('pos_order_discounts').insert({
+              'order_id': orderId,
+              'discount_id': d['discount_id'],
+              'discount_name': discountInfo?['name'] ?? 'ส่วนลด',
+              'discount_type': discountInfo?['discount_type'] ?? 'fixed',
+              'discount_value': discountInfo?['value'] ?? 0,
+              'discount_amount': (d['discount_amount'] ?? 0).toDouble(),
+              'applied_by': userId,
+            });
+          } catch (e) {
+            debugPrint('⚠️ Failed to save order discount: $e');
+          }
+        }
+      }
+
+      // 4. สะสม Loyalty Points อัตโนมัติ (Phase 2A — item #3)
+      if (customerId != null && customerId.isNotEmpty) {
+        try {
+          final programs = await _client
+              .from('pos_loyalty_programs')
+              .select()
+              .eq('is_active', true)
+              .limit(1);
+
+          if ((programs as List).isNotEmpty) {
+            final program = programs[0];
+            final programId = program['id'] as String;
+            final pointsPerBaht = (program['points_per_baht'] ?? 1).toDouble();
+            final expiryDays = program['points_expiry_days'] as int?;
+            final earnedPoints = netTotal * pointsPerBaht;
+
+            if (earnedPoints > 0) {
+              // หา/สร้าง wallet
+              var walletResp = await _client
+                  .from('pos_customer_loyalty_wallets')
+                  .select()
+                  .eq('customer_id', customerId)
+                  .eq('loyalty_program_id', programId)
+                  .maybeSingle();
+
+              if (walletResp == null) {
+                walletResp = await _client
+                    .from('pos_customer_loyalty_wallets')
+                    .insert({
+                      'customer_id': customerId,
+                      'loyalty_program_id': programId,
+                      'total_points': 0,
+                      'redeemed_points': 0,
+                      'available_points': 0,
+                    })
+                    .select()
+                    .single();
+              }
+
+              final walletId = walletResp['id'] as String;
+              final currentTotal = (walletResp['total_points'] ?? 0).toDouble();
+              final currentAvailable = (walletResp['available_points'] ?? 0).toDouble();
+              final newTotal = currentTotal + earnedPoints;
+              final newAvailable = currentAvailable + earnedPoints;
+
+              final expiresAt = expiryDays != null
+                  ? DateTime.now().add(Duration(days: expiryDays)).toIso8601String()
+                  : null;
+
+              await _client.from('pos_loyalty_transactions').insert({
+                'wallet_id': walletId,
+                'order_id': orderId,
+                'transaction_type': 'earn',
+                'points': earnedPoints,
+                'balance_after': newAvailable,
+                'reason': 'สะสมแต้มจากบิล $orderNumber',
+                'expires_at': expiresAt,
+                'created_by': userId,
+              });
+
+              await _client
+                  .from('pos_customer_loyalty_wallets')
+                  .update({
+                    'total_points': newTotal,
+                    'available_points': newAvailable,
+                    'last_transaction_at': DateTime.now().toIso8601String(),
+                  })
+                  .eq('id', walletId);
+
+              // อัปเดต loyalty_points_earned บน order
+              await _client
+                  .from('pos_orders')
+                  .update({'loyalty_points_earned': earnedPoints})
+                  .eq('id', orderId);
+
+              debugPrint('🎯 Loyalty earned: $earnedPoints pts for order $orderNumber');
+            }
+          }
+        } catch (e) {
+          debugPrint('⚠️ Failed to earn loyalty points: $e');
+        }
+      }
+
+      // 5. บันทึก Order Status Log (Phase 2A — item #4)
+      try {
+        await _client.from('pos_order_status_log').insert({
+          'order_id': orderId,
+          'from_status': null,
+          'to_status': 'completed',
+          'changed_by': userId,
+          'changed_by_name': userName ?? 'พนักงาน',
+          'reason': 'ชำระเงินด้วย $paymentMethod',
+        });
+      } catch (e) {
+        debugPrint('⚠️ Failed to log order status: $e');
       }
 
       debugPrint('✅ POS Order created: $orderNumber, total: $netTotal');

@@ -10,6 +10,8 @@ class UserGroup {
   final DateTime? createdAt;
   final bool isActive;
   final bool requiresProfileCompletion;
+  final bool isCustomerGroup;
+  final bool isSalesStaffGroup;
   final int? sortOrder;
 
   UserGroup({
@@ -21,6 +23,8 @@ class UserGroup {
     this.createdAt,
     this.isActive = true,
     this.requiresProfileCompletion = false,
+    this.isCustomerGroup = false,
+    this.isSalesStaffGroup = false,
     this.sortOrder,
   });
 
@@ -36,6 +40,8 @@ class UserGroup {
           : null,
       isActive: json['is_active'] ?? true,
       requiresProfileCompletion: json['requires_profile_completion'] ?? false,
+      isCustomerGroup: json['is_customer_group'] ?? false,
+      isSalesStaffGroup: json['is_sales_staff_group'] ?? false,
       sortOrder: json['sort_order'] as int?,
     );
   }
@@ -50,6 +56,8 @@ class UserGroup {
       'created_at': createdAt?.toIso8601String(),
       'is_active': isActive,
       'requires_profile_completion': requiresProfileCompletion,
+      'is_customer_group': isCustomerGroup,
+      'is_sales_staff_group': isSalesStaffGroup,
       'sort_order': sortOrder,
     };
   }

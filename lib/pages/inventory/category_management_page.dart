@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/inventory_service.dart';
+import '../../theme/app_design_system.dart';
 
 class CategoryManagementPage extends StatefulWidget {
   final List<Map<String, dynamic>> initialCategories;
@@ -32,6 +33,18 @@ class _CategoryManagementPageState extends State<CategoryManagementPage> {
   String? _selectedParentCode;
   bool _isLoading = false;
 
+  Color get _surface => AppDesignSystem.surface;
+  Color get _surfaceAlt => AppDesignSystem.background;
+  Color get _textPrimary => AppDesignSystem.textPrimary;
+  Color get _textSecondary => AppDesignSystem.textSecondary;
+  Color get _borderColor => AppDesignSystem.border;
+  Color get _primaryColor => AppDesignSystem.primary;
+  Color get _secondaryColor => AppDesignSystem.secondary;
+  Color get _selectedSurface => AppDesignSystem.selectedSurface;
+  Color get _successColor => AppDesignSystem.success;
+  Color get _warningColor => AppDesignSystem.warning;
+  Color get _dangerColor => AppDesignSystem.danger;
+
   static const Map<String, String> _recommendedAccountCodes = {
     'asset': '1301',
     'revenue': '4101',
@@ -62,54 +75,59 @@ class _CategoryManagementPageState extends State<CategoryManagementPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('จัดการประเภทสินค้า'),
+        title: const Text('จัดการประเภทสินค้า'),
         leading: IconButton(
-          icon: Icon(Icons.arrow_back),
+          icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context, _categories),
         ),
       ),
       body: _isLoading
-          ? Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
               controller: _scrollController,
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(AppDesignSystem.spacingLg),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildGuideBanner(),
-                  SizedBox(height: 24),
+                  const SizedBox(height: AppDesignSystem.spacingLg),
                   
                   // Add New Section
                   Card(
-                    elevation: 2,
+                    elevation: 0,
+                    color: _surface,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppDesignSystem.radiusMd),
+                      side: const BorderSide(color: AppDesignSystem.border),
+                    ),
                     child: Padding(
-                      padding: const EdgeInsets.all(16.0),
+                      padding: const EdgeInsets.all(AppDesignSystem.spacingLg),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('เพิ่มประเภทใหม่', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                          SizedBox(height: 16),
+                          Text('เพิ่มประเภทใหม่', style: Theme.of(context).textTheme.titleMedium),
+                          const SizedBox(height: AppDesignSystem.spacingMd),
                           // Parent category selector
                           _buildParentCategorySelector(),
-                          SizedBox(height: 12),
+                          const SizedBox(height: AppDesignSystem.spacingSm),
                           // Category name with autocomplete
                           _buildCategoryNameField(),
-                          SizedBox(height: 16),
+                          const SizedBox(height: AppDesignSystem.spacingMd),
                           _buildDropdown('บัญชีสินค้าคงเหลือ (ไม่บังคับ)', 'เช่น 1301 สินค้าสำเร็จรูป', _newInventoryAccount, widget.assetAccounts, 'asset', (v) => setState(() => _newInventoryAccount = v)),
-                          SizedBox(height: 12),
+                          const SizedBox(height: AppDesignSystem.spacingSm),
                           _buildDropdown('บัญชีรายได้ (ไม่บังคับ)', 'เช่น 4101 ขายสินค้า', _newRevenueAccount, widget.revenueAccounts, 'revenue', (v) => setState(() => _newRevenueAccount = v)),
-                          SizedBox(height: 12),
+                          const SizedBox(height: AppDesignSystem.spacingSm),
                           _buildDropdown('บัญชีต้นทุน (ไม่บังคับ)', 'เช่น 5101 ซื้อสินค้า', _newCostAccount, widget.costAccounts, 'cogs', (v) => setState(() => _newCostAccount = v)),
-                          SizedBox(height: 16),
+                          const SizedBox(height: AppDesignSystem.spacingMd),
                           SizedBox(
                             width: double.infinity,
                             child: ElevatedButton.icon(
                               onPressed: _handleAddCategory,
-                              icon: Icon(Icons.add),
-                              label: Text('บันทึกประเภทใหม่'),
+                              icon: const Icon(Icons.add),
+                              label: const Text('บันทึกประเภทใหม่'),
                               style: ElevatedButton.styleFrom(
-                                padding: EdgeInsets.symmetric(vertical: 12),
-                                backgroundColor: Colors.blue,
+                                padding: const EdgeInsets.symmetric(vertical: AppDesignSystem.spacingMd),
+                                backgroundColor: _primaryColor,
                                 foregroundColor: Colors.white,
                               ),
                             ),
@@ -119,9 +137,9 @@ class _CategoryManagementPageState extends State<CategoryManagementPage> {
                     ),
                   ),
                   
-                  SizedBox(height: 24),
-                  Divider(thickness: 1),
-                  SizedBox(height: 8),
+                  const SizedBox(height: AppDesignSystem.spacingLg),
+                  const Divider(thickness: 1),
+                  const SizedBox(height: AppDesignSystem.spacingSm),
                   
                   // Warning: incomplete categories
                   if (_incompleteCategoriesCount > 0)
@@ -130,15 +148,15 @@ class _CategoryManagementPageState extends State<CategoryManagementPage> {
                   // Existing Categories List
                   Row(
                     children: [
-                      Icon(Icons.list, color: Colors.grey[700]),
-                      SizedBox(width: 8),
-                      Text('ประเภทที่มีอยู่ (${_categories.length})', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      Icon(Icons.list, color: _textSecondary),
+                      const SizedBox(width: 8),
+                      Text('ประเภทที่มีอยู่ (${_categories.length})', style: Theme.of(context).textTheme.titleMedium),
                     ],
                   ),
-                  SizedBox(height: 16),
+                  const SizedBox(height: AppDesignSystem.spacingMd),
                   
                   if (_categories.isEmpty)
-                    Center(child: Padding(padding: EdgeInsets.all(32), child: Text('ยังไม่มีประเภทสินค้า')))
+                    Center(child: Padding(padding: const EdgeInsets.all(32), child: Text('ยังไม่มีประเภทสินค้า', style: TextStyle(color: _textSecondary))))
                   else
                     ListView.builder(
                       shrinkWrap: true,
@@ -149,7 +167,7 @@ class _CategoryManagementPageState extends State<CategoryManagementPage> {
                       },
                     ),
                   
-                  SizedBox(height: 32), // Bottom padding
+                  const SizedBox(height: 32), // Bottom padding
                 ],
               ),
             ),
@@ -164,43 +182,43 @@ class _CategoryManagementPageState extends State<CategoryManagementPage> {
   Widget _buildIncompleteWarningBanner() {
     return Container(
       width: double.infinity,
-      margin: EdgeInsets.only(bottom: 16),
-      padding: EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: AppDesignSystem.spacingMd),
+      padding: const EdgeInsets.all(AppDesignSystem.spacingMd),
       decoration: BoxDecoration(
-        color: Colors.orange[50],
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.orange[300]!),
+        color: _warningColor.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(AppDesignSystem.radiusSm),
+        border: Border.all(color: _warningColor.withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.warning_amber_rounded, color: Colors.orange[800], size: 22),
-              SizedBox(width: 8),
+              Icon(Icons.warning_amber_rounded, color: _warningColor, size: 22),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   'มี $_incompleteCategoriesCount ประเภทที่ยังไม่ได้กำหนดบัญชี',
-                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange[900]),
+                  style: TextStyle(fontWeight: FontWeight.bold, color: _textPrimary),
                 ),
               ),
             ],
           ),
-          SizedBox(height: 8),
+          const SizedBox(height: AppDesignSystem.spacingSm),
           Text(
             'กดปุ่มด้านล่างเพื่อตั้งค่าบัญชีมาตรฐาน (1301, 4101, 5101) ให้ทุกประเภทที่ยังไม่มี',
-            style: TextStyle(fontSize: 13, color: Colors.orange[800]),
+            style: TextStyle(fontSize: 13, color: _textSecondary),
           ),
-          SizedBox(height: 12),
+          const SizedBox(height: AppDesignSystem.spacingMd),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
               onPressed: _handleBulkSetDefaults,
-              icon: Icon(Icons.auto_fix_high),
+              icon: const Icon(Icons.auto_fix_high),
               label: Text('ตั้งค่าบัญชีเริ่มต้นทั้งหมด ($_incompleteCategoriesCount รายการ)'),
               style: ElevatedButton.styleFrom(
-                padding: EdgeInsets.symmetric(vertical: 10),
-                backgroundColor: Colors.orange[700],
+                padding: const EdgeInsets.symmetric(vertical: AppDesignSystem.spacingSm),
+                backgroundColor: _warningColor,
                 foregroundColor: Colors.white,
               ),
             ),
@@ -217,7 +235,7 @@ class _CategoryManagementPageState extends State<CategoryManagementPage> {
 
     if (defaultInv == null || defaultRev == null || defaultCost == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('ไม่พบบัญชีเริ่มต้น กรุณาตรวจสอบผังบัญชี'), backgroundColor: Colors.red),
+        SnackBar(content: const Text('ไม่พบบัญชีเริ่มต้น กรุณาตรวจสอบผังบัญชี'), backgroundColor: _dangerColor),
       );
       return;
     }
@@ -263,11 +281,11 @@ class _CategoryManagementPageState extends State<CategoryManagementPage> {
 
     if (failCount == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('ตั้งค่าบัญชีเริ่มต้นสำเร็จ $successCount รายการ (ยืนยันจากฐานข้อมูลแล้ว)'), backgroundColor: Colors.green),
+        SnackBar(content: Text('ตั้งค่าบัญชีเริ่มต้นสำเร็จ $successCount รายการ (ยืนยันจากฐานข้อมูลแล้ว)'), backgroundColor: _successColor),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('สำเร็จ $successCount รายการ, ล้มเหลว $failCount รายการ'), backgroundColor: Colors.orange),
+        SnackBar(content: Text('สำเร็จ $successCount รายการ, ล้มเหลว $failCount รายการ'), backgroundColor: _warningColor),
       );
     }
   }
@@ -317,32 +335,33 @@ class _CategoryManagementPageState extends State<CategoryManagementPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('หมวดหมู่แม่', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.grey[700])),
-        SizedBox(height: 6),
+        Text('หมวดหมู่แม่', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: _textSecondary)),
+        const SizedBox(height: 6),
         InkWell(
           onTap: () => _showParentPicker(),
           child: Container(
             width: double.infinity,
-            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: AppDesignSystem.spacingMd, vertical: AppDesignSystem.spacingMd),
             decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey[400]!),
-              borderRadius: BorderRadius.circular(4),
+              color: _surface,
+              border: Border.all(color: _borderColor),
+              borderRadius: BorderRadius.circular(AppDesignSystem.radiusSm),
             ),
             child: Row(
               children: [
-                Icon(Icons.account_tree, size: 20, color: Colors.teal),
-                SizedBox(width: 8),
-                Expanded(child: Text(parentLabel, style: TextStyle(fontSize: 14))),
+                Icon(Icons.account_tree, size: 20, color: _secondaryColor),
+                const SizedBox(width: 8),
+                Expanded(child: Text(parentLabel, style: const TextStyle(fontSize: 14))),
                 if (_selectedParentCode != null)
                   GestureDetector(
                     onTap: () {
                       setState(() => _selectedParentCode = null);
                       _inheritAccountsFromParent(null);
                     },
-                    child: Icon(Icons.clear, size: 18, color: Colors.grey),
+                    child: Icon(Icons.clear, size: 18, color: _textSecondary),
                   )
                 else
-                  Icon(Icons.arrow_drop_down, color: Colors.grey),
+                  Icon(Icons.arrow_drop_down, color: _textSecondary),
               ],
             ),
           ),
@@ -358,7 +377,7 @@ class _CategoryManagementPageState extends State<CategoryManagementPage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(AppDesignSystem.radiusLg))),
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setSheetState) {
@@ -379,24 +398,24 @@ class _CategoryManagementPageState extends State<CategoryManagementPage> {
                 return Column(
                   children: [
                     Padding(
-                      padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                      padding: const EdgeInsets.fromLTRB(AppDesignSystem.spacingLg, AppDesignSystem.spacingLg, AppDesignSystem.spacingLg, AppDesignSystem.spacingSm),
                       child: Column(
                         children: [
                           Row(
                             children: [
-                              Icon(Icons.account_tree, color: Colors.teal),
-                              SizedBox(width: 8),
-                              Text('เลือกหมวดหมู่แม่', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                              Icon(Icons.account_tree, color: _secondaryColor),
+                              const SizedBox(width: 8),
+                              const Text('เลือกหมวดหมู่แม่', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                             ],
                           ),
-                          SizedBox(height: 12),
+                          const SizedBox(height: AppDesignSystem.spacingMd),
                           TextField(
                             autofocus: true,
                             decoration: InputDecoration(
                               hintText: 'ค้นหาหมวดหมู่...',
-                              prefixIcon: Icon(Icons.search),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              prefixIcon: const Icon(Icons.search),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppDesignSystem.radiusSm)),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: AppDesignSystem.spacingMd, vertical: 10),
                             ),
                             onChanged: (v) => setSheetState(() => searchText = v),
                           ),
@@ -405,8 +424,8 @@ class _CategoryManagementPageState extends State<CategoryManagementPage> {
                     ),
                     // Option: no parent
                     ListTile(
-                      leading: Icon(Icons.remove_circle_outline, color: Colors.grey),
-                      title: Text('ไม่มี (เป็นหมวดหลัก)', style: TextStyle(color: Colors.grey[700])),
+                      leading: Icon(Icons.remove_circle_outline, color: _textSecondary),
+                      title: Text('ไม่มี (เป็นหมวดหลัก)', style: TextStyle(color: _textSecondary)),
                       selected: _selectedParentCode == null,
                       onTap: () {
                         setState(() => _selectedParentCode = null);
@@ -414,7 +433,7 @@ class _CategoryManagementPageState extends State<CategoryManagementPage> {
                         Navigator.pop(ctx);
                       },
                     ),
-                    Divider(height: 1),
+                    const Divider(height: 1),
                     Expanded(
                       child: ListView.builder(
                         controller: scrollCtrl,
@@ -425,7 +444,7 @@ class _CategoryManagementPageState extends State<CategoryManagementPage> {
                           final indent = (level - 1) * 16.0;
                           final isSelected = cat['code'] == _selectedParentCode;
                           final iconData = level <= 2 ? Icons.folder : Icons.folder_open;
-                          final iconColor = level <= 2 ? Colors.blue : Colors.teal;
+                          final iconColor = level <= 2 ? _primaryColor : _secondaryColor;
 
                           return ListTile(
                             contentPadding: EdgeInsets.only(left: 16 + indent, right: 16),
@@ -438,7 +457,7 @@ class _CategoryManagementPageState extends State<CategoryManagementPage> {
                               ),
                             ),
                             selected: isSelected,
-                            selectedTileColor: Colors.blue[50],
+                            selectedTileColor: _selectedSurface,
                             onTap: () {
                               final code = cat['code'] as String?;
                               setState(() => _selectedParentCode = code);
@@ -496,16 +515,16 @@ class _CategoryManagementPageState extends State<CategoryManagementPage> {
                           Icon(
                             level <= 2 ? Icons.folder : (level <= 4 ? Icons.folder_open : Icons.label_outline),
                             size: 16,
-                            color: level <= 2 ? Colors.blue : Colors.teal,
+                            color: level <= 2 ? _primaryColor : _secondaryColor,
                           ),
-                          SizedBox(width: 8),
+                          const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               '${cat['code']}  ${cat['name']}',
-                              style: TextStyle(fontSize: 13),
+                              style: const TextStyle(fontSize: 13),
                             ),
                           ),
-                          Text('Lv.${cat['level']}', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                          Text('Lv.${cat['level']}', style: TextStyle(fontSize: 11, color: _textSecondary)),
                         ],
                       ),
                     ),
@@ -525,7 +544,7 @@ class _CategoryManagementPageState extends State<CategoryManagementPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('เลือก "${cat['name']}" เป็นหมวดหมู่แม่แล้ว กรุณาพิมพ์ชื่อประเภทย่อยใหม่'),
-            backgroundColor: Colors.teal,
+            backgroundColor: _successColor,
             duration: Duration(seconds: 2),
           ),
         );
@@ -548,11 +567,11 @@ class _CategoryManagementPageState extends State<CategoryManagementPage> {
           decoration: InputDecoration(
             labelText: 'ชื่อประเภทใหม่ *',
             hintText: 'พิมพ์เพื่อค้นหาหรือเพิ่มใหม่',
-            border: OutlineInputBorder(),
-            prefixIcon: Icon(Icons.category),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppDesignSystem.radiusSm)),
+            prefixIcon: const Icon(Icons.category),
             suffixIcon: textController.text.isNotEmpty
                 ? IconButton(
-                    icon: Icon(Icons.clear, size: 18),
+                    icon: const Icon(Icons.clear, size: 18),
                     onPressed: () {
                       textController.clear();
                       _newCatController.clear();
@@ -568,26 +587,26 @@ class _CategoryManagementPageState extends State<CategoryManagementPage> {
   Widget _buildGuideBanner() {
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppDesignSystem.spacingMd),
       decoration: BoxDecoration(
-        color: Colors.green[50],
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.green[200]!),
+        color: _successColor.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(AppDesignSystem.radiusSm),
+        border: Border.all(color: _successColor.withValues(alpha: 0.3)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.shield_outlined, color: Colors.green[700], size: 24),
-          SizedBox(width: 12),
+          Icon(Icons.shield_outlined, color: _successColor, size: 24),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('โหมดมือใหม่', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green[800])),
-                SizedBox(height: 4),
+                Text('โหมดมือใหม่', style: TextStyle(fontWeight: FontWeight.bold, color: _textPrimary)),
+                const SizedBox(height: 4),
                 Text(
                   'กรอกชื่อแล้วกดบันทึกได้เลย ไม่จำเป็นต้องเลือกบัญชี — สามารถตั้งค่าบัญชีทีหลังได้ หรือเลือก "ไม่ระบุ" เพื่อข้าม',
-                  style: TextStyle(fontSize: 13, color: Colors.green[800]),
+                  style: TextStyle(fontSize: 13, color: _textSecondary),
                 ),
               ],
             ),
@@ -605,14 +624,14 @@ class _CategoryManagementPageState extends State<CategoryManagementPage> {
       decoration: InputDecoration(
         labelText: label, 
         helperText: helper, 
-        border: OutlineInputBorder(),
-        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppDesignSystem.radiusSm)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: AppDesignSystem.spacingMd, vertical: AppDesignSystem.spacingMd),
       ),
       value: validValue,
       items: [
         DropdownMenuItem<String>(
           value: null,
-          child: Text('— ไม่ระบุ (ตั้งค่าทีหลัง)', style: TextStyle(color: Colors.grey[600], fontStyle: FontStyle.italic)),
+          child: Text('— ไม่ระบุ (ตั้งค่าทีหลัง)', style: TextStyle(color: _textSecondary, fontStyle: FontStyle.italic)),
         ),
         ...items.map((acc) => DropdownMenuItem<String>(
           value: acc['code'] as String?,
@@ -636,22 +655,22 @@ class _CategoryManagementPageState extends State<CategoryManagementPage> {
     final isHeader = level <= 2;
     final fontSize = isHeader ? 15.0 : (level == 3 ? 14.0 : 13.0);
     final fontWeight = level <= 3 ? FontWeight.bold : FontWeight.normal;
-    final bgColor = level == 1 ? Colors.blue[50] : (level == 2 ? Colors.grey[50] : null);
+    final bgColor = level == 1 ? _primaryColor.withValues(alpha: 0.06) : (level == 2 ? _surfaceAlt : null);
     final iconData = level <= 2 ? Icons.folder : (level <= 4 ? Icons.folder_open : Icons.label_outline);
-    final iconColor = level <= 2 ? Colors.blue : (level <= 3 ? Colors.teal : Colors.grey[600]);
+    final iconColor = level <= 2 ? _primaryColor : (level <= 3 ? _secondaryColor : _textSecondary);
 
     return Container(
       key: ValueKey(cat['id']),
-      margin: EdgeInsets.only(bottom: 1),
+      margin: const EdgeInsets.only(bottom: 1),
       padding: EdgeInsets.only(left: indent, right: 4, top: 6, bottom: 6),
       decoration: BoxDecoration(
         color: bgColor,
-        border: Border(bottom: BorderSide(color: Colors.grey.shade200, width: 0.5)),
+        border: Border(bottom: BorderSide(color: _borderColor, width: 0.5)),
       ),
       child: Row(
         children: [
           Icon(iconData, size: 18, color: iconColor),
-          SizedBox(width: 6),
+          const SizedBox(width: 6),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -664,10 +683,10 @@ class _CategoryManagementPageState extends State<CategoryManagementPage> {
             ),
           ),
           IconButton(
-            icon: Icon(Icons.edit, size: 16, color: Colors.blue[300]),
+            icon: Icon(Icons.edit, size: 16, color: _primaryColor),
             onPressed: () => _showEditDialog(cat),
             padding: EdgeInsets.zero,
-            constraints: BoxConstraints(minWidth: 28, minHeight: 28),
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
             visualDensity: VisualDensity.compact,
           ),
         ],
@@ -777,7 +796,7 @@ class _CategoryManagementPageState extends State<CategoryManagementPage> {
 
     if (insertedRow == null) {
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เพิ่มประเภทไม่สำเร็จ (ไม่ได้รับข้อมูลจากฐานข้อมูล)'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('เพิ่มประเภทไม่สำเร็จ (ไม่ได้รับข้อมูลจากฐานข้อมูล)'), backgroundColor: _dangerColor));
       return;
     }
 
@@ -796,10 +815,10 @@ class _CategoryManagementPageState extends State<CategoryManagementPage> {
       });
       _newCatController.clear();
       _setDefaults();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เพิ่มประเภท "$createdName" สำเร็จ (รหัส: $newCode)'), backgroundColor: Colors.green));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เพิ่มประเภท "$createdName" สำเร็จ (รหัส: $newCode)'), backgroundColor: _successColor));
     } else {
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เพิ่มประเภทไม่สำเร็จ (ไม่พบข้อมูลในฐานข้อมูล)'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('เพิ่มประเภทไม่สำเร็จ (ไม่พบข้อมูลในฐานข้อมูล)'), backgroundColor: _dangerColor));
     }
   }
 
@@ -832,9 +851,9 @@ class _CategoryManagementPageState extends State<CategoryManagementPage> {
     });
 
     if (verified) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('อัปเดตประเภทสำเร็จ (ยืนยันจากฐานข้อมูลแล้ว)'), backgroundColor: Colors.green));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('อัปเดตประเภทสำเร็จ (ยืนยันจากฐานข้อมูลแล้ว)'), backgroundColor: _successColor));
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('อัปเดตไม่สำเร็จ (ไม่พบข้อมูลในฐานข้อมูล)'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('อัปเดตไม่สำเร็จ (ไม่พบข้อมูลในฐานข้อมูล)'), backgroundColor: _dangerColor));
     }
   }
 
@@ -873,6 +892,10 @@ class _EditCategoryDialogState extends State<_EditCategoryDialog> {
   late String? _costCode;
   bool _isSaving = false;
 
+  Color get _primaryColor => AppDesignSystem.primary;
+  Color get _dangerColor => AppDesignSystem.danger;
+  Color get _textSecondary => AppDesignSystem.textSecondary;
+
   @override
   void initState() {
     super.initState();
@@ -884,21 +907,21 @@ class _EditCategoryDialogState extends State<_EditCategoryDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Expanded(child: Text('แก้ไข ${widget.category['name']}'))]),
+      title: Row(children: [Icon(Icons.edit, color: _primaryColor), const SizedBox(width: 8), Expanded(child: Text('แก้ไข ${widget.category['name']}'))]),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             _buildDropdown('บัญชีสินค้าคงเหลือ', _inventoryCode, widget.assetAccounts, (v) => setState(() => _inventoryCode = v)),
-            SizedBox(height: 16),
+            const SizedBox(height: AppDesignSystem.spacingMd),
             _buildDropdown('บัญชีรายได้', _revenueCode, widget.revenueAccounts, (v) => setState(() => _revenueCode = v)),
-            SizedBox(height: 16),
+            const SizedBox(height: AppDesignSystem.spacingMd),
             _buildDropdown('บัญชีต้นทุน', _costCode, widget.costAccounts, (v) => setState(() => _costCode = v)),
           ],
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context, null), child: Text('ยกเลิก')),
+        TextButton(onPressed: () => Navigator.pop(context, null), child: const Text('ยกเลิก')),
         ElevatedButton(
           onPressed: _isSaving ? null : () async {
             setState(() => _isSaving = true);
@@ -912,11 +935,11 @@ class _EditCategoryDialogState extends State<_EditCategoryDialog> {
                 Navigator.pop(context, updatedRow);
               } else {
                 setState(() => _isSaving = false);
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('บันทึกไม่สำเร็จ (ไม่ได้รับการยืนยันจากฐานข้อมูล)'), backgroundColor: Colors.red));
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('บันทึกไม่สำเร็จ (ไม่ได้รับการยืนยันจากฐานข้อมูล)'), backgroundColor: _dangerColor));
               }
             }
           },
-          child: _isSaving ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : Text('บันทึก'),
+          child: _isSaving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('บันทึก'),
         ),
       ],
     );
@@ -931,7 +954,7 @@ class _EditCategoryDialogState extends State<_EditCategoryDialog> {
       items: [
         DropdownMenuItem<String>(
           value: null,
-          child: Text('— ไม่ระบุ (ตั้งค่าทีหลัง)', style: TextStyle(color: Colors.grey[600], fontStyle: FontStyle.italic)),
+          child: Text('— ไม่ระบุ (ตั้งค่าทีหลัง)', style: TextStyle(color: _textSecondary, fontStyle: FontStyle.italic)),
         ),
         ...items.map((acc) => DropdownMenuItem<String>(
           value: acc['code'] as String?,
