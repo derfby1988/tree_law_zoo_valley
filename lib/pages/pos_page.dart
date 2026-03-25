@@ -16,9 +16,13 @@ import '../widgets/pos_receipt_preview_widget.dart';
 import '../widgets/pos_order_history_widget.dart';
 import '../widgets/pos_shift_widget.dart';
 
+import '../widgets/pos_printer_settings_widget.dart';
+import '../services/pos_printer_service.dart';
+
 enum _PosWorkspaceMode {
   pos,
   orderHistory,
+  printerSettings,
 }
 
 class PosPage extends StatefulWidget {
@@ -126,6 +130,7 @@ class _PosPageState extends State<PosPage> {
       if (mounted) setState(() {});
     });
     _loadData();
+    PosPrinterService.initOnPosOpen();
   }
 
   Widget _gradientIcon(IconData icon, {double size = 18}) {
@@ -536,11 +541,7 @@ class _PosPageState extends State<PosPage> {
                   children: [
                     if (_workspaceMode == _PosWorkspaceMode.pos) _buildHeader(),
                     Expanded(
-                      child: _workspaceMode == _PosWorkspaceMode.pos
-                          ? _buildPosWorkspace()
-                          : PosOrderHistoryWidget(
-                              onBackToPos: () => _switchWorkspace(_PosWorkspaceMode.pos),
-                            ),
+                      child: _buildWorkspaceContent(),
                     ),
                   ],
                 ),
@@ -585,6 +586,12 @@ class _PosPageState extends State<PosPage> {
             label: 'ประวัติ',
             isSelected: _workspaceMode == _PosWorkspaceMode.orderHistory,
             onTap: () => _switchWorkspace(_PosWorkspaceMode.orderHistory),
+          ),
+          _buildSidebarIcon(
+            icon: Icons.print,
+            label: 'พิมพ์',
+            isSelected: _workspaceMode == _PosWorkspaceMode.printerSettings,
+            onTap: () => _switchWorkspace(_PosWorkspaceMode.printerSettings),
           ),
           const Divider(height: 1, indent: 8, endIndent: 8),
           // All categories button
@@ -647,6 +654,19 @@ class _PosPageState extends State<PosPage> {
     setState(() {
       _workspaceMode = mode;
     });
+  }
+
+  Widget _buildWorkspaceContent() {
+    switch (_workspaceMode) {
+      case _PosWorkspaceMode.pos:
+        return _buildPosWorkspace();
+      case _PosWorkspaceMode.orderHistory:
+        return PosOrderHistoryWidget(
+          onBackToPos: () => _switchWorkspace(_PosWorkspaceMode.pos),
+        );
+      case _PosWorkspaceMode.printerSettings:
+        return const PosPrinterSettingsWidget();
+    }
   }
 
   Widget _buildPosWorkspace() {
@@ -1093,6 +1113,12 @@ class _PosPageState extends State<PosPage> {
                                                 overflow: TextOverflow.ellipsis,
                                               ),
                                             ),
+                                            // Edit button
+                                            InkWell(
+                                              onTap: () => _showEditSplitDialog(context, entry.key, () => setState(() {})),
+                                              child: Icon(Icons.edit, size: 16, color: _accentGreen.withValues(alpha: 0.7)),
+                                            ),
+                                            const SizedBox(width: 8),
                                             InkWell(
                                               onTap: () {
                                                 setState(() {
@@ -1606,6 +1632,14 @@ class _PosPageState extends State<PosPage> {
                                           child: Text('$methodLabel: ฿${amount.toStringAsFixed(2)}',
                                               style: TextStyle(fontSize: 11, color: _textPrimary)),
                                         ),
+                                        // Edit button
+                                        InkWell(
+                                          onTap: () {
+                                            _showEditSplitDialog(context, idx, () => setDialogState(() {}));
+                                          },
+                                          child: Icon(Icons.edit, size: 16, color: _accentGreen.withValues(alpha: 0.7)),
+                                        ),
+                                        const SizedBox(width: 8),
                                         InkWell(
                                           onTap: () {
                                             setDialogState(() => _paymentSplits.removeAt(idx));
@@ -1844,6 +1878,100 @@ class _PosPageState extends State<PosPage> {
                     Navigator.pop(addCtx);
                   },
                   child: const Text('เพิ่ม', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showEditSplitDialog(BuildContext ctx, int index, VoidCallback setStateCallback) {
+    final split = _paymentSplits[index];
+    final amountController = TextEditingController(text: (split['amount'] ?? 0).toString());
+    final refController = TextEditingController(text: split['reference_number']?.toString() ?? '');
+    String selectedMethod = split['payment_method'] as String;
+
+    showDialog(
+      context: ctx,
+      builder: (editCtx) {
+        return StatefulBuilder(
+          builder: (editCtx, setEditState) {
+            return AlertDialog(
+              title: const Text('แก้ไขรายการจ่าย', style: TextStyle(fontSize: 15)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('วิธีการจ่าย', style: TextStyle(fontSize: 12, color: _textSecondary)),
+                  const SizedBox(height: 8),
+                  DropdownButton<String>(
+                    value: selectedMethod,
+                    isExpanded: true,
+                    items: [
+                      DropdownMenuItem(value: 'cash', child: Text(_getPaymentMethodLabel('cash'))),
+                      DropdownMenuItem(value: 'credit_debit', child: Text(_getPaymentMethodLabel('credit_debit'))),
+                      DropdownMenuItem(value: 'transfer', child: Text(_getPaymentMethodLabel('transfer'))),
+                      DropdownMenuItem(value: 'qr_code', child: Text(_getPaymentMethodLabel('qr_code'))),
+                    ],
+                    onChanged: (val) {
+                      setEditState(() => selectedMethod = val ?? 'cash');
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  Text('จำนวนเงิน', style: TextStyle(fontSize: 12, color: _textSecondary)),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: amountController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                      hintText: '0.00',
+                      prefixText: '฿ ',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text('เลขอ้างอิง (ถ้ามี)', style: TextStyle(fontSize: 12, color: _textSecondary)),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: refController,
+                    decoration: InputDecoration(
+                      hintText: 'เลขบัตร / สลิปโอน',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(editCtx),
+                  child: const Text('ยกเลิก'),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: _accentGreen),
+                  onPressed: () {
+                    final amount = double.tryParse(amountController.text) ?? 0;
+                    if (amount <= 0) {
+                      ScaffoldMessenger.of(editCtx).showSnackBar(
+                        const SnackBar(content: Text('กรุณาใส่จำนวนเงิน'), backgroundColor: Colors.red),
+                      );
+                      return;
+                    }
+
+                    setState(() {
+                      _paymentSplits[index] = {
+                        'payment_method': selectedMethod,
+                        'amount': amount,
+                        'reference_number': refController.text.isNotEmpty ? refController.text : null,
+                      };
+                    });
+                    setStateCallback();
+                    Navigator.pop(editCtx);
+                  },
+                  child: const Text('บันทึก', style: TextStyle(color: Colors.white)),
                 ),
               ],
             );
@@ -2286,6 +2414,40 @@ class _PosPageState extends State<PosPage> {
         await PosPaymentSplitService.savePaymentSplits(
           orderId: orderId,
           splits: _paymentSplits,
+        );
+      }
+
+      // Phase 2F: Auto-print receipt
+      final cartItemsForPrint = _cartItems.map((item) => {
+        'product_name': item['product']['name'],
+        'quantity': item['qty'],
+        'unit_price': item['product']['price'],
+      }).toList();
+      
+      final printSuccess = await PosPrinterService.autoPrintReceipt(
+        orderId: orderId,
+        orderNumber: orderNumber,
+        orderType: _orderType,
+        tableNumber: _orderType == 'dine_in' ? _selectedTableNumber : null,
+        customerName: _selectedCustomerName,
+        cashierName: userName,
+        items: cartItemsForPrint,
+        subtotal: _subtotal,
+        discountAmount: _discount + _totalDiscountAmount,
+        taxAmount: _taxAmount,
+        serviceAmount: _serviceAmount,
+        netTotal: _netTotal,
+        paymentMethod: _useSplitPayment ? 'split' : method,
+        createdAt: DateTime.now(),
+      );
+
+      if (mounted && printSuccess) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('พิมพ์ใบเสร็จสำเร็จ $orderNumber'),
+            backgroundColor: _accentGreen,
+            duration: const Duration(seconds: 2),
+          ),
         );
       }
 
