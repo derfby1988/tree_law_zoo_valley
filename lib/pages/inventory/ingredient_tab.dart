@@ -164,30 +164,32 @@ class _IngredientTabState extends State<IngredientTab> {
     final warehouseOptions = ['ทั้งหมด', ..._warehouses.map((w) => w['name'] as String)];
     final shelfOptions = ['ทั้งหมด', 'ยังไม่มีชั้นวาง', ..._shelves.map((s) => s['code'] as String)];
 
-    return RefreshIndicator(
-      onRefresh: _loadData,
-      child: SingleChildScrollView(
-        physics: AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            InventoryFilterWidget(
-              searchController: _searchController,
-              selectedWarehouse: _selectedWarehouse,
-              selectedShelf: _selectedShelf,
-              onWarehouseChanged: (value) => setState(() { _selectedWarehouse = value!; _currentPage = 0; }),
-              onShelfChanged: (value) => setState(() { _selectedShelf = value!; _currentPage = 0; }),
-              warehouseOptions: warehouseOptions,
-              shelfOptions: shelfOptions,
-            ),
-            SizedBox(height: 16),
-            _buildActionButtons(),
-            SizedBox(height: 16),
-            _buildNoShelfCard(),
-            SizedBox(height: 16),
-            _buildIngredientList(),
-          ],
+    return SafeArea(
+      child: RefreshIndicator(
+        onRefresh: _loadData,
+        child: SingleChildScrollView(
+          physics: AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              InventoryFilterWidget(
+                searchController: _searchController,
+                selectedWarehouse: _selectedWarehouse,
+                selectedShelf: _selectedShelf,
+                onWarehouseChanged: (value) => setState(() { _selectedWarehouse = value!; _currentPage = 0; }),
+                onShelfChanged: (value) => setState(() { _selectedShelf = value!; _currentPage = 0; }),
+                warehouseOptions: warehouseOptions,
+                shelfOptions: shelfOptions,
+              ),
+              SizedBox(height: 16),
+              _buildActionButtons(),
+              SizedBox(height: 16),
+              _buildNoShelfCard(),
+              SizedBox(height: 16),
+              _buildIngredientList(),
+            ],
+          ),
         ),
       ),
     );

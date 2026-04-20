@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/procurement_service.dart';
 import '../../services/permission_service.dart';
+import '../../services/inventory_service.dart';
 import '../../utils/permission_helpers.dart';
 import 'dialogs/send_po_dialog.dart';
 import 'dialogs/approve_po_dialog.dart';
 import 'dialogs/cancel_po_dialog.dart';
+import 'widgets/purchase_order_form_dialog.dart';
 
 /// แท็บสั่งซื้อ - แสดงรายการ PO และจัดการ workflow
 
@@ -19,6 +21,8 @@ class RequestTab extends StatefulWidget {
 class _RequestTabState extends State<RequestTab> {
   final TextEditingController _searchController = TextEditingController();
   List<Map<String, dynamic>> _purchaseOrders = [];
+  List<Map<String, dynamic>> _suppliers = [];
+  List<Map<String, dynamic>> _products = [];
   bool _isLoading = true;
   String? _errorMessage;
   String _filterStatus = 'all';
@@ -119,17 +123,29 @@ class _RequestTabState extends State<RequestTab> {
   }
 
   Future<void> _loadData() async {
-    setState(() { _isLoading = true; _errorMessage = null; });
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
     try {
-      final orders = await ProcurementService.getPurchaseOrders();
-      setState(() { 
-        _purchaseOrders = orders;
-        _isLoading = false; 
+      final results = await Future.wait([
+        ProcurementService.getPurchaseOrders(),
+        ProcurementService.getSuppliers(),
+        InventoryService.getProducts(),
+      ]);
+
+      if (!mounted) return;
+      setState(() {
+        _purchaseOrders = results[0];
+        _suppliers = results[1];
+        _products = results[2];
+        _isLoading = false;
       });
     } catch (e) {
-      setState(() { 
-        _errorMessage = 'ไม่สามารถโหลดข้อมูล: $e'; 
-        _isLoading = false; 
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = 'ไม่สามารถโหลดข้อมูล: $e';
+        _isLoading = false;
       });
     }
   }
@@ -281,112 +297,146 @@ class _RequestTabState extends State<RequestTab> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Center(child: Padding(
-        padding: EdgeInsets.all(32),
-        child: CircularProgressIndicator(),
-      ));
-    }
-    if (_errorMessage != null) {
-      return Center(child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.error_outline, size: 48, color: Colors.red),
-            const SizedBox(height: 8),
-            Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: _loadData,
-              child: const Text('ลองใหม่'),
-            ),
-          ],
-        ),
-      ));
-    }
+    Widget content;
 
-    return Column(
-      children: [
-        // Search, filter and actions
-        Padding(
-          padding: const EdgeInsets.all(16),
+    if (_isLoading) {
+      content = const Center(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    } else if (_errorMessage != null) {
+      content = Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
+              const Icon(Icons.error_outline, size: 48, color: Colors.red),
+              const SizedBox(height: 8),
+              Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
+              const SizedBox(height: 12),
+              ElevatedButton(
+                onPressed: _loadData,
+                child: const Text('ลองใหม่'),
+              ),
+            ],
+          ),
+        ),
+      );
+    } else {
+      content = Column(
+        children: [
+          // Search, filter and actions
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isCompact = constraints.maxWidth < 520;
+                    final searchField = TextField(
                       controller: _searchController,
                       decoration: const InputDecoration(
                         hintText: 'ค้นหาเลขที่ PO หรือชื่อผู้ขาย...',
                         prefixIcon: Icon(Icons.search),
                         border: OutlineInputBorder(),
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  if (PermissionService.canAccessActionSync('procurement_purchase_create'))
-                    ElevatedButton.icon(
-                      onPressed: () => checkPermissionAndExecute(
-                        context,
-                        'procurement_purchase_create',
-                        'สร้าง PO',
-                        _showCreatePODialog,
-                      ),
-                      icon: const Icon(Icons.add),
-                      label: const Text('สร้าง PO'),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              // Status filter chips
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    _buildFilterChip('all', 'ทั้งหมด'),
-                    _buildFilterChip('draft', 'ร่าง'),
-                    _buildFilterChip('sent', 'รออนุมัติ'),
-                    _buildFilterChip('confirmed', 'อนุมัติแล้ว'),
-                    _buildFilterChip('completed', 'รับครบแล้ว'),
-                    _buildFilterChip('cancelled', 'ยกเลิก'),
-                  ],
+                    );
+                    final createButton = PermissionService.canAccessActionSync('procurement_purchase_create')
+                        ? ElevatedButton.icon(
+                            onPressed: () => checkPermissionAndExecute(
+                              context,
+                              'procurement_purchase_create',
+                              'สร้าง PO',
+                              () => _showCreatePODialog(),
+                            ),
+                            icon: const Icon(Icons.add),
+                            label: const Text('สร้าง PO'),
+                          )
+                        : const SizedBox.shrink();
+
+                    if (isCompact) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          searchField,
+                          const SizedBox(height: 8),
+                          if (createButton is! SizedBox) createButton,
+                        ],
+                      );
+                    }
+
+                    return Row(
+                      children: [
+                        Expanded(child: searchField),
+                        const SizedBox(width: 8),
+                        if (createButton is! SizedBox) createButton,
+                      ],
+                    );
+                  },
                 ),
-              ),
-            ],
-          ),
-        ),
-        // Data table
-        Expanded(
-          child: _filteredOrders.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                const SizedBox(height: 8),
+                // Status filter chips
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
                     children: [
-                      const Icon(Icons.shopping_cart_outlined, size: 64, color: Colors.grey),
-                      const SizedBox(height: 16),
-                      Text(
-                        _purchaseOrders.isEmpty 
-                            ? 'ยังไม่มีรายการสั่งซื้อ' 
-                            : 'ไม่พบรายการที่ตรงกับเงื่อนไข',
-                        style: const TextStyle(color: Colors.grey),
-                      ),
+                      _buildFilterChip('all', 'ทั้งหมด'),
+                      _buildFilterChip('draft', 'ร่าง'),
+                      _buildFilterChip('sent', 'รออนุมัติ'),
+                      _buildFilterChip('confirmed', 'อนุมัติแล้ว'),
+                      _buildFilterChip('completed', 'รับครบแล้ว'),
+                      _buildFilterChip('cancelled', 'ยกเลิก'),
                     ],
                   ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _loadData,
-                  child: ListView.builder(
-                    itemCount: _filteredOrders.length,
-                    itemBuilder: (context, index) {
-                      final order = _filteredOrders[index];
-                      return _buildPOCard(order);
-                    },
-                  ),
                 ),
-        ),
-      ],
+              ],
+            ),
+          ),
+          // Data table
+          Expanded(
+            child: _filteredOrders.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.shopping_cart_outlined, size: 64, color: Colors.grey),
+                        const SizedBox(height: 16),
+                        Text(
+                          _purchaseOrders.isEmpty
+                              ? 'ยังไม่มีรายการสั่งซื้อ'
+                              : 'ไม่พบรายการที่ตรงกับเงื่อนไข',
+                          style: const TextStyle(color: Colors.grey),
+                        ),
+                        ElevatedButton(
+                          onPressed: _showCreatePODialog,
+                          child: const Text('สร้าง PO'),
+                        ),
+                      ],
+                    ),
+                  )
+                : RefreshIndicator(
+                    onRefresh: _loadData,
+                    child: ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.only(bottom: 16),
+                      itemCount: _filteredOrders.length,
+                      itemBuilder: (context, index) {
+                        final order = _filteredOrders[index];
+                        return _buildPOCard(order);
+                      },
+                    ),
+                  ),
+          ),
+        ],
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(child: content),
     );
   }
 
@@ -590,21 +640,317 @@ class _RequestTabState extends State<RequestTab> {
     return buttons;
   }
 
-  void _viewPODetail(Map<String, dynamic> order) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('ดูรายละเอียด PO ${order['order_number']}')),
+  Future<void> _viewPODetail(Map<String, dynamic> order) async {
+    final poId = order['id']?.toString();
+    if (poId == null || poId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ไม่พบรหัส PO')),
+      );
+      return;
+    }
+
+    showDialog<void>(
+      context: context,
+      builder: (context) {
+        return FutureBuilder<Map<String, dynamic>?> (
+          future: ProcurementService.getPurchaseOrderDetail(poId),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const AlertDialog(
+                content: SizedBox(
+                  height: 80,
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+              );
+            }
+
+            final detail = snapshot.data;
+            if (detail == null) {
+              return AlertDialog(
+                title: const Text('รายละเอียดใบสั่งซื้อ'),
+                content: const Text('ไม่สามารถโหลดรายละเอียด PO ได้'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('ปิด'),
+                  ),
+                ],
+              );
+            }
+
+            final lines = detail['lines'] as List<dynamic>? ?? [];
+            final statusValue = detail['status']?.toString() ?? '-';
+            final expectedDate = detail['expected_date']?.toString();
+            final createdAt = detail['created_at']?.toString();
+            final sentAt = detail['sent_at']?.toString();
+            final approvedAt = detail['approved_at']?.toString();
+            final cancelledAt = detail['cancelled_at']?.toString();
+            final cancellationReason = detail['cancellation_reason']?.toString();
+
+            return AlertDialog(
+              title: Text('รายละเอียด ${detail['order_number'] ?? ''}'),
+              content: SizedBox(
+                width: 560,
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('ผู้ขาย: ${detail['supplier']?['name'] ?? '-'}'),
+                            const SizedBox(height: 4),
+                            Text('สถานะ: $statusValue'),
+                            const SizedBox(height: 4),
+                            Text('ยอดรวม: ฿${((detail['total_amount'] as num?)?.toDouble() ?? 0).toStringAsFixed(2)}'),
+                            if (expectedDate != null) ...[
+                              const SizedBox(height: 4),
+                              Text('กำหนดรับ: ${_formatDate(expectedDate)}'),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.blue[50],
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.blue[100]!),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('ข้อมูลการดำเนินการ', style: TextStyle(fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 6),
+                            if (createdAt != null) Text('สร้างเมื่อ: ${_formatDateTime(createdAt)}'),
+                            if (sentAt != null) Text('ส่งเมื่อ: ${_formatDateTime(sentAt)}'),
+                            if (approvedAt != null) Text('อนุมัติเมื่อ: ${_formatDateTime(approvedAt)}'),
+                            if (cancelledAt != null) Text('ยกเลิกเมื่อ: ${_formatDateTime(cancelledAt)}'),
+                          ],
+                        ),
+                      ),
+                      if ((cancellationReason?.trim().isNotEmpty ?? false)) ...[
+                        const SizedBox(height: 10),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.red[50],
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.red[100]!),
+                          ),
+                          child: Text('เหตุผลยกเลิก: $cancellationReason'),
+                        ),
+                      ],
+                      if ((detail['notes']?.toString().trim().isNotEmpty ?? false)) ...[
+                        const SizedBox(height: 8),
+                        Text('หมายเหตุ: ${detail['notes']}'),
+                      ],
+                      const SizedBox(height: 12),
+                      const Divider(),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'รายการสินค้า',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      if (lines.isEmpty)
+                        const Text('ไม่มีรายการสินค้า')
+                      else
+                        ...lines.map((line) => Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    flex: 4,
+                                    child: Text(
+                                      line['product_name']?.toString().isNotEmpty == true
+                                          ? line['product_name']
+                                          : (line['product']?['name'] ?? '-'),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 2,
+                                    child: Text(
+                                      (line['quantity'] as num?)?.toString() ?? '0',
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 2,
+                                    child: Text(
+                                      '฿${((line['unit_price'] as num?)?.toDouble() ?? 0).toStringAsFixed(2)}',
+                                      textAlign: TextAlign.right,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('ปิด'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
-  void _showCreatePODialog() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('ฟีเจอร์สร้าง PO ยังไม่พร้อมใช้งาน')),
+  Future<void> _showCreatePODialog() async {
+    if (_suppliers.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ยังไม่มีข้อมูลผู้ขาย กรุณาเพิ่มผู้ขายก่อน')),
+      );
+      return;
+    }
+
+    if (_products.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ยังไม่มีข้อมูลสินค้า กรุณาเพิ่มสินค้าก่อนสร้าง PO')),
+      );
+      return;
+    }
+
+    final formData = await showPurchaseOrderFormDialog(
+      context: context,
+      suppliers: _suppliers,
+      products: _products,
+      title: 'สร้างใบสั่งซื้อใหม่',
+      submitLabel: 'สร้าง PO',
+      initialItems: [
+        {
+          'product_id': null,
+          'product_name': '',
+          'quantity': 1.0,
+          'unit_price': 0.0,
+        }
+      ],
     );
+
+    if (formData == null) {
+      return;
+    }
+
+    final created = await ProcurementService.createPurchaseOrder(
+      supplierId: formData['supplierId'] as String,
+      expectedDate: formData['expectedDate'] as DateTime?,
+      notes: formData['notes']?.toString(),
+      createdBy: _currentUserId,
+      items: (formData['items'] as List).cast<Map<String, dynamic>>(),
+    );
+
+    if (!mounted) return;
+
+    final success = created != null;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(success ? 'สร้าง PO สำเร็จ' : 'ไม่สามารถสร้าง PO ได้'),
+        backgroundColor: success ? Colors.green : Colors.red,
+      ),
+    );
+
+    if (success) {
+      _loadData();
+    }
   }
 
-  void _showEditPODialog(Map<String, dynamic> order) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('ฟีเจอร์แก้ไข PO ยังไม่พร้อมใช้งาน')),
+  Future<void> _showEditPODialog(Map<String, dynamic> order) async {
+    final poId = order['id']?.toString();
+    if (poId == null || poId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ไม่พบรหัส PO')),
+      );
+      return;
+    }
+
+    final detail = await ProcurementService.getPurchaseOrderDetail(poId);
+    if (!mounted) return;
+    if (detail == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ไม่สามารถโหลดข้อมูล PO ได้')),
+      );
+      return;
+    }
+
+    final lines = (detail['lines'] as List<dynamic>? ?? []).map((line) {
+      return {
+        'product_id': line['product_id']?.toString() ?? line['product']?['id']?.toString(),
+        'product_name': line['product_name']?.toString() ?? line['product']?['name']?.toString() ?? '',
+        'quantity': (line['quantity'] as num?)?.toDouble() ?? 1,
+        'unit_price': (line['unit_price'] as num?)?.toDouble() ?? 0,
+      };
+    }).toList();
+
+    final formData = await showPurchaseOrderFormDialog(
+      context: context,
+      suppliers: _suppliers,
+      products: _products,
+      title: 'แก้ไขใบสั่งซื้อ',
+      submitLabel: 'บันทึก',
+      initialSupplierId: detail['supplier_id']?.toString(),
+      initialNotes: detail['notes']?.toString(),
+      initialExpectedDate: detail['expected_date']?.toString(),
+      initialItems: lines,
     );
+
+    if (formData == null) {
+      return;
+    }
+
+    final success = await ProcurementService.updatePurchaseOrder(
+      poId,
+      {
+        'supplier_id': formData['supplierId'],
+        'expected_date': (formData['expectedDate'] as DateTime?)?.toIso8601String(),
+        'notes': formData['notes'],
+      },
+      (formData['items'] as List).cast<Map<String, dynamic>>(),
+    );
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(success ? 'บันทึก PO สำเร็จ' : 'ไม่สามารถบันทึก PO ได้'),
+        backgroundColor: success ? Colors.green : Colors.red,
+      ),
+    );
+
+    if (success) {
+      _loadData();
+    }
+  }
+
+  String _formatDate(String dateString) {
+    try {
+      final date = DateTime.parse(dateString);
+      return '${date.day}/${date.month}/${date.year + 543}';
+    } catch (e) {
+      return dateString;
+    }
+  }
+
+  String _formatDateTime(String dateString) {
+    try {
+      final date = DateTime.parse(dateString).toLocal();
+      return '${date.day}/${date.month}/${date.year + 543} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    } catch (e) {
+      return dateString;
+    }
   }
 }

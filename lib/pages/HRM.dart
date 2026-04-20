@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:postgrest/postgrest.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/approval_hierarchy_service.dart';
 import '../services/supabase_service.dart';
@@ -35,6 +36,12 @@ class _HRMPageState extends State<HRMPage> {
   bool _isApprovalLoading = false;
   String? _approvalErrorMessage;
   List<Map<String, dynamic>> _approvalRules = [];
+  List<Map<String, dynamic>> _approvalProxies = [];
+  List<Map<String, dynamic>> _approvalAuditLogs = [];
+  bool _isProxyLoading = false;
+  bool _isAuditLoading = false;
+  String? _proxyErrorMessage;
+  String? _auditErrorMessage;
 
   // รายการสีที่แนะนำ
   final List<Color> _presetColors = [
@@ -108,6 +115,99 @@ class _HRMPageState extends State<HRMPage> {
     }
   }
 
+  Future<void> _loadApprovalProxies({bool showLoading = true}) async {
+    if (showLoading) {
+      setState(() {
+        _isProxyLoading = true;
+        _proxyErrorMessage = null;
+      });
+    } else {
+      setState(() {
+        _proxyErrorMessage = null;
+      });
+    }
+
+    try {
+      final response = await SupabaseService.client
+          .from('approval_proxies')
+          .select('*')
+          .order('created_at', ascending: false);
+
+      if (!mounted) return;
+      setState(() {
+        _approvalProxies = List<Map<String, dynamic>>.from(response);
+        _isProxyLoading = false;
+      });
+    } on PostgrestException catch (e) {
+      if (!mounted) return;
+      final isMissingTable = e.code == '42P01';
+      setState(() {
+        _proxyErrorMessage = isMissingTable
+            ? 'ยังไม่พบตาราง approval_proxies กรุณารัน migration ที่เกี่ยวข้องก่อน'
+            : 'ไม่สามารถโหลด Proxy: ${e.message}';
+        _isProxyLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _proxyErrorMessage = 'ไม่สามารถโหลด Proxy: $e';
+        _isProxyLoading = false;
+      });
+    }
+  }
+
+  Future<void> _loadApprovalAuditLogs({bool showLoading = true}) async {
+    if (showLoading) {
+      setState(() {
+        _isAuditLoading = true;
+        _auditErrorMessage = null;
+      });
+    } else {
+      setState(() {
+        _auditErrorMessage = null;
+      });
+    }
+
+    try {
+      final response = await SupabaseService.client
+          .from('procurement_po_approval_audit_logs')
+          .select('''
+            id,
+            po_id,
+            action,
+            actor_user_id,
+            actor_role,
+            priority,
+            message,
+            created_at,
+            po:procurement_purchase_orders(order_number)
+          ''')
+          .order('created_at', ascending: false)
+          .limit(30);
+
+      if (!mounted) return;
+      setState(() {
+        _approvalAuditLogs = List<Map<String, dynamic>>.from(response);
+        _isAuditLoading = false;
+      });
+    } on PostgrestException catch (e) {
+      if (!mounted) return;
+      final isMissingTable = e.code == '42P01';
+      setState(() {
+        _auditErrorMessage = isMissingTable
+            ? 'ยังไม่พบตาราง procurement_po_approval_audit_logs กรุณารัน migration ก่อน'
+            : 'ไม่สามารถโหลดบันทึกการอนุมัติ: ${e.message}';
+        _isAuditLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _auditErrorMessage = 'ไม่สามารถโหลดบันทึกการอนุมัติ: $e';
+        _isAuditLoading = false;
+      });
+    }
+  }
+
   Map<String, dynamic>? _getRuleForGroup(String groupId) {
     for (final rule in _approvalRules) {
       final mappedGroup = rule['group'] as Map<String, dynamic>?;
@@ -117,6 +217,36 @@ class _HRMPageState extends State<HRMPage> {
       }
     }
     return null;
+  }
+
+  Map<String, dynamic>? _findUserById(String? userId) {
+    if (userId == null) return null;
+    for (final user in _users) {
+      if ((user['id']?.toString() ?? user['user_id']?.toString()) == userId) {
+        return user;
+      }
+    }
+    return null;
+  }
+
+  String _resolveUserName(String? userId) {
+    final user = _findUserById(userId);
+    if (user == null) {
+      return userId ?? '-';
+    }
+    return user['full_name']?.toString() ??
+        user['display_name']?.toString() ??
+        user['email']?.toString() ??
+        user['username']?.toString() ??
+        userId ?? '-';
+  }
+
+  String _resolveUserEmail(String? userId) {
+    final user = _findUserById(userId);
+    if (user == null) {
+      return '';
+    }
+    return user['email']?.toString() ?? '';
   }
 
   String _formatApprovalLimit(Map<String, dynamic>? rule) {
@@ -371,9 +501,20 @@ class _HRMPageState extends State<HRMPage> {
       // โหลด sort_order ของกลุ่มผู้ใช้ปัจจุบัน
       final currentSortOrder = await UserGroupService.getCurrentUserSortOrder();
 
+      final normalizedUsers = List<Map<String, dynamic>>.from(usersResponse).map((user) {
+        final userId = user['user_id']?.toString();
+        if (userId != null && userId.isNotEmpty) {
+          return {
+            ...user,
+            'id': userId,
+          };
+        }
+        return user;
+      }).toList();
+
       setState(() {
         _userGroups = List<Map<String, dynamic>>.from(groupsResponse);
-        _users = List<Map<String, dynamic>>.from(usersResponse);
+        _users = normalizedUsers;
         _permissions = List<Map<String, dynamic>>.from(permissionsResponse);
         _currentUserSortOrder = currentSortOrder;
         
@@ -389,6 +530,8 @@ class _HRMPageState extends State<HRMPage> {
       });
 
       await _loadApprovalRules(showLoading: false);
+      await _loadApprovalProxies(showLoading: false);
+      await _loadApprovalAuditLogs(showLoading: false);
     } catch (e) {
       print('❌ Error loading user groups: $e');
       setState(() {
@@ -677,6 +820,602 @@ class _HRMPageState extends State<HRMPage> {
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProxySection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey[200]!),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.person_add_alt, color: Color(0xFF2E7D32)),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'ผู้อนุมัติสำรอง (Proxy Approver)',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+              IconButton(
+                tooltip: 'รีเฟรช',
+                onPressed: _isProxyLoading ? null : () => _loadApprovalProxies(),
+                icon: const Icon(Icons.refresh),
+              ),
+              const SizedBox(width: 4),
+              OutlinedButton.icon(
+                onPressed: _showProxyDialog,
+                icon: const Icon(Icons.add),
+                label: const Text('เพิ่ม Proxy'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'กำหนดผู้แทนอนุมัติในกรณีที่เจ้าของสิทธิติดภารกิจ โดยสามารถระบุช่วงเวลาที่อนุญาตและสถานะการใช้งาน',
+            style: TextStyle(color: Colors.grey[600], fontSize: 12.5),
+          ),
+          const SizedBox(height: 12),
+          if (_proxyErrorMessage != null)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red[50],
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.red[100]!),
+              ),
+              child: Text(
+                _proxyErrorMessage!,
+                style: TextStyle(color: Colors.red[700]),
+              ),
+            )
+          else if (_isProxyLoading)
+            const Padding(
+              padding: EdgeInsets.all(20),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_approvalProxies.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'ยังไม่มี Proxy',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'กด “เพิ่ม Proxy” เพื่อกำหนดผู้อนุมัติสำรองสำหรับแต่ละกลุ่ม',
+                    style: TextStyle(color: Colors.grey[600], fontSize: 12.5),
+                  ),
+                ],
+              ),
+            )
+          else
+            Column(
+              children: _approvalProxies
+                  .map((proxy) => _buildProxyCard(proxy))
+                  .toList(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProxyCard(Map<String, dynamic> proxy) {
+    final ownerId = proxy['owner_user_id']?.toString();
+    final proxyId = proxy['proxy_user_id']?.toString();
+    final isActive = proxy['is_active'] != false;
+    final startAt = proxy['start_at']?.toString();
+    final endAt = proxy['end_at']?.toString();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'เจ้าของสิทธิ์: ${_resolveUserName(ownerId)}',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    if (_resolveUserEmail(ownerId).isNotEmpty)
+                      Text(
+                        _resolveUserEmail(ownerId),
+                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                      ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'ผู้แทน: ${_resolveUserName(proxyId)}',
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                children: [
+                  Switch(
+                    value: isActive,
+                    onChanged: (value) => _toggleProxyActive(proxy, value),
+                  ),
+                  Text(
+                    isActive ? 'เปิดใช้งาน' : 'ปิดอยู่',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isActive ? Colors.green[800] : Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildInfoChip(Icons.calendar_today, 'เริ่ม: ${startAt != null ? _formatDate(startAt) : '-'}'),
+              _buildInfoChip(Icons.event_available, 'สิ้นสุด: ${endAt != null ? _formatDate(endAt) : '-'}'),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton.icon(
+                onPressed: () => _showProxyDialog(existingProxy: proxy),
+                icon: const Icon(Icons.edit, size: 16),
+                label: const Text('แก้ไข'),
+              ),
+              const SizedBox(width: 8),
+              TextButton.icon(
+                onPressed: () => _deleteProxy(proxy),
+                icon: const Icon(Icons.delete_outline, size: 16, color: Colors.red),
+                label: const Text('ลบ', style: TextStyle(color: Colors.red)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAuditLogSection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey[200]!),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.history, color: Color(0xFF2E7D32)),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'บันทึกการอนุมัติล่าสุด',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+              IconButton(
+                tooltip: 'รีเฟรช',
+                onPressed: _isAuditLoading ? null : () => _loadApprovalAuditLogs(),
+                icon: const Icon(Icons.refresh),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'ตรวจสอบการเปลี่ยนสถานะการอนุมัติแต่ละขั้นเพื่อช่วยติดตามการทำงานย้อนหลังได้รวดเร็ว',
+            style: TextStyle(color: Colors.grey[600], fontSize: 12.5),
+          ),
+          const SizedBox(height: 12),
+          if (_auditErrorMessage != null)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red[50],
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.red[100]!),
+              ),
+              child: Text(
+                _auditErrorMessage!,
+                style: TextStyle(color: Colors.red[700]),
+              ),
+            )
+          else if (_isAuditLoading)
+            const Padding(
+              padding: EdgeInsets.all(20),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_approvalAuditLogs.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                'ยังไม่มีการบันทึกการอนุมัติในช่วงล่าสุด',
+                style: TextStyle(color: Colors.grey[600]),
+              ),
+            )
+          else
+            Column(
+              children: _approvalAuditLogs
+                  .map((log) => _buildAuditLogTile(log))
+                  .toList(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAuditLogTile(Map<String, dynamic> log) {
+    final poNumber = log['po']?['order_number']?.toString() ?? log['po_id']?.toString() ?? '-';
+    final action = log['action']?.toString() ?? '-';
+    final actorName = _resolveUserName(log['actor_user_id']?.toString());
+    final message = log['message']?.toString();
+    final createdAt = log['created_at']?.toString();
+
+    IconData icon;
+    Color color;
+    if (action.toLowerCase().contains('approve')) {
+      icon = Icons.check_circle;
+      color = Colors.green;
+    } else if (action.toLowerCase().contains('reject') || action.toLowerCase().contains('cancel')) {
+      icon = Icons.cancel;
+      color = Colors.red;
+    } else {
+      icon = Icons.info;
+      color = Colors.blueGrey;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'PO $poNumber • $action',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'โดย $actorName',
+                  style: TextStyle(color: Colors.grey[700], fontSize: 12.5),
+                ),
+                if (message != null && message.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    message,
+                    style: TextStyle(color: Colors.grey[600]),
+                  ),
+                ],
+                const SizedBox(height: 4),
+                Text(
+                  createdAt != null ? _formatDate(createdAt) : '-',
+                  style: TextStyle(color: Colors.grey[500], fontSize: 11.5),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showProxyDialog({Map<String, dynamic>? existingProxy}) async {
+    if (_users.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ยังไม่มีข้อมูลผู้ใช้ กรุณาเพิ่มผู้ใช้ก่อนกำหนด Proxy')),
+      );
+      return;
+    }
+
+    final formKey = GlobalKey<FormState>();
+    String? ownerId = existingProxy?['owner_user_id']?.toString();
+    String? proxyId = existingProxy?['proxy_user_id']?.toString();
+    DateTime? startAt = existingProxy?['start_at'] != null
+        ? DateTime.tryParse(existingProxy!['start_at'].toString())
+        : null;
+    DateTime? endAt = existingProxy?['end_at'] != null
+        ? DateTime.tryParse(existingProxy!['end_at'].toString())
+        : null;
+    bool isActive = existingProxy?['is_active'] != false;
+    bool isSaving = false;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: Text(existingProxy == null ? 'เพิ่ม Proxy' : 'แก้ไข Proxy'),
+              content: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    DropdownButtonFormField<String>(
+                      value: ownerId,
+                      decoration: const InputDecoration(
+                        labelText: 'เจ้าของสิทธิ์ *',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: _users
+                          .map(
+                            (user) => DropdownMenuItem<String>(
+                              value: (user['id'] ?? user['user_id']).toString(),
+                              child: Text(_resolveUserName((user['id'] ?? user['user_id']).toString())),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) => setDialogState(() => ownerId = value),
+                      validator: (value) => value == null || value.isEmpty ? 'เลือกเจ้าของสิทธิ์' : null,
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      value: proxyId,
+                      decoration: const InputDecoration(
+                        labelText: 'ผู้แทน (Proxy) *',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: _users
+                          .map(
+                            (user) => DropdownMenuItem<String>(
+                              value: (user['id'] ?? user['user_id']).toString(),
+                              child: Text(_resolveUserName((user['id'] ?? user['user_id']).toString())),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) => setDialogState(() => proxyId = value),
+                      validator: (value) => value == null || value.isEmpty ? 'เลือกผู้แทน' : null,
+                    ),
+                    const SizedBox(height: 12),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('เปิดใช้งาน'),
+                      value: isActive,
+                      onChanged: (value) => setDialogState(() => isActive = value),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildDatePickerField(
+                      label: 'วันที่เริ่มมีผล',
+                      value: startAt,
+                      onTap: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: startAt ?? DateTime.now(),
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2100),
+                        );
+                        if (picked != null) {
+                          setDialogState(() => startAt = picked);
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    _buildDatePickerField(
+                      label: 'วันที่สิ้นสุด (ถ้ามี)',
+                      value: endAt,
+                      onTap: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: endAt ?? DateTime.now(),
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2100),
+                        );
+                        if (picked != null) {
+                          setDialogState(() => endAt = picked);
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('ยกเลิก'),
+                ),
+                ElevatedButton(
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                          if (!(formKey.currentState?.validate() ?? false)) {
+                            return;
+                          }
+                          if (ownerId == proxyId) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('เจ้าของสิทธิ์และผู้แทนต้องเป็นคนละคน')),
+                            );
+                            return;
+                          }
+                          setDialogState(() => isSaving = true);
+                          final data = {
+                            'owner_user_id': ownerId,
+                            'proxy_user_id': proxyId,
+                            'start_at': startAt?.toIso8601String(),
+                            'end_at': endAt?.toIso8601String(),
+                            'is_active': isActive,
+                          };
+                          if (existingProxy != null) {
+                            data['id'] = existingProxy['id'];
+                          }
+                          try {
+                            await SupabaseService.client
+                                .from('approval_proxies')
+                                .upsert(data);
+                            if (!mounted) return;
+                            Navigator.of(context).pop(true);
+                          } on PostgrestException catch (e) {
+                            if (!mounted) return;
+                            setDialogState(() => isSaving = false);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('บันทึกไม่สำเร็จ: ${e.message}')),
+                            );
+                          } catch (e) {
+                            if (!mounted) return;
+                            setDialogState(() => isSaving = false);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('บันทึกไม่สำเร็จ: $e')),
+                            );
+                          }
+                        },
+                  child: Text(existingProxy == null ? 'บันทึก Proxy' : 'บันทึกการแก้ไข'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (saved == true) {
+      await _loadApprovalProxies(showLoading: false);
+    }
+  }
+
+  Future<void> _deleteProxy(Map<String, dynamic> proxy) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('ยืนยันการลบ Proxy'),
+        content: Text('ต้องการลบ Proxy ของ ${_resolveUserName(proxy['owner_user_id']?.toString())} หรือไม่?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('ยกเลิก'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('ลบ'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await SupabaseService.client
+          .from('approval_proxies')
+          .delete()
+          .eq('id', proxy['id']);
+      if (!mounted) return;
+      await _loadApprovalProxies(showLoading: false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ลบ Proxy สำเร็จ')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('ไม่สามารถลบ Proxy: $e')),
+      );
+    }
+  }
+
+  Future<void> _toggleProxyActive(Map<String, dynamic> proxy, bool value) async {
+    try {
+      await SupabaseService.client
+          .from('approval_proxies')
+          .update({'is_active': value})
+          .eq('id', proxy['id']);
+      if (!mounted) return;
+      await _loadApprovalProxies(showLoading: false);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('ไม่สามารถอัปเดตสถานะ Proxy: $e')),
+      );
+    }
+  }
+
+  Widget _buildDatePickerField({
+    required String label,
+    required DateTime? value,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+        ),
+        child: Text(
+          value == null ? 'ไม่ระบุ' : _formatDate(value.toIso8601String()),
+          style: TextStyle(color: value == null ? Colors.grey[500] : Colors.black87),
         ),
       ),
     );
@@ -1654,6 +2393,10 @@ class _HRMPageState extends State<HRMPage> {
                             ),
                           ),
                           const SizedBox(height: 12),
+                          _buildProxySection(),
+                          const SizedBox(height: 16),
+                          _buildAuditLogSection(),
+                          const SizedBox(height: 16),
                           if (groups.isEmpty)
                             Container(
                               padding: const EdgeInsets.all(20),

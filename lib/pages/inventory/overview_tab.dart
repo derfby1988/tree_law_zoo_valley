@@ -69,6 +69,7 @@ class _OverviewTabState extends State<OverviewTab> {
       );
     }
 
+<<<<<<< HEAD
     return RefreshIndicator(
       onRefresh: _loadData,
       child: SingleChildScrollView(
@@ -91,6 +92,32 @@ class _OverviewTabState extends State<OverviewTab> {
             const SizedBox(height: AppDesignSystem.spacingLg),
             _buildMovementStatistics(),
           ],
+=======
+    return SafeArea(
+      child: RefreshIndicator(
+        onRefresh: _loadData,
+        child: SingleChildScrollView(
+          physics: AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              InventoryFilterWidget(
+                searchController: _searchController,
+                selectedWarehouse: _selectedWarehouse,
+                selectedShelf: _selectedShelf,
+                onWarehouseChanged: (value) => setState(() => _selectedWarehouse = value!),
+                onShelfChanged: (value) => setState(() => _selectedShelf = value!),
+              ),
+              SizedBox(height: 16),
+              _buildSummaryCards(),
+              SizedBox(height: 16),
+              _buildExpandableAlerts(),
+              SizedBox(height: 16),
+              _buildMovementStatistics(),
+            ],
+          ),
+>>>>>>> UI inventory
         ),
       ),
     );

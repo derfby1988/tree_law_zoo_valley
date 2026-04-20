@@ -224,6 +224,7 @@ class _ProductTabState extends State<ProductTab> {
     final warehouseOptions = ['ทั้งหมด', ..._warehouses.map((w) => w['name'] as String)];
     final shelfOptions = ['ทั้งหมด', 'ยังไม่มีชั้นวาง', ..._shelves.map((s) => s['code'] as String)];
 
+<<<<<<< HEAD
     return RefreshIndicator(
       onRefresh: _loadData,
       child: SingleChildScrollView(
@@ -247,22 +248,49 @@ class _ProductTabState extends State<ProductTab> {
               Padding(
                 padding: EdgeInsets.only(bottom: 8),
                 child: Text(_accountErrorMessage!, style: TextStyle(color: _dangerColor)),
+=======
+    return SafeArea(
+      child: RefreshIndicator(
+        onRefresh: _loadData,
+        child: SingleChildScrollView(
+          physics: AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              InventoryFilterWidget(
+                searchController: _searchController,
+                selectedWarehouse: _selectedWarehouse,
+                selectedShelf: _selectedShelf,
+                onWarehouseChanged: (value) => setState(() { _selectedWarehouse = value!; _currentPage = 0; }),
+                onShelfChanged: (value) => setState(() { _selectedShelf = value!; _currentPage = 0; }),
+                warehouseOptions: warehouseOptions,
+                shelfOptions: shelfOptions,
+                showNoShelfOption: true,
+>>>>>>> UI inventory
               ),
-            ProductActionButtonsCard(
-              onShowCategoryDialog: _showCategoryDialog,
-              onShowUnitDialog: _showUnitDialog,
-              onShowAddProductDialog: _showAddProductDialog,
-              onShowProduceProductDialog: _showProduceProductDialog,
-              onNavigateToProcurementPurchase: () => _openProcurementTab('procurement_purchase'),
-              onNavigateToProcurementTracking: () => _openProcurementTab('procurement_tracking'),
-              onNavigateToProcurementReceive: () => _openProcurementTab('procurement_receive'),
-              onNavigateToProcurementApprove: () => _openProcurementTab('procurement_purchase'),
-            ),
-            SizedBox(height: 16),
-            _buildNoShelfCard(),
-            SizedBox(height: 16),
-            _buildProductList(),
-          ],
+              SizedBox(height: 16),
+              if (_accountErrorMessage != null)
+                Padding(
+                  padding: EdgeInsets.only(bottom: 8),
+                  child: Text(_accountErrorMessage!, style: TextStyle(color: Colors.red)),
+                ),
+              ProductActionButtonsCard(
+                onShowCategoryDialog: _showCategoryDialog,
+                onShowUnitDialog: _showUnitDialog,
+                onShowAddProductDialog: _showAddProductDialog,
+                onShowProduceProductDialog: _showProduceProductDialog,
+                onNavigateToProcurementPurchase: () => _openProcurementTab('procurement_purchase'),
+                onNavigateToProcurementTracking: () => _openProcurementTab('procurement_tracking'),
+                onNavigateToProcurementReceive: () => _openProcurementTab('procurement_receive'),
+                onNavigateToProcurementApprove: () => _openProcurementTab('procurement_purchase'),
+              ),
+              SizedBox(height: 16),
+              _buildNoShelfCard(),
+              SizedBox(height: 16),
+              _buildProductList(),
+            ],
+          ),
         ),
       ),
     );

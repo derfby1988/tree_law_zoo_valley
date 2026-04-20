@@ -6,6 +6,7 @@ import '../../services/inventory_service.dart';
 import 'dialogs/cancel_po_dialog.dart';
 import 'dialogs/send_po_dialog.dart';
 import 'dialogs/approve_po_dialog.dart';
+import 'widgets/purchase_order_form_dialog.dart';
 
 class PurchaseTab extends StatefulWidget {
   const PurchaseTab({super.key});
@@ -244,154 +245,151 @@ class _PurchaseTabState extends State<PurchaseTab> {
     }
 
     return Scaffold(
-      body: Column(
-        children: [
-          // Filter Header - ใช้ SingleChildScrollView เพื่อป้องกันล้นจอ
-          Container(
-            padding: EdgeInsets.all(16),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.vertical,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: _searchController,
-                    decoration: InputDecoration(
-                      hintText: 'ค้นหาเลขที่ PO หรือชื่อผู้ขาย...',
-                      prefixIcon: Icon(Icons.search),
-                      border: OutlineInputBorder(),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Container(
+              padding: EdgeInsets.all(16),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: _searchController,
+                      decoration: const InputDecoration(
+                        hintText: 'ค้นหาเลขที่ PO หรือชื่อผู้ขาย...',
+                        prefixIcon: Icon(Icons.search),
+                        border: OutlineInputBorder(),
+                      ),
                     ),
-                  ),
-                  SizedBox(height: 12),
-                  // Dropdowns ใช้ Wrap แทน LayoutBuilder เพื่อป้องกัน overflow
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      SizedBox(
-                        width: double.infinity,
-                        child: DropdownButtonFormField<String>(
-                          key: ValueKey('status_$_selectedStatus'),
-                          initialValue: _selectedStatus,
-                          isExpanded: true,
-                          decoration: InputDecoration(
-                            labelText: 'สถานะ',
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                          items: [
-                            DropdownMenuItem(value: 'all', child: Text('ทั้งหมด')),
-                            DropdownMenuItem(value: 'draft', child: Text('ฉบับร่าง')),
-                            DropdownMenuItem(value: 'sent', child: Text('ส่งแล้ว')),
-                            DropdownMenuItem(value: 'confirmed', child: Text('ยืนยันแล้ว')),
-                            DropdownMenuItem(value: 'partial_received', child: Text('รับบางส่วน')),
-                            DropdownMenuItem(value: 'completed', child: Text('เสร็จสมบูรณ์')),
-                            DropdownMenuItem(value: 'cancelled', child: Text('ยกเลิก')),
-                          ],
-                          onChanged: (value) => setState(() => _selectedStatus = value ?? 'all'),
-                        ),
-                      ),
-                      SizedBox(
-                        width: double.infinity,
-                        child: DropdownButtonFormField<String>(
-                          key: ValueKey('supplier_${_selectedSupplierId ?? 'all'}'),
-                          initialValue: _selectedSupplierId,
-                          isExpanded: true,
-                          decoration: InputDecoration(
-                            labelText: 'ผู้ขาย',
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                          items: [
-                            DropdownMenuItem(value: null, child: Text('ทั้งหมด')),
-                            ..._suppliers.map((supplier) => DropdownMenuItem(
-                                  value: supplier['id'],
-                                  child: Text(
-                                    supplier['name'],
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                )),
-                          ],
-                          onChanged: (value) => setState(() => _selectedSupplierId = value),
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 12),
-                  // Status chips - horizontal scroll
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
                       children: [
-                        _buildStatusChip('all', 'ทั้งหมด'),
-                        SizedBox(width: 8),
-                        _buildStatusChip('draft', 'ฉบับร่าง'),
-                        SizedBox(width: 8),
-                        _buildStatusChip('sent', 'ส่งแล้ว'),
-                        SizedBox(width: 8),
-                        _buildStatusChip('confirmed', 'ยืนยันแล้ว'),
-                        SizedBox(width: 8),
-                        _buildStatusChip('partial_received', 'รับบางส่วน'),
-                        SizedBox(width: 8),
-                        _buildStatusChip('completed', 'เสร็จสมบูรณ์'),
-                        SizedBox(width: 8),
-                        _buildStatusChip('cancelled', 'ยกเลิก'),
+                        SizedBox(
+                          width: double.infinity,
+                          child: DropdownButtonFormField<String>(
+                            key: ValueKey('status_$_selectedStatus'),
+                            initialValue: _selectedStatus,
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                              labelText: 'สถานะ',
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                            ),
+                            items: const [
+                              DropdownMenuItem(value: 'all', child: Text('ทั้งหมด')),
+                              DropdownMenuItem(value: 'draft', child: Text('ฉบับร่าง')),
+                              DropdownMenuItem(value: 'sent', child: Text('ส่งแล้ว')),
+                              DropdownMenuItem(value: 'confirmed', child: Text('ยืนยันแล้ว')),
+                              DropdownMenuItem(value: 'partial_received', child: Text('รับบางส่วน')),
+                              DropdownMenuItem(value: 'completed', child: Text('เสร็จสมบูรณ์')),
+                              DropdownMenuItem(value: 'cancelled', child: Text('ยกเลิก')),
+                            ],
+                            onChanged: (value) => setState(() => _selectedStatus = value ?? 'all'),
+                          ),
+                        ),
+                        SizedBox(
+                          width: double.infinity,
+                          child: DropdownButtonFormField<String>(
+                            key: ValueKey('supplier_${_selectedSupplierId ?? 'all'}'),
+                            initialValue: _selectedSupplierId,
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                              labelText: 'ผู้ขาย',
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                            ),
+                            items: [
+                              const DropdownMenuItem(value: null, child: Text('ทั้งหมด')),
+                              ..._suppliers.map((supplier) => DropdownMenuItem(
+                                    value: supplier['id'],
+                                    child: Text(
+                                      supplier['name'],
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  )),
+                            ],
+                            onChanged: (value) => setState(() => _selectedSupplierId = value),
+                          ),
+                        ),
                       ],
                     ),
-                  ),
-                  SizedBox(height: 12),
-                  Container(
-                    width: double.infinity,
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[100],
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.grey[300]!),
-                    ),
-                    child: Text(
-                      'ผลการกรอง: ${_filteredOrders.length} รายการ | มูลค่ารวม ฿${_filteredTotalAmount.toStringAsFixed(2)}',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey[800],
+                    const SizedBox(height: 12),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          _buildStatusChip('all', 'ทั้งหมด'),
+                          const SizedBox(width: 8),
+                          _buildStatusChip('draft', 'ฉบับร่าง'),
+                          const SizedBox(width: 8),
+                          _buildStatusChip('sent', 'ส่งแล้ว'),
+                          const SizedBox(width: 8),
+                          _buildStatusChip('confirmed', 'ยืนยันแล้ว'),
+                          const SizedBox(width: 8),
+                          _buildStatusChip('partial_received', 'รับบางส่วน'),
+                          const SizedBox(width: 8),
+                          _buildStatusChip('completed', 'เสร็จสมบูรณ์'),
+                          const SizedBox(width: 8),
+                          _buildStatusChip('cancelled', 'ยกเลิก'),
+                        ],
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Expanded(
-            child: _isRefreshing
-                ? _buildLoadingSkeletonList()
-                : _filteredOrders.isEmpty
-                    ? _buildEmptyState()
-                    : RefreshIndicator(
-                        onRefresh: _loadData,
-                        child: ListView.builder(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          padding: EdgeInsets.only(top: 8, bottom: 80),
-                          itemCount: _filteredOrders.length,
-                          itemBuilder: (context, index) {
-                            final order = _filteredOrders[index];
-                            return _buildOrderCard(order);
-                          },
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.grey[300]!),
+                      ),
+                      child: Text(
+                        'ผลการกรอง: ${_filteredOrders.length} รายการ | มูลค่ารวม ฿${_filteredTotalAmount.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey[800],
                         ),
                       ),
-          ),
-        ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Expanded(
+              child: _isRefreshing
+                  ? _buildLoadingSkeletonList()
+                  : _filteredOrders.isEmpty
+                      ? _buildEmptyState()
+                      : RefreshIndicator(
+                          onRefresh: _loadData,
+                          child: ListView.builder(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.only(top: 8, bottom: 80),
+                            itemCount: _filteredOrders.length,
+                            itemBuilder: (context, index) {
+                              final order = _filteredOrders[index];
+                              return _buildOrderCard(order);
+                            },
+                          ),
+                        ),
+            ),
+          ],
+        ),
       ),
       floatingActionButton: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          if (_canCreate)
-            FloatingActionButton.small(
-              heroTag: 'createPO',
-              onPressed: _showCreatePurchaseOrderDialog,
-              child: Icon(Icons.add),
-              tooltip: 'สร้าง PO',
-            ),
+          FloatingActionButton.small(
+            heroTag: 'createPO',
+            onPressed: _handleCreatePOButton,
+            child: Icon(Icons.add),
+            tooltip: 'สร้าง PO',
+          ),
           SizedBox(height: 8),
           FloatingActionButton.small(
             heroTag: 'refresh',
@@ -444,9 +442,9 @@ class _PurchaseTabState extends State<PurchaseTab> {
                 icon: Icon(Icons.filter_alt_off),
                 label: Text('ล้างตัวกรอง'),
               )
-            else if (_canCreate)
+            else
               ElevatedButton.icon(
-                onPressed: _showCreatePurchaseOrderDialog,
+                onPressed: _handleCreatePOButton,
                 icon: Icon(Icons.add),
                 label: Text('สร้างใบสั่งซื้อแรก'),
               ),
@@ -811,7 +809,10 @@ class _PurchaseTabState extends State<PurchaseTab> {
       };
     }).toList();
 
-    final formData = await _showPurchaseOrderFormDialog(
+    final formData = await showPurchaseOrderFormDialog(
+      context: context,
+      suppliers: _suppliers,
+      products: _products,
       title: 'แก้ไขใบสั่งซื้อ',
       submitLabel: 'บันทึก',
       initialSupplierId: detail['supplier_id']?.toString(),
@@ -1011,6 +1012,70 @@ class _PurchaseTabState extends State<PurchaseTab> {
     }
   }
 
+  /// จัดการเมื่อกดปุ่มสร้าง PO - ตรวจสอบการล็อกอินสำหรับ Guest
+  Future<void> _handleCreatePOButton() async {
+    // ตรวจสอบว่าเป็น Guest (ไม่ได้ล็อกอิน) หรือไม่
+    if (_currentUserId == null) {
+      final shouldLogin = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.lock_outline, color: Colors.orange),
+              SizedBox(width: 8),
+              Text('ต้องล็อกอินก่อน'),
+            ],
+          ),
+          content: Text(
+            'การสร้างใบสั่งซื้อจำเป็นต้องเข้าสู่ระบบ\n\nกรุณาล็อกอินเพื่อดำเนินการต่อ',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text('ยกเลิก'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text('ไปล็อกอิน'),
+            ),
+          ],
+        ),
+      );
+
+      if (shouldLogin == true) {
+        // TODO: Navigate to login page or show login dialog
+        // สำหรับตอนนี้แสดง SnackBar แจ้งให้ไปล็อกอิน
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('กรุณาไปที่เมนู "เข้าสู่ระบบ" เพื่อล็อกอิน'),
+            action: SnackBarAction(
+              label: 'เข้าสู่ระบบ',
+              onPressed: () {
+                // Navigate to login - ปรับตามระบบนำทางของแอพ
+                // Navigator.of(context).pushNamed('/login');
+              },
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    // ตรวจสอบ permission สำหรับผู้ใช้ที่ล็อกอินแล้ว
+    if (!_canCreate) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('บัญชีนี้ไม่มีสิทธิ์สร้าง PO กรุณาติดต่อผู้ดูแลระบบ'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // ดำเนินการสร้าง PO ตามปกติ
+    await _showCreatePurchaseOrderDialog();
+  }
+
   Future<void> _showCreatePurchaseOrderDialog() async {
     if (_suppliers.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1026,7 +1091,10 @@ class _PurchaseTabState extends State<PurchaseTab> {
       return;
     }
 
-    final formData = await _showPurchaseOrderFormDialog(
+    final formData = await showPurchaseOrderFormDialog(
+      context: context,
+      suppliers: _suppliers,
+      products: _products,
       title: 'สร้างใบสั่งซื้อใหม่',
       submitLabel: 'สร้าง PO',
       initialItems: [
@@ -1066,310 +1134,11 @@ class _PurchaseTabState extends State<PurchaseTab> {
     }
   }
 
-  Future<Map<String, dynamic>?> _showPurchaseOrderFormDialog({
-    required String title,
-    required String submitLabel,
-    String? initialSupplierId,
-    String? initialNotes,
-    String? initialExpectedDate,
-    List<Map<String, dynamic>>? initialItems,
-  }) async {
-    final formKey = GlobalKey<FormState>();
-    final notesController = TextEditingController(text: initialNotes ?? '');
-    String? supplierId = initialSupplierId;
-    DateTime? expectedDate = initialExpectedDate != null ? DateTime.tryParse(initialExpectedDate) : null;
-    final items = (initialItems ?? [])
-        .map(
-          (item) => {
-            'product_id': item['product_id']?.toString(),
-            'product_name': item['product_name']?.toString() ?? '',
-            'quantity': (item['quantity'] as num?)?.toDouble() ?? 1,
-            'unit_price': (item['unit_price'] as num?)?.toDouble() ?? 0,
-          },
-        )
-        .toList();
-
-    if (items.isEmpty) {
-      items.add({'product_id': null, 'product_name': '', 'quantity': 1.0, 'unit_price': 0.0});
-    }
-
-    final result = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return AlertDialog(
-            title: Text(title),
-            content: SizedBox(
-              width: 620,
-              child: Form(
-                key: formKey,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Flexible(
-                      child: SingleChildScrollView(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildFormSectionTitle('ข้อมูลหัวเอกสาร'),
-                            Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: Colors.grey[100],
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Column(
-                                children: [
-                                  DropdownButtonFormField<String>(
-                                    initialValue: supplierId,
-                                    decoration: const InputDecoration(
-                                      labelText: 'ผู้ขาย *',
-                                      border: OutlineInputBorder(),
-                                    ),
-                                    items: _suppliers
-                                        .map(
-                                          (supplier) => DropdownMenuItem<String>(
-                                            value: supplier['id']?.toString(),
-                                            child: Text(supplier['name']?.toString() ?? '-'),
-                                          ),
-                                        )
-                                        .toList(),
-                                    validator: (value) => value == null || value.isEmpty ? 'กรุณาเลือกผู้ขาย' : null,
-                                    onChanged: (value) => setDialogState(() => supplierId = value),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  InkWell(
-                                    onTap: () async {
-                                      final picked = await showDatePicker(
-                                        context: context,
-                                        initialDate: expectedDate ?? DateTime.now(),
-                                        firstDate: DateTime(2020),
-                                        lastDate: DateTime(2100),
-                                      );
-                                      if (picked != null) {
-                                        setDialogState(() => expectedDate = picked);
-                                      }
-                                    },
-                                    child: InputDecorator(
-                                      decoration: const InputDecoration(
-                                        labelText: 'วันที่คาดว่าจะรับ',
-                                        border: OutlineInputBorder(),
-                                      ),
-                                      child: Text(
-                                        expectedDate == null
-                                            ? 'ไม่ระบุ'
-                                            : '${expectedDate!.day}/${expectedDate!.month}/${expectedDate!.year + 543}',
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  TextFormField(
-                                    controller: notesController,
-                                    maxLines: 2,
-                                    decoration: const InputDecoration(
-                                      labelText: 'หมายเหตุ',
-                                      border: OutlineInputBorder(),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            _buildFormSectionTitle('รายการสินค้า'),
-                            ...items.asMap().entries.map((entry) {
-                              final index = entry.key;
-                              final item = entry.value;
-                              final selectedProductId = item['product_id']?.toString();
-                              return Card(
-                                margin: const EdgeInsets.only(bottom: 8),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(8),
-                                  child: Column(
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: DropdownButtonFormField<String>(
-                                              initialValue: selectedProductId,
-                                              decoration: const InputDecoration(
-                                                labelText: 'สินค้า',
-                                                border: OutlineInputBorder(),
-                                              ),
-                                              isExpanded: true,
-                                              items: _products
-                                                  .map(
-                                                    (product) => DropdownMenuItem<String>(
-                                                      value: product['id']?.toString(),
-                                                      child: Text(
-                                                        product['name']?.toString() ?? '-',
-                                                        overflow: TextOverflow.ellipsis,
-                                                      ),
-                                                    ),
-                                                  )
-                                                  .toList(),
-                                              validator: (value) {
-                                                if (value == null || value.trim().isEmpty) {
-                                                  return 'เลือกสินค้า';
-                                                }
-                                                return null;
-                                              },
-                                              onChanged: (value) {
-                                                final selectedProduct = _products.firstWhere(
-                                                  (product) => product['id']?.toString() == value,
-                                                  orElse: () => <String, dynamic>{},
-                                                );
-                                                item['product_id'] = value;
-                                                item['product_name'] = selectedProduct['name']?.toString() ?? '';
-                                              },
-                                            ),
-                                          ),
-                                          if (items.length > 1)
-                                            IconButton(
-                                              onPressed: () {
-                                                setDialogState(() => items.removeAt(index));
-                                              },
-                                              icon: const Icon(Icons.remove_circle, color: Colors.red),
-                                              tooltip: 'ลบรายการ',
-                                            ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: TextFormField(
-                                              initialValue: (item['quantity'] as num?)?.toString() ?? '1',
-                                              decoration: const InputDecoration(
-                                                labelText: 'จำนวน',
-                                                border: OutlineInputBorder(),
-                                              ),
-                                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                              validator: (value) {
-                                                final parsed = double.tryParse((value ?? '').trim());
-                                                if (parsed == null || parsed <= 0) {
-                                                  return 'จำนวนต้องมากกว่า 0';
-                                                }
-                                                return null;
-                                              },
-                                              onChanged: (value) => item['quantity'] = double.tryParse(value) ?? 0,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: TextFormField(
-                                              initialValue: (item['unit_price'] as num?)?.toString() ?? '0',
-                                              decoration: const InputDecoration(
-                                                labelText: 'ราคาต่อหน่วย',
-                                                border: OutlineInputBorder(),
-                                              ),
-                                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                              validator: (value) {
-                                                final parsed = double.tryParse((value ?? '').trim());
-                                                if (parsed == null || parsed < 0) {
-                                                  return 'ราคาไม่ถูกต้อง';
-                                                }
-                                                return null;
-                                              },
-                                              onChanged: (value) => item['unit_price'] = double.tryParse(value) ?? 0,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            }),
-                            TextButton.icon(
-                              onPressed: () {
-                                setDialogState(() {
-                                  items.add({'product_id': null, 'product_name': '', 'quantity': 1.0, 'unit_price': 0.0});
-                                });
-                              },
-                              icon: const Icon(Icons.add),
-                              label: const Text('เพิ่มรายการสินค้า'),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    Container(
-                      width: double.infinity,
-                      margin: const EdgeInsets.only(top: 8),
-                      padding: const EdgeInsets.only(top: 8),
-                      decoration: BoxDecoration(
-                        border: Border(top: BorderSide(color: Colors.grey[300]!)),
-                      ),
-                      child: Text(
-                        'ตรวจสอบข้อมูลให้ครบก่อนกด $submitLabel',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('ยกเลิก'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  if (!(formKey.currentState?.validate() ?? false)) {
-                    return;
-                  }
-
-                  if (supplierId == null || supplierId!.isEmpty) {
-                    return;
-                  }
-
-                  final sanitizedItems = items
-                      .map((item) => {
-                            'product_id': item['product_id']?.toString(),
-                            'product_name': item['product_name']?.toString().trim() ?? '',
-                            'quantity': (item['quantity'] as num?)?.toDouble() ?? 0,
-                            'unit_price': (item['unit_price'] as num?)?.toDouble() ?? 0,
-                          })
-                      .toList();
-
-                  Navigator.of(context).pop({
-                    'supplierId': supplierId,
-                    'expectedDate': expectedDate,
-                    'notes': notesController.text.trim(),
-                    'items': sanitizedItems,
-                  });
-                },
-                child: Text(submitLabel),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-
-    notesController.dispose();
-    return result;
-  }
-
   Widget _buildStatusChip(String value, String label) {
     return ChoiceChip(
       label: Text(label),
       selected: _selectedStatus == value,
       onSelected: (_) => setState(() => _selectedStatus = value),
-    );
-  }
-
-  Widget _buildFormSectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Text(
-        title,
-        style: const TextStyle(
-          fontWeight: FontWeight.bold,
-          fontSize: 14,
-        ),
-      ),
     );
   }
 

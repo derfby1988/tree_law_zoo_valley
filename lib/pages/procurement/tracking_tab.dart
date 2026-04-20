@@ -63,58 +63,77 @@ class _TrackingTabState extends State<TrackingTab> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(
+        body: SafeArea(
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      );
     }
 
     if (_errorMessage != null) {
       return Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.error, size: 64, color: Colors.red),
-              SizedBox(height: 16),
-              Text(_errorMessage!, textAlign: TextAlign.center),
-              SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: _loadData,
-                child: Text('ลองใหม่'),
-              ),
-            ],
+        body: SafeArea(
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.error, size: 64, color: Colors.red),
+                SizedBox(height: 16),
+                Text(_errorMessage!, textAlign: TextAlign.center),
+                SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: _loadData,
+                  child: Text('ลองใหม่'),
+                ),
+              ],
+            ),
           ),
         ),
       );
     }
 
     return Scaffold(
-      body: Column(
-        children: [
-          // Search bar
-          Container(
-            padding: EdgeInsets.all(16),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'ค้นหาเลขที่ PO หรือชื่อผู้ขาย...',
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(),
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Search bar
+            Container(
+              padding: EdgeInsets.all(16),
+              child: TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: 'ค้นหาเลขที่ PO หรือชื่อผู้ขาย...',
+                  prefixIcon: Icon(Icons.search),
+                  border: OutlineInputBorder(),
+                ),
               ),
             ),
-          ),
-          
-          // PO list
-          Expanded(
-            child: _filteredOrders.isEmpty
-                ? _buildEmptyState()
-                : ListView.builder(
-                    itemCount: _filteredOrders.length,
-                    itemBuilder: (context, index) {
-                      final order = _filteredOrders[index];
-                      return _buildPurchaseOrderCard(order);
-                    },
-                  ),
-          ),
-        ],
+            
+            // PO list
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: _loadData,
+                child: _filteredOrders.isEmpty
+                    ? ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: [
+                          const SizedBox(height: 120),
+                          _buildEmptyState(),
+                        ],
+                      )
+                    : ListView.builder(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.only(bottom: 16),
+                        itemCount: _filteredOrders.length,
+                        itemBuilder: (context, index) {
+                          final order = _filteredOrders[index];
+                          return _buildPurchaseOrderCard(order);
+                        },
+                      ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

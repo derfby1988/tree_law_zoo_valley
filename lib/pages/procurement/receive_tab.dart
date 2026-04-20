@@ -81,65 +81,73 @@ class _ReceiveTabState extends State<ReceiveTab> {
 
   @override
   Widget build(BuildContext context) {
+    Widget content;
     if (_isLoading) {
-      return const Center(child: Padding(
-        padding: EdgeInsets.all(32),
-        child: CircularProgressIndicator(),
-      ));
-    }
-    if (_errorMessage != null) {
-      return Center(child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.error_outline, size: 48, color: Colors.red),
-            const SizedBox(height: 8),
-            Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
-            const SizedBox(height: 12),
-            ElevatedButton(onPressed: _loadData, child: const Text('ลองใหม่')),
-          ],
+      content = const Center(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: CircularProgressIndicator(),
         ),
-      ));
-    }
-
-    return Column(
-      children: [
-        // Tab selector
-        Container(
-          padding: EdgeInsets.all(16),
-          child: Row(
+      );
+    } else if (_errorMessage != null) {
+      content = Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: ChoiceChip(
-                  label: Text('รับสินค้า'),
-                  selected: _selectedTab == 'receive',
-                  onSelected: (selected) {
-                    if (selected) setState(() => _selectedTab = 'receive');
-                  },
-                ),
-              ),
-              SizedBox(width: 8),
-              Expanded(
-                child: ChoiceChip(
-                  label: Text('ประวัติ'),
-                  selected: _selectedTab == 'history',
-                  onSelected: (selected) {
-                    if (selected) setState(() => _selectedTab = 'history');
-                  },
-                ),
-              ),
+              const Icon(Icons.error_outline, size: 48, color: Colors.red),
+              const SizedBox(height: 8),
+              Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
+              const SizedBox(height: 12),
+              ElevatedButton(onPressed: _loadData, child: const Text('ลองใหม่')),
             ],
           ),
         ),
-        
-        // Content based on selected tab
-        Expanded(
-          child: _selectedTab == 'receive'
-              ? _buildReceiveTab()
-              : _buildHistoryTab(),
-        ),
-      ],
+      );
+    } else {
+      content = Column(
+        children: [
+          // Tab selector
+          Container(
+            padding: EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: ChoiceChip(
+                    label: Text('รับสินค้า'),
+                    selected: _selectedTab == 'receive',
+                    onSelected: (selected) {
+                      if (selected) setState(() => _selectedTab = 'receive');
+                    },
+                  ),
+                ),
+                SizedBox(width: 8),
+                Expanded(
+                  child: ChoiceChip(
+                    label: Text('ประวัติ'),
+                    selected: _selectedTab == 'history',
+                    onSelected: (selected) {
+                      if (selected) setState(() => _selectedTab = 'history');
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          // Content based on selected tab
+          Expanded(
+            child: _selectedTab == 'receive'
+                ? _buildReceiveTab()
+                : _buildHistoryTab(),
+          ),
+        ],
+      );
+    }
+
+    return Scaffold(
+      body: SafeArea(child: content),
     );
   }
 
@@ -161,15 +169,20 @@ class _ReceiveTabState extends State<ReceiveTab> {
         
         // Pending POs list
         Expanded(
-          child: _pendingPOs.isEmpty
-              ? _buildEmptyReceiveState()
-              : ListView.builder(
-                  itemCount: _pendingPOs.length,
-                  itemBuilder: (context, index) {
-                    final po = _pendingPOs[index];
-                    return _buildPOCard(po);
-                  },
-                ),
+          child: RefreshIndicator(
+            onRefresh: _loadData,
+            child: _pendingPOs.isEmpty
+                ? _wrapEmptyScrollable(_buildEmptyReceiveState())
+                : ListView.builder(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.only(bottom: 16),
+                    itemCount: _pendingPOs.length,
+                    itemBuilder: (context, index) {
+                      final po = _pendingPOs[index];
+                      return _buildPOCard(po);
+                    },
+                  ),
+          ),
         ),
       ],
     );
@@ -193,16 +206,32 @@ class _ReceiveTabState extends State<ReceiveTab> {
         
         // History list
         Expanded(
-          child: _filteredAdjustments.isEmpty
-              ? _buildEmptyHistoryState()
-              : ListView.builder(
-                  itemCount: _filteredAdjustments.length,
-                  itemBuilder: (context, index) {
-                    final adjustment = _filteredAdjustments[index];
-                    return _buildAdjustmentCard(adjustment);
-                  },
-                ),
+          child: RefreshIndicator(
+            onRefresh: _loadData,
+            child: _filteredAdjustments.isEmpty
+                ? _wrapEmptyScrollable(_buildEmptyHistoryState())
+                : ListView.builder(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.only(bottom: 16),
+                    itemCount: _filteredAdjustments.length,
+                    itemBuilder: (context, index) {
+                      final adjustment = _filteredAdjustments[index];
+                      return _buildAdjustmentCard(adjustment);
+                    },
+                  ),
+          ),
         ),
+      ],
+    );
+  }
+
+  Widget _wrapEmptyScrollable(Widget child) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        const SizedBox(height: 120),
+        child,
+        const SizedBox(height: 60),
       ],
     );
   }

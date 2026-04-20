@@ -137,20 +137,22 @@ class _RecipeTabState extends State<RecipeTab> {
       return ['ทั้งหมด', ...sorted];
     }();
 
-    return RefreshIndicator(
-      onRefresh: _loadData,
-      child: SingleChildScrollView(
-        physics: AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildSearchAndFilter(sortedCategoryNames),
-            SizedBox(height: 16),
-            _buildSummaryCards(),
-            SizedBox(height: 16),
-            _buildRecipeList(filtered),
-          ],
+    return SafeArea(
+      child: RefreshIndicator(
+        onRefresh: _loadData,
+        child: SingleChildScrollView(
+          physics: AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSearchAndFilter(sortedCategoryNames),
+              SizedBox(height: 16),
+              _buildSummaryCards(),
+              SizedBox(height: 16),
+              _buildRecipeList(filtered),
+            ],
+          ),
         ),
       ),
     );
