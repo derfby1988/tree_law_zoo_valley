@@ -12,6 +12,7 @@ class AddProductPage extends StatefulWidget {
   final List<Map<String, dynamic>> recipes;
   final List<Map<String, dynamic>> shelves;
   final List<Map<String, dynamic>> warehouses;
+  final ItemType initialItemType;
 
   const AddProductPage({
     super.key,
@@ -20,6 +21,7 @@ class AddProductPage extends StatefulWidget {
     required this.recipes,
     required this.shelves,
     required this.warehouses,
+    this.initialItemType = ItemType.product,
   });
 
   @override
@@ -37,7 +39,7 @@ class _AddProductPageState extends State<AddProductPage> {
   final _taxRateController = TextEditingController(text: AppBusinessSettings.defaultTaxRateLabel);
 
   // Toggle: สินค้า / วัตถุดิบ
-  ItemType _itemType = ItemType.product;
+  late ItemType _itemType;
 
   String? _selectedCategoryId;
   String? _selectedUnitId;
@@ -149,6 +151,7 @@ class _AddProductPageState extends State<AddProductPage> {
   @override
   void initState() {
     super.initState();
+    _itemType = widget.initialItemType;
     _nameFocusNode.addListener(() {
       if (_nameFocusNode.hasFocus) {
         _scrollProductInfoToTop();

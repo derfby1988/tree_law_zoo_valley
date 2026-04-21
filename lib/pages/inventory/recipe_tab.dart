@@ -519,7 +519,7 @@ class _RecipeTabState extends State<RecipeTab> {
                   'quantity': _getIngQty(ing),
                   'current_stock': _getIngStock(ing),
                 }).toList();
-                final ok = await InventoryService.produceFromRecipe(
+                final result = await InventoryService.produceFromRecipe(
                   recipeId: recipe['id'],
                   batchQuantity: batchQty,
                   ingredients: ingData,
@@ -527,11 +527,11 @@ class _RecipeTabState extends State<RecipeTab> {
                 );
                 if (context.mounted) {
                   Navigator.pop(context);
-                  if (ok) {
+                  if (result['success'] == true) {
                     _loadData();
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('ผลิต ${recipe['name']} $batchQty ชุด สำเร็จ'), backgroundColor: Colors.green));
                   } else {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เกิดข้อผิดพลาด'), backgroundColor: Colors.red));
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result['message'] ?? 'เกิดข้อผิดพลาด'), backgroundColor: Colors.red));
                   }
                 }
               },

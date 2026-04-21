@@ -1599,7 +1599,34 @@ class InventoryService {
   // Production (ผลิตสินค้าจากสูตร)
   // =============================================
 
-  static Future<bool> produceFromRecipe({
+  /// ✅ Validate if recipe can be produced with current stock
+  static Future<Map<String, dynamic>> checkRecipeCanProduce({
+    required String recipeId,
+    required int batchQuantity,
+  }) async {
+    try {
+      final response = await _client.rpc('check_recipe_can_produce', params: {
+        'p_recipe_id': recipeId,
+        'p_batch_quantity': batchQuantity,
+      });
+      
+      final result = response as Map<String, dynamic>;
+      return {
+        'can_produce': result['can_produce'] ?? false,
+        'missing_ingredients': result['missing_ingredients'] ?? [],
+      };
+    } catch (e) {
+      debugPrint('Error checking recipe: $e');
+      return {
+        'can_produce': false,
+        'missing_ingredients': [],
+        'error': e.toString(),
+      };
+    }
+  }
+
+  /// ✅ Produce from recipe with validation & transaction
+  static Future<Map<String, dynamic>> produceFromRecipe({
     required String recipeId,
     required int batchQuantity,
     required List<Map<String, dynamic>> ingredients,
@@ -1608,71 +1635,65 @@ class InventoryService {
     String? userName,
   }) async {
     try {
-      // 1. ตัดสต็อกวัตถุดิบ
-      for (final ing in ingredients) {
-        final productId = ing['product_id'] as String;
-        final qtyPerBatch = (ing['quantity'] as num).toDouble();
-        final totalDeduct = qtyPerBatch * batchQuantity;
-        final currentQty = (ing['current_stock'] as num).toDouble();
-        final newQty = currentQty - totalDeduct;
-
-        await _client.from('inventory_products').update({
-          'quantity': newQty,
-          'updated_at': DateTime.now().toIso8601String(),
-        }).eq('id', productId);
-
-        // บันทึก adjustment
-        await _client.from('inventory_adjustments').insert({
-          'product_id': productId,
-          'type': 'produce',
-          'quantity_before': currentQty,
-          'quantity_after': newQty,
-          'quantity_change': -totalDeduct,
-          'reason': 'ผลิตจากสูตร (batch: $batchQuantity)',
-          'reference_id': recipeId,
-          'user_name': userName ?? 'ระบบ',
-        });
+      // ✅ Step 1: Validate stock BEFORE production
+      final validation = await checkRecipeCanProduce(
+        recipeId: recipeId,
+        batchQuantity: batchQuantity,
+      );
+      
+      if (validation['can_produce'] != true) {
+        final missingList = validation['missing_ingredients'] as List? ?? [];
+        final missingStr = missingList.isEmpty 
+          ? 'สต็อกไม่พอ'
+          : missingList
+              .map((m) => '${m['product_name']}: ต้อง ${m['needed']} แต่มี ${m['current']}')
+              .join(', ');
+        
+        return {
+          'success': false,
+          'message': 'ไม่สามารถผลิตได้: $missingStr',
+          'missing_ingredients': missingList,
+        };
       }
 
-      // 2. เพิ่มสต็อกสินค้าที่ผลิตได้ (ถ้ามี output product)
-      if (outputProductId != null) {
-        final productResp = await _client
-            .from('inventory_products')
-            .select('quantity')
-            .eq('id', outputProductId)
-            .single();
-        final currentQty = (productResp['quantity'] as num).toDouble();
-        final newQty = currentQty + yieldQuantity;
-
-        await _client.from('inventory_products').update({
-          'quantity': newQty,
-          'updated_at': DateTime.now().toIso8601String(),
-        }).eq('id', outputProductId);
-
-        await _client.from('inventory_adjustments').insert({
-          'product_id': outputProductId,
-          'type': 'produce',
-          'quantity_before': currentQty,
-          'quantity_after': newQty,
-          'quantity_change': yieldQuantity,
-          'reason': 'ผลิตจากสูตร (batch: $batchQuantity)',
-          'reference_id': recipeId,
-          'user_name': userName ?? 'ระบบ',
-        });
-      }
-
-      // 3. บันทึก production log
-      await _client.from('inventory_production_logs').insert({
-        'recipe_id': recipeId,
-        'batch_quantity': batchQuantity,
-        'yield_quantity': yieldQuantity,
-        'user_name': userName ?? 'ระบบ',
+      // ✅ Step 2: Use transaction function for production
+      final response = await _client.rpc('produce_from_recipe', params: {
+        'p_recipe_id': recipeId,
+        'p_batch_quantity': batchQuantity,
+        'p_ingredients': ingredients,
+        'p_output_product_id': outputProductId,
+        'p_user_name': userName ?? 'ระบบ',
       });
 
-      return true;
+      final result = response as Map<String, dynamic>;
+      
+      return {
+        'success': result['success'] ?? false,
+        'message': result['message'] ?? 'เกิดข้อผิดพลาด',
+        'production_log_id': result['production_log_id'],
+      };
     } catch (e) {
       debugPrint('Error producing from recipe: $e');
-      return false;
+      return {
+        'success': false,
+        'message': 'เกิดข้อผิดพลาด: ${e.toString()}',
+      };
+    }
+  }
+
+  /// ✅ Get production audit trail
+  static Future<List<Map<String, dynamic>>> getProductionAuditTrail({
+    required String recipeId,
+  }) async {
+    try {
+      final response = await _client.rpc('get_production_audit_trail', params: {
+        'p_recipe_id': recipeId,
+      });
+      
+      return List<Map<String, dynamic>>.from(response as List? ?? []);
+    } catch (e) {
+      debugPrint('Error getting production audit trail: $e');
+      return [];
     }
   }
 

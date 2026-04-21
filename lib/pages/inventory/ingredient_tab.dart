@@ -6,6 +6,7 @@ import '../../services/permission_service.dart';
 import '../../services/inventory_event_bus.dart';
 import '../../utils/permission_helpers.dart';
 import 'inventory_filter_widget.dart';
+import 'add_product_page.dart';
 
 class IngredientTab extends StatefulWidget {
   const IngredientTab({super.key});
@@ -596,11 +597,23 @@ class _IngredientTabState extends State<IngredientTab> {
     );
   }
 
-  void _showAddIngredientDialog() {
-    // TODO: Implement add ingredient dialog
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('เพิ่มวัตถุดิบยังไม่พร้อมใช้งาน')),
+  void _showAddIngredientDialog() async {
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AddProductPage(
+          categories: _categories,
+          units: _units,
+          recipes: [],
+          shelves: _shelves,
+          warehouses: _warehouses,
+          initialItemType: ItemType.ingredient,
+        ),
+      ),
     );
+    if (result == true) {
+      await _loadData();
+    }
   }
 
   void _showEditIngredientDialog(Map<String, dynamic> ingredient) {
