@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../theme/app_design_system.dart';
+
 //! keep new LayoutBuilder version
 class InventoryFilterWidget extends StatelessWidget {
   final TextEditingController searchController;
@@ -38,62 +40,25 @@ class InventoryFilterWidget extends StatelessWidget {
     }
 
     return Card(
-<<<<<<< HEAD
       elevation: 0,
       color: AppDesignSystem.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppDesignSystem.radiusMd),
         side: const BorderSide(color: AppDesignSystem.border),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(AppDesignSystem.spacingMd),
-        child: Column(
-          children: [
-            TextField(
-              controller: searchController,
-              decoration: InputDecoration(
-                hintText: 'ค้นหาสินค้า...',
-                prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppDesignSystem.radiusSm)),
-              ),
-            ),
-            const SizedBox(height: AppDesignSystem.spacingMd),
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: selectedWarehouse,
-                    decoration: InputDecoration(
-                      labelText: 'คลังสินค้า',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppDesignSystem.radiusSm)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: AppDesignSystem.spacingMd, vertical: AppDesignSystem.spacingSm),
-                    ),
-                    items: warehouses.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                    onChanged: onWarehouseChanged,
-                  ),
-                ),
-                const SizedBox(width: AppDesignSystem.spacingMd),
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: selectedShelf,
-                    decoration: InputDecoration(
-                      labelText: 'ชั้นวาง',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppDesignSystem.radiusSm)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: AppDesignSystem.spacingMd, vertical: AppDesignSystem.spacingSm),
-                    ),
-                    items: shelves.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                    onChanged: onShelfChanged,
-=======
-      elevation: 2,
       child: LayoutBuilder(
         builder: (context, constraints) {
           final isCompact = constraints.maxWidth < 600;
+          final dropdownPadding = const EdgeInsets.symmetric(
+            horizontal: AppDesignSystem.spacingMd,
+            vertical: AppDesignSystem.spacingSm,
+          );
           final warehouseDropdown = DropdownButtonFormField<String>(
             value: selectedWarehouse,
             decoration: InputDecoration(
               labelText: 'คลังสินค้า',
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppDesignSystem.radiusSm)),
+              contentPadding: dropdownPadding,
             ),
             items: warehouses.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
             onChanged: onWarehouseChanged,
@@ -102,44 +67,43 @@ class InventoryFilterWidget extends StatelessWidget {
             value: selectedShelf,
             decoration: InputDecoration(
               labelText: 'ชั้นวาง',
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppDesignSystem.radiusSm)),
+              contentPadding: dropdownPadding,
             ),
             items: shelves.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
             onChanged: onShelfChanged,
           );
 
           return Padding(
-            padding: EdgeInsets.all(12),
+            padding: const EdgeInsets.all(AppDesignSystem.spacingMd),
             child: Column(
               children: [
                 TextField(
                   controller: searchController,
                   decoration: InputDecoration(
                     hintText: 'ค้นหาสินค้า...',
-                    prefixIcon: Icon(Icons.search),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    prefixIcon: const Icon(Icons.search),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppDesignSystem.radiusSm)),
                   ),
                 ),
-                SizedBox(height: 12),
+                const SizedBox(height: AppDesignSystem.spacingMd),
                 if (isCompact)
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       warehouseDropdown,
-                      SizedBox(height: 8),
+                      const SizedBox(height: AppDesignSystem.spacingSm),
                       shelfDropdown,
-                      SizedBox(height: 8),
+                      const SizedBox(height: AppDesignSystem.spacingSm),
                     ],
                   )
                 else
                   Row(
                     children: [
                       Expanded(child: warehouseDropdown),
-                      SizedBox(width: 12),
+                      const SizedBox(width: AppDesignSystem.spacingMd),
                       Expanded(child: shelfDropdown),
                     ],
->>>>>>> UI inventory
                   ),
               ],
             ),

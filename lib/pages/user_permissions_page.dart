@@ -27,22 +27,25 @@ final List<Map<String, dynamic>> _systemPages = [
 
 /// รายการ Tab ทั้งหมดในแต่ละหน้า
 final List<Map<String, dynamic>> _systemTabs = [
-  // คลังสินค้า (inventory) - 4 tabs
+  // คลังสินค้า (inventory) - 5 tabs
   {'id': 'inventory_overview', 'page_id': 'inventory', 'name': 'สถิติ / รายงาน', 'icon': Icons.dashboard},
   {'id': 'inventory_products', 'page_id': 'inventory', 'name': 'จัดการสินค้า', 'icon': Icons.inventory},
   {'id': 'inventory_adjustment', 'page_id': 'inventory', 'name': 'ปรับปรุงคลัง', 'icon': Icons.build},
+  {'id': 'inventory_warehouse', 'page_id': 'inventory', 'name': 'สถานที่เก็บ', 'icon': Icons.warehouse},
   {'id': 'inventory_ingredients', 'page_id': 'inventory', 'name': 'จัดการวัตถุดิบ', 'icon': Icons.restaurant_menu},
   {'id': 'inventory_recipe', 'page_id': 'inventory', 'name': 'สูตรอาหาร', 'icon': Icons.dinner_dining},
+  {'id': 'inventory_reports', 'page_id': 'inventory', 'name': 'รายงานคลัง', 'icon': Icons.insights},
   // จองโต๊ะ (table_booking)
   {'id': 'table_booking_main', 'page_id': 'table_booking', 'name': 'จองโต๊ะ', 'icon': Icons.table_restaurant},
   // จองห้อง (room_booking)
   {'id': 'room_booking_main', 'page_id': 'room_booking', 'name': 'จองห้อง', 'icon': Icons.meeting_room},
-  // ระบบสั่งซื้อ (procurement) - 5 tabs
+  // ระบบสั่งซื้อ (procurement) - 6 tabs
   {'id': 'procurement_request', 'page_id': 'procurement', 'name': 'ขอซื้อ', 'icon': Icons.request_page},
   {'id': 'procurement_order', 'page_id': 'procurement', 'name': 'วางใบสั่งซื้อ', 'icon': Icons.description},
   {'id': 'procurement_confirm', 'page_id': 'procurement', 'name': 'Confirm รับออเดอร์', 'icon': Icons.check_circle},
   {'id': 'procurement_ship', 'page_id': 'procurement', 'name': 'ส่งสินค้า', 'icon': Icons.local_shipping},
   {'id': 'procurement_receive', 'page_id': 'procurement', 'name': 'รับสินค้า', 'icon': Icons.inventory_2},
+  {'id': 'procurement_audit', 'page_id': 'procurement', 'name': 'Audit Trail', 'icon': Icons.history},
   // Table Management (table_management)
   {'id': 'table_management_zones', 'page_id': 'table_management', 'name': 'จัดการร้าน/โซน', 'icon': Icons.store},
   {'id': 'table_management_tables', 'page_id': 'table_management', 'name': 'จัดการโต๊ะ', 'icon': Icons.table_restaurant},
@@ -82,6 +85,13 @@ final List<Map<String, dynamic>> _systemActions = [
   {'id': 'inventory_adjustment_warehouse_delete', 'tab_id': 'inventory_adjustment', 'name': 'ลบคลังสินค้า', 'icon': Icons.delete},
   {'id': 'inventory_adjustment_product_move_shelf', 'tab_id': 'inventory_adjustment', 'name': 'ย้ายสินค้าไปชั้นวางอื่น', 'icon': Icons.move_up},
   {'id': 'inventory_adjustment_product_move_warehouse', 'tab_id': 'inventory_adjustment', 'name': 'โอนสินค้าไปคลังอื่น', 'icon': Icons.warehouse},
+  {'id': 'inventory_adjustment_approve', 'tab_id': 'inventory_adjustment', 'name': 'อนุมัติการปรับปรุง', 'icon': Icons.verified},
+  {'id': 'inventory_reports_view', 'tab_id': 'inventory_reports', 'name': 'ดูรายงานคลังสินค้า', 'icon': Icons.insights},
+  // Tab: สถานที่เก็บ (inventory_warehouse)
+  {'id': 'inventory_warehouse_manage', 'tab_id': 'inventory_warehouse', 'name': 'จัดการคลัง/โซน', 'icon': Icons.account_tree},
+  {'id': 'inventory_warehouse_manager', 'tab_id': 'inventory_warehouse', 'name': 'กำหนดผู้ดูแล', 'icon': Icons.admin_panel_settings},
+  {'id': 'inventory_transfer_request', 'tab_id': 'inventory_warehouse', 'name': 'สร้างคำขอโอน', 'icon': Icons.add_business},
+  {'id': 'inventory_transfer_approve', 'tab_id': 'inventory_warehouse', 'name': 'อนุมัติคำขอโอน', 'icon': Icons.check_circle},
   // Tab: จัดการวัตถุดิบ (inventory_ingredients)
   {'id': 'inventory_ingredients_category', 'tab_id': 'inventory_ingredients', 'name': 'จัดการประเภท', 'icon': Icons.folder},
   {'id': 'inventory_ingredients_unit', 'tab_id': 'inventory_ingredients', 'name': 'จัดการหน่วยนับ', 'icon': Icons.scale},
@@ -155,6 +165,9 @@ final List<Map<String, dynamic>> _systemActions = [
   {'id': 'procurement_receive_confirm', 'tab_id': 'procurement_receive', 'name': 'ยืนยันรับของ', 'icon': Icons.inventory_2},
   {'id': 'procurement_receive_inspect', 'tab_id': 'procurement_receive', 'name': 'ตรวจสอบสินค้า', 'icon': Icons.search},
   {'id': 'procurement_receive_return', 'tab_id': 'procurement_receive', 'name': 'คืนสินค้า', 'icon': Icons.keyboard_return},
+  // Tab: Audit Trail (procurement_audit)
+  {'id': 'procurement_audit_view', 'tab_id': 'procurement_audit', 'name': 'ดู Audit Trail', 'icon': Icons.visibility},
+  {'id': 'procurement_audit_export', 'tab_id': 'procurement_audit', 'name': 'ส่งออก Audit Trail', 'icon': Icons.file_download},
 ];
 
 class UserPermissionsPage extends StatefulWidget {

@@ -4,7 +4,11 @@ import 'inventory/product_tab.dart';
 import 'inventory/ingredient_tab.dart';
 import 'inventory/adjustment_tab.dart';
 import 'inventory/recipe_tab.dart';
+import 'inventory/warehouse_management_page.dart';
+import 'inventory/expiry_summary_page.dart';
+import 'inventory/reports_tab.dart';
 import '../services/permission_service.dart';
+import '../utils/responsive_helper.dart';
 
 class InventoryPage extends StatefulWidget {
   const InventoryPage({super.key});
@@ -22,8 +26,10 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
     {'id': 'inventory_overview', 'label': 'สถิติ', 'icon': Icons.dashboard},
     {'id': 'inventory_products', 'label': 'สินค้า', 'icon': Icons.inventory},
     {'id': 'inventory_adjustment', 'label': 'คลัง', 'icon': Icons.build},
+    {'id': 'inventory_warehouse', 'label': 'สถานที่เก็บ', 'icon': Icons.warehouse},
     {'id': 'inventory_ingredients', 'label': 'วัตถุดิบ', 'icon': Icons.restaurant_menu},
     {'id': 'inventory_recipe', 'label': 'สูตรอาหาร', 'icon': Icons.dinner_dining},
+    {'id': 'inventory_reports', 'label': 'รายงาน', 'icon': Icons.insights},
   ];
 
   List<Map<String, dynamic>> _visibleTabs = [];
@@ -65,8 +71,12 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
         return IngredientTab();
       case 'inventory_adjustment':
         return AdjustmentTab();
+      case 'inventory_warehouse':
+        return WarehouseManagementPage();
       case 'inventory_recipe':
         return RecipeTab();
+      case 'inventory_reports':
+        return const ReportsTab();
       default:
         return Center(child: Text('ไม่พบหน้านี้'));
     }
@@ -131,15 +141,34 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
         backgroundColor: Colors.transparent,
         elevation: 0,
         iconTheme: IconThemeData(color: Colors.white),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.calendar_today, color: Colors.white),
+            tooltip: 'สรุปวันหมดอายุ',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ExpirySummaryPage()),
+              );
+            },
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: Colors.white,
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white70,
-          isScrollable: true,
+          isScrollable: ResponsiveHelper.isMobile(context) ? true : false,
+          labelStyle: TextStyle(
+            fontSize: ResponsiveHelper.isMobile(context) ? 12 : 13,
+            fontWeight: FontWeight.w500,
+          ),
+          unselectedLabelStyle: TextStyle(
+            fontSize: ResponsiveHelper.isMobile(context) ? 11 : 12,
+          ),
           tabs: _visibleTabs.map((tab) => Tab(
             icon: Icon(tab['icon'] as IconData),
             text: tab['label'] as String,
+            iconMargin: const EdgeInsets.only(bottom: 6),
           )).toList(),
         ),
       ),

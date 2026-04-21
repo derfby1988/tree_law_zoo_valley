@@ -144,6 +144,16 @@ class PermissionService {
     return _cachedActionPermissions.contains(actionId);
   }
 
+  /// ตรวจสอบสิทธิ์ (alias สำหรับ canAccessActionSync)
+  static bool hasPermission(String actionId) {
+    return canAccessActionSync(actionId);
+  }
+
+  /// ดึง current user ID
+  static String? get currentUserId {
+    return Supabase.instance.client.auth.currentUser?.id;
+  }
+
   /// ล้าง cache (เรียกเมื่อ logout หรือเปลี่ยน user)
   static void clearCache() {
     _clearCache();

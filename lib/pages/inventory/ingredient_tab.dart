@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../services/inventory_service.dart';
 import '../../services/permission_service.dart';
+import '../../services/inventory_event_bus.dart';
 import '../../utils/permission_helpers.dart';
 import 'inventory_filter_widget.dart';
 
@@ -23,6 +26,7 @@ class _IngredientTabState extends State<IngredientTab> {
   List<Map<String, dynamic>> _warehouses = [];
   bool _isLoading = true;
   String? _errorMessage;
+  StreamSubscription<InventoryEventType>? _inventoryEventSub;
 
   // No-shelf selection
   final Set<String> _selectedNoShelfIds = {};
@@ -40,12 +44,19 @@ class _IngredientTabState extends State<IngredientTab> {
     super.initState();
     _loadData();
     _searchController.addListener(() => setState(() { _currentPage = 0; }));
+    _inventoryEventSub = InventoryEventBus.stream.listen((event) {
+      if (!mounted) return;
+      if (event == InventoryEventType.storageStructureChanged) {
+        _loadData();
+      }
+    });
   }
 
   @override
   void dispose() {
     _searchController.dispose();
     _noShelfScrollController.dispose();
+    _inventoryEventSub?.cancel();
     super.dispose();
   }
 

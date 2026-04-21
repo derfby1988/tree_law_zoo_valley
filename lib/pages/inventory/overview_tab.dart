@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/inventory_service.dart';
 import 'inventory_filter_widget.dart';
+import 'dialogs/stock_alert_dialog.dart';
 import '../../theme/app_design_system.dart';
 
 class OverviewTab extends StatefulWidget {
@@ -18,6 +20,7 @@ class _OverviewTabState extends State<OverviewTab> {
   Map<String, dynamic> _stats = {};
   bool _isLoading = true;
   String? _errorMessage;
+  bool _updatingAlert = false;
 
   Color get _surface => AppDesignSystem.surface;
   Color get _surfaceAlt => AppDesignSystem.background;
@@ -69,36 +72,12 @@ class _OverviewTabState extends State<OverviewTab> {
       );
     }
 
-<<<<<<< HEAD
-    return RefreshIndicator(
-      onRefresh: _loadData,
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(AppDesignSystem.spacingLg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            InventoryFilterWidget(
-              searchController: _searchController,
-              selectedWarehouse: _selectedWarehouse,
-              selectedShelf: _selectedShelf,
-              onWarehouseChanged: (value) => setState(() => _selectedWarehouse = value!),
-              onShelfChanged: (value) => setState(() => _selectedShelf = value!),
-            ),
-            const SizedBox(height: AppDesignSystem.spacingLg),
-            _buildSummaryCards(),
-            const SizedBox(height: AppDesignSystem.spacingLg),
-            _buildExpandableAlerts(),
-            const SizedBox(height: AppDesignSystem.spacingLg),
-            _buildMovementStatistics(),
-          ],
-=======
     return SafeArea(
       child: RefreshIndicator(
         onRefresh: _loadData,
         child: SingleChildScrollView(
-          physics: AlwaysScrollableScrollPhysics(),
-          padding: EdgeInsets.all(16),
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(AppDesignSystem.spacingLg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -109,15 +88,14 @@ class _OverviewTabState extends State<OverviewTab> {
                 onWarehouseChanged: (value) => setState(() => _selectedWarehouse = value!),
                 onShelfChanged: (value) => setState(() => _selectedShelf = value!),
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: AppDesignSystem.spacingLg),
               _buildSummaryCards(),
-              SizedBox(height: 16),
+              const SizedBox(height: AppDesignSystem.spacingLg),
               _buildExpandableAlerts(),
-              SizedBox(height: 16),
+              const SizedBox(height: AppDesignSystem.spacingLg),
               _buildMovementStatistics(),
             ],
           ),
->>>>>>> UI inventory
         ),
       ),
     );
@@ -192,6 +170,7 @@ class _OverviewTabState extends State<OverviewTab> {
           color: _warningColor,
           count: lowStockProducts.length,
           child: _buildLowStockContent(lowStockProducts),
+          trailing: _buildAlertActionButton(lowStockProducts),
         ),
         const SizedBox(height: AppDesignSystem.spacingSm),
         _buildAlertExpansionTile(
@@ -200,6 +179,7 @@ class _OverviewTabState extends State<OverviewTab> {
           color: _dangerColor,
           count: expiringSoon.length,
           child: _buildExpiringContent(expiringSoon),
+          trailing: _buildAlertActionButton(expiringSoon, expiryFocus: true),
         ),
       ],
     );
@@ -211,6 +191,7 @@ class _OverviewTabState extends State<OverviewTab> {
     required Color color,
     required int count,
     required Widget child,
+    Widget? trailing,
   }) {
     return Card(
       elevation: 0,
@@ -223,6 +204,7 @@ class _OverviewTabState extends State<OverviewTab> {
         leading: Icon(icon, color: color),
         title: Text(title, style: TextStyle(fontWeight: FontWeight.bold, color: _textPrimary)),
         subtitle: Text('$count รายการ', style: TextStyle(color: color, fontSize: 12)),
+        trailing: trailing,
         children: [
           Padding(
             padding: const EdgeInsets.all(AppDesignSystem.spacingMd),
@@ -242,6 +224,8 @@ class _OverviewTabState extends State<OverviewTab> {
         final qty = (item['quantity'] as num?)?.toDouble() ?? 0;
         final unitAbbr = item['unit']?['abbreviation'] ?? '';
         final shelfCode = item['shelf']?['code'] ?? '-';
+        final minQty = (item['min_quantity'] as num?)?.toDouble() ?? 0;
+        final reorderQty = (minQty * 2).clamp(minQty, double.infinity);
         return Container(
           margin: const EdgeInsets.only(bottom: AppDesignSystem.spacingSm),
           padding: const EdgeInsets.all(AppDesignSystem.spacingMd),
@@ -255,6 +239,16 @@ class _OverviewTabState extends State<OverviewTab> {
               Icon(Icons.warning_amber, color: _warningColor, size: 20),
               const SizedBox(width: 8),
               Expanded(child: Text('${item['name']} (${qty.toStringAsFixed(qty == qty.roundToDouble() ? 0 : 1)} $unitAbbr) ชั้น $shelfCode')),
+              IconButton(
+                icon: const Icon(Icons.settings, size: 18),
+                tooltip: 'ตั้งค่าแจ้งเตือน',
+                onPressed: () => _openStockAlertDialog(item),
+              ),
+              IconButton(
+                icon: const Icon(Icons.shopping_cart, size: 18),
+                tooltip: 'สั่งซื้อด่วน',
+                onPressed: () => _handleQuickPO(item, reorderQty),
+              ),
             ],
           ),
         );
@@ -296,11 +290,85 @@ class _OverviewTabState extends State<OverviewTab> {
                   ],
                 ),
               ),
+              IconButton(
+                icon: const Icon(Icons.settings, size: 18),
+                tooltip: 'ตั้งค่าแจ้งเตือน',
+                onPressed: () => _openStockAlertDialog(item, expiryFocus: true),
+              ),
             ],
           ),
         );
       }).toList(),
     );
+  }
+
+  Widget? _buildAlertActionButton(List<Map<String, dynamic>> products, {bool expiryFocus = false}) {
+    if (products.isEmpty) return null;
+    return IconButton(
+      icon: const Icon(Icons.tune),
+      tooltip: 'ตั้งค่าแจ้งเตือน',
+      onPressed: _updatingAlert
+          ? null
+          : () {
+              _openStockAlertDialog(products.first, expiryFocus: expiryFocus);
+            },
+    );
+  }
+
+  Future<void> _openStockAlertDialog(Map<String, dynamic> product, {bool expiryFocus = false}) async {
+    if (_updatingAlert) return;
+    setState(() => _updatingAlert = true);
+    try {
+      final result = await showStockAlertConfigDialog(context: context, product: product);
+      if (result == null) return;
+      final success = await InventoryService.updateProduct(product['id'].toString(), {
+        'min_quantity': result['min_quantity'],
+        'expiry_alert_days': result['expiry_alert_days'],
+      });
+      if (!mounted) return;
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('บันทึกแจ้งเตือนสำหรับ ${product['name']} แล้ว')),
+        );
+        await _loadData();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('บันทึกไม่สำเร็จ')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _updatingAlert = false);
+      }
+    }
+  }
+
+  Future<void> _handleQuickPO(Map<String, dynamic> product, double quantity) async {
+    final productId = product['id']?.toString();
+    final supplierId = product['supplier_id']?.toString();
+    if (productId == null || supplierId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('สินค้านี้ยังไม่มีข้อมูลผู้ขาย')),
+      );
+      return;
+    }
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    final ok = await InventoryService.createAutoPOForLowStock(
+      productId: productId,
+      supplierId: supplierId,
+      quantity: quantity,
+      createdBy: userId,
+    );
+    if (!mounted) return;
+    if (ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('สร้าง PO สำหรับ ${product['name']} แล้ว')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('สร้าง PO ไม่สำเร็จ')),
+      );
+    }
   }
 
   Color _getExpiryColor(int days) {

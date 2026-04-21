@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -46,6 +47,56 @@ class InventoryService {
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
       debugPrint('Error loading products: $e');
+      return [];
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> getWarehouseUtilizationSummary() async {
+    try {
+      final shelves = await _client
+          .from('inventory_shelves')
+          .select('id, warehouse_id, capacity, is_active');
+      final products = await _client
+          .from('inventory_products')
+          .select('id, shelf_id');
+
+      final productCountByShelf = <String, int>{};
+      for (final product in products) {
+        final shelfId = product['shelf_id']?.toString();
+        if (shelfId == null) continue;
+        productCountByShelf[shelfId] = (productCountByShelf[shelfId] ?? 0) + 1;
+      }
+
+      final utilization = <String, Map<String, dynamic>>{};
+      for (final shelf in shelves) {
+        final warehouseId = shelf['warehouse_id']?.toString();
+        if (warehouseId == null) continue;
+        final shelfId = shelf['id']?.toString();
+        final capacity = shelf['capacity'] is int
+            ? shelf['capacity'] as int
+            : int.tryParse(shelf['capacity']?.toString() ?? '0') ?? 0;
+
+        final used = shelfId != null ? (productCountByShelf[shelfId] ?? 0) : 0;
+        final entry = utilization.putIfAbsent(warehouseId, () => {
+              'capacity': 0,
+              'used': 0,
+              'activeShelves': 0,
+            });
+        entry['capacity'] = (entry['capacity'] as int) + capacity;
+        entry['used'] = (entry['used'] as int) + used;
+        if (shelf['is_active'] != false) {
+          entry['activeShelves'] = (entry['activeShelves'] as int) + 1;
+        }
+      }
+
+      return utilization.entries
+          .map((entry) => {
+                'warehouse_id': entry.key,
+                ...entry.value,
+              })
+          .toList();
+    } catch (e) {
+      debugPrint('Error computing warehouse utilization: $e');
       return [];
     }
   }
@@ -940,13 +991,15 @@ class InventoryService {
   // Warehouses & Shelves
   // =============================================
 
-  static Future<List<Map<String, dynamic>>> getWarehouses() async {
+  static Future<List<Map<String, dynamic>>> getWarehouses({bool includeInactive = false}) async {
     try {
-      final response = await _client
+      var query = _client
           .from('inventory_warehouses')
-          .select('id, name, location, manager, is_active')
-          .eq('is_active', true)
-          .order('name');
+          .select('id, name, location, manager, capacity_limit, is_active, created_at, updated_at');
+      if (!includeInactive) {
+        query = query.eq('is_active', true);
+      }
+      final response = await query.order('name');
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
       debugPrint('Error loading warehouses: $e');
@@ -999,12 +1052,21 @@ class InventoryService {
     }
   }
 
-  static Future<bool> addWarehouse({required String name, String? location, String? manager}) async {
+  static Future<bool> addWarehouse({
+    required String name,
+    String? location,
+    String? manager,
+    bool isActive = true,
+    int? capacityLimit,
+  }) async {
     try {
       await _client.from('inventory_warehouses').insert({
         'name': name,
         'location': location,
         'manager': manager,
+        'is_active': isActive,
+        'capacity_limit': capacityLimit,
+        'updated_at': DateTime.now().toIso8601String(),
       });
       return true;
     } catch (e) {
@@ -1013,17 +1075,68 @@ class InventoryService {
     }
   }
 
-  static Future<bool> updateWarehouse({required String id, required String name, String? location, String? manager}) async {
+  static Future<bool> updateWarehouse({
+    required String id,
+    required String name,
+    String? location,
+    String? manager,
+    bool? isActive,
+    int? capacityLimit,
+  }) async {
     try {
-      await _client.from('inventory_warehouses').update({
+      final data = <String, dynamic>{
         'name': name,
-        'location': location,
-        'manager': manager,
         'updated_at': DateTime.now().toIso8601String(),
-      }).eq('id', id);
+      };
+      if (location != null) data['location'] = location;
+      if (manager != null) data['manager'] = manager;
+      if (isActive != null) data['is_active'] = isActive;
+      if (capacityLimit != null) {
+        data['capacity_limit'] = capacityLimit;
+      }
+
+      await _client.from('inventory_warehouses').update(data).eq('id', id);
       return true;
     } catch (e) {
       debugPrint('Error updating warehouse: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> updateWarehouseManager({
+    required String id,
+    String? managerId,
+  }) async {
+    try {
+      await _client
+          .from('inventory_warehouses')
+          .update({
+            'manager': managerId,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', id);
+      return true;
+    } catch (e) {
+      debugPrint('Error updating warehouse manager: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> updateWarehouseCapacityLimit({
+    required String id,
+    int? capacityLimit,
+  }) async {
+    try {
+      await _client
+          .from('inventory_warehouses')
+          .update({
+            'capacity_limit': capacityLimit,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', id);
+      return true;
+    } catch (e) {
+      debugPrint('Error updating warehouse capacity limit: $e');
       return false;
     }
   }
@@ -1051,16 +1164,132 @@ class InventoryService {
     }
   }
 
-  static Future<List<Map<String, dynamic>>> getShelves({String? warehouseId}) async {
+  static Future<List<Map<String, dynamic>>> getWarehouseZones({
+    String? warehouseId,
+    bool includeInactive = false,
+  }) async {
     try {
       var query = _client
-          .from('inventory_shelves')
-          .select('*, warehouse:inventory_warehouses(id, name)')
-          .eq('is_active', true);
+          .from('inventory_zones')
+          .select('*');
       if (warehouseId != null) {
         query = query.eq('warehouse_id', warehouseId);
       }
-      final response = await query.order('code');
+      if (!includeInactive) {
+        query = query.eq('is_active', true);
+      }
+      final response = await query.order('display_order', ascending: true).order('name');
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error loading warehouse zones: $e');
+      return [];
+    }
+  }
+
+  static Future<bool> addWarehouseZone({
+    required String warehouseId,
+    required String name,
+  }) async {
+    try {
+      await _client.from('inventory_zones').insert({
+        'warehouse_id': warehouseId,
+        'name': name,
+        'display_order': DateTime.now().millisecondsSinceEpoch,
+        'updated_at': DateTime.now().toIso8601String(),
+      });
+      return true;
+    } catch (e) {
+      debugPrint('Error adding warehouse zone: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> updateWarehouseZone({
+    required String id,
+    String? name,
+    int? displayOrder,
+    bool? isActive,
+  }) async {
+    try {
+      final data = <String, dynamic>{
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+      if (name != null) data['name'] = name;
+      if (displayOrder != null) data['display_order'] = displayOrder;
+      if (isActive != null) data['is_active'] = isActive;
+
+      await _client.from('inventory_zones').update(data).eq('id', id);
+      return true;
+    } catch (e) {
+      debugPrint('Error updating warehouse zone: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> deleteWarehouseZone(String id) async {
+    try {
+      await _client.from('inventory_zones').delete().eq('id', id);
+      return true;
+    } catch (e) {
+      debugPrint('Error deleting warehouse zone: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> updateZoneOrder(String warehouseId, List<String> orderedZoneIds) async {
+    try {
+      for (var i = 0; i < orderedZoneIds.length; i++) {
+        await _client
+            .from('inventory_zones')
+            .update({'display_order': i, 'updated_at': DateTime.now().toIso8601String()})
+            .eq('id', orderedZoneIds[i])
+            .eq('warehouse_id', warehouseId);
+      }
+      return true;
+    } catch (e) {
+      debugPrint('Error updating zone order: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> updateShelfOrder(List<String> orderedShelfIds) async {
+    try {
+      for (var i = 0; i < orderedShelfIds.length; i++) {
+        await _client
+            .from('inventory_shelves')
+            .update({'display_order': i, 'updated_at': DateTime.now().toIso8601String()})
+            .eq('id', orderedShelfIds[i]);
+      }
+      return true;
+    } catch (e) {
+      debugPrint('Error updating shelf order: $e');
+      return false;
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> getShelves({
+    String? warehouseId,
+    bool includeInactive = false,
+  }) async {
+    try {
+      var query = _client.from('inventory_shelves').select('''
+            id,
+            code,
+            capacity,
+            display_order,
+            is_active,
+            warehouse_id,
+            zone_id,
+            warehouse:inventory_warehouses(id, name),
+            zone:inventory_zones(id, name, display_order, is_active)
+          ''');
+      if (warehouseId != null) {
+        query = query.eq('warehouse_id', warehouseId);
+      }
+      if (!includeInactive) {
+        query = query.eq('is_active', true);
+      }
+      final response = await query.order('display_order', ascending: true).order('code');
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
       debugPrint('Error loading shelves: $e');
@@ -1068,12 +1297,22 @@ class InventoryService {
     }
   }
 
-  static Future<bool> addShelf({required String warehouseId, required String code, int capacity = 0}) async {
+  static Future<bool> addShelf({
+    required String warehouseId,
+    required String code,
+    int capacity = 0,
+    String? zoneId,
+    bool isActive = true,
+  }) async {
     try {
       await _client.from('inventory_shelves').insert({
         'warehouse_id': warehouseId,
         'code': code,
         'capacity': capacity,
+        'zone_id': zoneId,
+        'display_order': DateTime.now().millisecondsSinceEpoch,
+        'is_active': isActive,
+        'updated_at': DateTime.now().toIso8601String(),
       });
       return true;
     } catch (e) {
@@ -1110,12 +1349,18 @@ class InventoryService {
     String? warehouseId,
     String? code,
     int? capacity,
+    String? zoneId,
+    bool? isActive,
   }) async {
     try {
       final data = <String, dynamic>{};
       if (warehouseId != null) data['warehouse_id'] = warehouseId;
       if (code != null) data['code'] = code;
       if (capacity != null) data['capacity'] = capacity;
+      if (zoneId != null) data['zone_id'] = zoneId;
+      if (isActive != null) data['is_active'] = isActive;
+
+      data['updated_at'] = DateTime.now().toIso8601String();
 
       debugPrint('Updating shelf: id=$id, data=$data');
 
@@ -1459,10 +1704,13 @@ class InventoryService {
     required double quantityAfter,
     String? reason,
     String? userName,
+    String? createdBy,
+    bool applyImmediately = true,
     List<Map<String, dynamic>>? lotBarcodeEntries,
   }) async {
     try {
       final change = quantityAfter - quantityBefore;
+      final now = DateTime.now().toIso8601String();
 
       await _client.from('inventory_adjustments').insert({
         'product_id': productId,
@@ -1472,19 +1720,25 @@ class InventoryService {
         'quantity_change': change,
         'reason': reason,
         'user_name': userName ?? 'ระบบ',
+        'created_by': createdBy,
+        'status': applyImmediately ? 'completed' : 'pending',
+        'created_at': now,
+        'updated_at': now,
       });
 
-      // อัปเดตจำนวนสินค้า
-      await _client.from('inventory_products').update({
-        'quantity': quantityAfter,
-        'updated_at': DateTime.now().toIso8601String(),
-      }).eq('id', productId);
+      if (applyImmediately) {
+        // อัปเดตจำนวนสินค้า
+        await _client.from('inventory_products').update({
+          'quantity': quantityAfter,
+          'updated_at': now,
+        }).eq('id', productId);
 
-      if (type == 'purchase' && lotBarcodeEntries != null && lotBarcodeEntries.isNotEmpty) {
-        await _createLotBarcodesForReceiving(
-          productId: productId,
-          lotBarcodeEntries: lotBarcodeEntries,
-        );
+        if (type == 'purchase' && lotBarcodeEntries != null && lotBarcodeEntries.isNotEmpty) {
+          await _createLotBarcodesForReceiving(
+            productId: productId,
+            lotBarcodeEntries: lotBarcodeEntries,
+          );
+        }
       }
 
       return true;
@@ -1497,6 +1751,205 @@ class InventoryService {
   // =============================================
   // Overview / Statistics
   // =============================================
+
+  static Future<Map<String, dynamic>> getInventoryReportsDashboard({
+    int turnoverDays = 90,
+    int slowDays = 60,
+    int slowLimit = 10,
+  }) async {
+    try {
+      final now = DateTime.now();
+      final windowDays = math.max(turnoverDays, slowDays);
+      final windowStart = now.subtract(Duration(days: windowDays));
+
+      final results = await Future.wait([
+        getProducts(),
+        _client
+            .from('inventory_adjustments')
+            .select('product_id, quantity_change, type, created_at, status')
+            .gte('created_at', windowStart.toIso8601String())
+            .order('created_at', ascending: false),
+      ]);
+
+      final products = List<Map<String, dynamic>>.from(results[0] as List);
+      final adjustmentsRaw = List<Map<String, dynamic>>.from(results[1] as List);
+
+      final valuation = _computeValuationSummary(products);
+      final turnover = _computeTurnoverMetrics(
+        products: products,
+        adjustments: adjustmentsRaw,
+        turnoverDays: turnoverDays,
+        windowStart: now.subtract(Duration(days: turnoverDays)),
+      );
+      final slowMovers = _computeSlowMovers(
+        products: products,
+        adjustments: adjustmentsRaw,
+        slowDays: slowDays,
+        slowLimit: slowLimit,
+        now: now,
+      );
+
+      return {
+        'valuation': valuation,
+        'turnover': turnover,
+        'slowMovers': slowMovers,
+      };
+    } catch (e) {
+      debugPrint('Error loading inventory reports dashboard: $e');
+      return {};
+    }
+  }
+
+  static Map<String, dynamic> _computeValuationSummary(List<Map<String, dynamic>> products) {
+    double totalQuantity = 0;
+    double totalValue = 0;
+    final categoryMap = <String, double>{};
+
+    for (final product in products) {
+      final qty = (product['quantity'] as num?)?.toDouble() ?? 0;
+      final cost = (product['cost'] as num?)?.toDouble() ?? 0;
+      final value = qty * cost;
+      final categoryName = product['category']?['name']?.toString() ?? 'ไม่ระบุหมวดหมู่';
+
+      totalQuantity += qty;
+      totalValue += value;
+      categoryMap[categoryName] = (categoryMap[categoryName] ?? 0) + value;
+    }
+
+    final avgCost = totalQuantity > 0 ? totalValue / totalQuantity : 0;
+    final breakdown = categoryMap.entries
+        .map((entry) => {
+              'label': entry.key,
+              'value': entry.value,
+              'percent': totalValue > 0 ? (entry.value / totalValue) : 0,
+            })
+        .toList()
+      ..sort((a, b) => (b['value'] as double).compareTo(a['value'] as double));
+
+    return {
+      'totalQuantity': totalQuantity,
+      'totalValue': totalValue,
+      'avgCost': avgCost,
+      'categories': breakdown,
+    };
+  }
+
+  static Map<String, dynamic> _computeTurnoverMetrics({
+    required List<Map<String, dynamic>> products,
+    required List<Map<String, dynamic>> adjustments,
+    required int turnoverDays,
+    required DateTime windowStart,
+    int buckets = 6,
+  }) {
+    final now = DateTime.now();
+    final bucketLength = math.max(1, (turnoverDays / buckets).ceil());
+    final bucketValues = List<double>.filled(buckets, 0);
+    double totalOutQuantity = 0;
+
+    for (final adj in adjustments) {
+      final status = (adj['status'] ?? 'completed').toString();
+      if (status == 'pending' || status == 'rejected') continue;
+
+      final change = (adj['quantity_change'] as num?)?.toDouble() ?? 0;
+      if (change >= 0) continue; // only count outflows
+
+      final createdAtStr = adj['created_at']?.toString();
+      if (createdAtStr == null) continue;
+      final createdAt = DateTime.tryParse(createdAtStr);
+      if (createdAt == null || createdAt.isBefore(windowStart)) continue;
+
+      final diffDays = createdAt.difference(windowStart).inDays;
+      var bucketIndex = (diffDays / bucketLength).floor();
+      if (bucketIndex < 0) continue;
+      if (bucketIndex >= buckets) bucketIndex = buckets - 1;
+
+      final outQty = -change;
+      bucketValues[bucketIndex] += outQty;
+      totalOutQuantity += outQty;
+    }
+
+    final totalQuantity = products.fold<double>(0, (sum, product) => sum + ((product['quantity'] as num?)?.toDouble() ?? 0));
+    final turnoverRatio = totalQuantity > 0 ? totalOutQuantity / totalQuantity : 0;
+
+    final trend = List.generate(buckets, (index) {
+      final start = windowStart.add(Duration(days: index * bucketLength));
+      final end = start.add(Duration(days: bucketLength));
+      final label = '${start.day}/${start.month} - ${end.day}/${end.month}';
+      return {
+        'label': label,
+        'value': bucketValues[index],
+      };
+    });
+
+    return {
+      'totalOut': totalOutQuantity,
+      'turnoverRatio': turnoverRatio,
+      'trend': trend,
+    };
+  }
+
+  static List<Map<String, dynamic>> _computeSlowMovers({
+    required List<Map<String, dynamic>> products,
+    required List<Map<String, dynamic>> adjustments,
+    required int slowDays,
+    required int slowLimit,
+    required DateTime now,
+  }) {
+    final lastMovementMap = <String, DateTime>{};
+    for (final adj in adjustments) {
+      final status = (adj['status'] ?? 'completed').toString();
+      if (status == 'pending' || status == 'rejected') continue;
+
+      final productId = adj['product_id']?.toString();
+      if (productId == null) continue;
+      final createdAtStr = adj['created_at']?.toString();
+      if (createdAtStr == null) continue;
+      final createdAt = DateTime.tryParse(createdAtStr);
+      if (createdAt == null) continue;
+
+      final prev = lastMovementMap[productId];
+      if (prev == null || createdAt.isAfter(prev)) {
+        lastMovementMap[productId] = createdAt;
+      }
+    }
+
+    final slowList = <Map<String, dynamic>>[];
+    for (final product in products) {
+      final productId = product['id']?.toString();
+      if (productId == null) continue;
+      final qty = (product['quantity'] as num?)?.toDouble() ?? 0;
+      if (qty <= 0) continue;
+
+      final cost = (product['cost'] as num?)?.toDouble() ?? 0;
+      final lastMove = lastMovementMap[productId] ?? _parseDate(product['updated_at']) ?? _parseDate(product['created_at']);
+      final daysSince = lastMove == null ? 9999 : now.difference(lastMove).inDays;
+
+      if (daysSince >= slowDays) {
+        slowList.add({
+          'name': product['name'] ?? '-',
+          'days': daysSince,
+          'quantity': qty,
+          'unit': product['unit']?['abbreviation'] ?? product['unit']?['name'] ?? '',
+          'value': qty * cost,
+        });
+      }
+    }
+
+    slowList.sort((a, b) => (b['days'] as int).compareTo(a['days'] as int));
+    if (slowList.length > slowLimit) {
+      return slowList.sublist(0, slowLimit);
+    }
+    return slowList;
+  }
+
+  static DateTime? _parseDate(dynamic value) {
+    if (value == null) return null;
+    try {
+      return DateTime.parse(value.toString());
+    } catch (_) {
+      return null;
+    }
+  }
 
   static Future<Map<String, dynamic>> getOverviewStats() async {
     try {
@@ -1844,6 +2297,8 @@ class InventoryService {
     int limit = 100,
     String? type,
     String? productId,
+    String? warehouseId,
+    String? shelfId,
     DateTime? dateFrom,
     DateTime? dateTo,
   }) async {
@@ -1852,7 +2307,13 @@ class InventoryService {
           .from('inventory_adjustments')
           .select('''
             *,
-            product:inventory_products(id, name, sku, unit:inventory_units(id, name, abbreviation))
+            product:inventory_products(
+              id,
+              name,
+              sku,
+              unit:inventory_units(id, name, abbreviation),
+              shelf:inventory_shelves(id, code, warehouse:inventory_warehouses(id, name))
+            )
           ''');
 
       if (type != null && type.isNotEmpty && type != 'all') {
@@ -1860,6 +2321,12 @@ class InventoryService {
       }
       if (productId != null && productId.isNotEmpty) {
         query = query.eq('product_id', productId);
+      }
+      if (shelfId != null && shelfId.isNotEmpty) {
+        query = query.eq('product->shelf_id', shelfId);
+      }
+      if (warehouseId != null && warehouseId.isNotEmpty) {
+        query = query.eq('product->shelf->warehouse_id', warehouseId);
       }
       if (dateFrom != null) {
         query = query.gte('created_at', dateFrom.toIso8601String());
@@ -1925,6 +2392,307 @@ class InventoryService {
     }
   }
 
+  /// สร้างคำขอโอนสินค้า (draft)
+  static Future<String?> createTransfer({
+    required String productId,
+    required double quantity,
+    required String sourceWarehouseId,
+    String? sourceShelfId,
+    required String targetWarehouseId,
+    String? targetShelfId,
+    String? reason,
+    String? note,
+  }) async {
+    try {
+      final userId = _client.auth.currentUser?.id;
+      final now = DateTime.now().toIso8601String();
+      final response = await _client.from('inventory_transfers').insert({
+        'product_id': productId,
+        'quantity': quantity,
+        'source_warehouse_id': sourceWarehouseId,
+        'source_shelf_id': sourceShelfId,
+        'target_warehouse_id': targetWarehouseId,
+        'target_shelf_id': targetShelfId,
+        'reason': reason,
+        'note': note,
+        'created_by': userId,
+        'status': 'draft',
+        'created_at': now,
+        'updated_at': now,
+      }).select('id').single();
+      final insertedId = response['id']?.toString();
+      return insertedId;
+    } catch (e) {
+      debugPrint('Error creating transfer: $e');
+      return null;
+    }
+  }
+
+  /// ส่งคำขอโอน (draft → pending)
+  static Future<bool> submitTransfer({
+    required String id,
+  }) async {
+    try {
+      final now = DateTime.now().toIso8601String();
+      await _client
+          .from('inventory_transfers')
+          .update({'status': 'pending', 'updated_at': now})
+          .eq('id', id);
+      return true;
+    } catch (e) {
+      debugPrint('Error submitting transfer: $e');
+      return false;
+    }
+  }
+
+  /// รับรายการโอน (status filter optional)
+  static Future<List<Map<String, dynamic>>> getTransfers({
+    String? status,
+    String? warehouseId,
+    int limit = 100,
+  }) async {
+    try {
+      var query = _client
+          .from('inventory_transfers')
+          .select('''
+            *,
+            product:inventory_products(id, name, sku, unit:inventory_units(id, name, abbreviation)),
+            source_warehouse:inventory_warehouses(id, name),
+            target_warehouse:inventory_warehouses(id, name)
+          ''');
+      if (status != null && status.isNotEmpty) {
+        query = query.eq('status', status);
+      }
+      if (warehouseId != null && warehouseId.isNotEmpty) {
+        query = query.or('source_warehouse_id.eq.$warehouseId,target_warehouse_id.eq.$warehouseId');
+      }
+      final response = await query.order('created_at', ascending: false).limit(limit);
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error loading transfers: $e');
+      return [];
+    }
+  }
+
+  static Future<bool> _insertTransferAdjustment({
+    required String productId,
+    required String type,
+    required double quantity,
+    required String reason,
+    required String? userId,
+  }) async {
+    try {
+      final productResp = await _client
+          .from('inventory_products')
+          .select('id, quantity')
+          .eq('id', productId)
+          .single();
+      final currentQty = (productResp['quantity'] as num?)?.toDouble() ?? 0.0;
+      await _client.from('inventory_adjustments').insert({
+        'product_id': productId,
+        'type': type,
+        'quantity_before': currentQty,
+        'quantity_after': currentQty,
+        'quantity_change': type == 'transfer_in' ? quantity : -quantity,
+        'reason': reason,
+        'user_id': userId,
+        'user_name': null,
+      });
+      return true;
+    } catch (e) {
+      debugPrint('Error inserting transfer adjustment: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> _updateProductShelf({
+    required String productId,
+    String? shelfId,
+  }) async {
+    try {
+      await _client
+          .from('inventory_products')
+          .update({'shelf_id': shelfId, 'updated_at': DateTime.now().toIso8601String()})
+          .eq('id', productId);
+      return true;
+    } catch (e) {
+      debugPrint('Error updating product shelf: $e');
+      return false;
+    }
+  }
+
+  /// อนุมัติคำขอโอน (สร้าง adjustment + update status)
+  static Future<bool> approveTransfer({
+    required String id,
+    required String approverId,
+    String? note,
+  }) async {
+    try {
+      final transfer = await _client
+          .from('inventory_transfers')
+          .select('id, product_id, quantity, target_shelf_id, status, reason, target_warehouse_id, source_warehouse_id')
+          .eq('id', id)
+          .single();
+      if (transfer == null || transfer['status'] != 'pending') return false;
+      final productId = transfer['product_id']?.toString();
+      if (productId == null) return false;
+      final qty = (transfer['quantity'] as num?)?.toDouble() ?? 0.0;
+      final reason = transfer['reason']?.toString() ?? 'โอนคลัง';
+      final warehouseLabel = transfer['target_warehouse_id'] ?? transfer['source_warehouse_id'];
+      final reasonText = '$reason (โอนไปคลัง ${warehouseLabel ?? 'ไม่ระบุ'})';
+
+      await Future.wait([
+        _insertTransferAdjustment(
+          productId: productId,
+          type: 'transfer_out',
+          quantity: qty,
+          reason: 'ส่งออก $reasonText',
+          userId: approverId,
+        ),
+        _insertTransferAdjustment(
+          productId: productId,
+          type: 'transfer_in',
+          quantity: qty,
+          reason: 'รับเข้า $reasonText',
+          userId: approverId,
+        ),
+      ]);
+      await _updateProductShelf(productId: productId, shelfId: transfer['target_shelf_id']?.toString());
+      await _client
+          .from('inventory_transfers')
+          .update({
+            'status': 'approved',
+            'approved_by': approverId,
+            'approved_at': DateTime.now().toIso8601String(),
+            'note': note,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', id);
+      return true;
+    } catch (e) {
+      debugPrint('Error approving transfer: $e');
+      return false;
+    }
+  }
+
+  /// ปฏิเสธคำขอโอน (status → rejected)
+  static Future<bool> rejectTransfer({
+    required String id,
+    required String approverId,
+    String? note,
+  }) async {
+    try {
+      final now = DateTime.now().toIso8601String();
+      await _client
+          .from('inventory_transfers')
+          .update({
+            'status': 'rejected',
+            'approved_by': approverId,
+            'approved_at': now,
+            'note': note,
+            'updated_at': now,
+          })
+          .eq('id', id);
+      return true;
+    } catch (e) {
+      debugPrint('Error rejecting transfer: $e');
+      return false;
+    }
+  }
+
+  /// ดึง adjustments ที่รอการอนุมัติ
+  static Future<List<Map<String, dynamic>>> getPendingAdjustments() async {
+    try {
+      final response = await _client
+          .from('inventory_adjustments')
+          .select('''
+            *,
+            product:inventory_products(id, name, sku, unit:inventory_units(id, name, abbreviation))
+          ''')
+          .eq('status', 'pending')
+          .order('created_at', ascending: false);
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error getting pending adjustments: $e');
+      return [];
+    }
+  }
+
+  /// อนุมัติ adjustment
+  static Future<bool> approveAdjustment({
+    required String adjustmentId,
+    required String approverId,
+    String? note,
+  }) async {
+    try {
+      final adjustment = await _client
+          .from('inventory_adjustments')
+          .select('''
+            *,
+            product:inventory_products(id, quantity)
+          ''')
+          .eq('id', adjustmentId)
+          .single();
+
+      if (adjustment.isEmpty) return false;
+
+      final productId = adjustment['product_id']?.toString();
+      if (productId == null) return false;
+
+      final currentQty = (adjustment['product']?['quantity'] as num?)?.toDouble() ?? 0;
+      final change = (adjustment['quantity_change'] as num?)?.toDouble() ?? 0;
+      final newQty = (currentQty + change).clamp(0, double.infinity);
+      final now = DateTime.now().toIso8601String();
+
+      await _client.from('inventory_products').update({
+        'quantity': newQty,
+        'updated_at': now,
+      }).eq('id', productId);
+
+      await _client
+          .from('inventory_adjustments')
+          .update({
+            'status': 'approved',
+            'quantity_before': currentQty,
+            'quantity_after': newQty,
+            'approved_by': approverId,
+            'approved_at': now,
+            'approval_note': note,
+            'updated_at': now,
+          })
+          .eq('id', adjustmentId);
+      return true;
+    } catch (e) {
+      debugPrint('Error approving adjustment: $e');
+      return false;
+    }
+  }
+
+  /// ปฏิเสธ adjustment
+  static Future<bool> rejectAdjustment({
+    required String adjustmentId,
+    required String approverId,
+    String? note,
+  }) async {
+    try {
+      final now = DateTime.now().toIso8601String();
+      await _client
+          .from('inventory_adjustments')
+          .update({
+            'status': 'rejected',
+            'approved_by': approverId,
+            'approved_at': now,
+            'approval_note': note,
+            'updated_at': now,
+          })
+          .eq('id', adjustmentId);
+      return true;
+    } catch (e) {
+      debugPrint('Error rejecting adjustment: $e');
+      return false;
+    }
+  }
+
   /// ดึงสินค้าที่คงเหลือต่ำกว่า min_quantity
   static Future<List<Map<String, dynamic>>> getLowStockProducts() async {
     try {
@@ -1936,6 +2704,378 @@ class InventoryService {
       }).toList();
     } catch (e) {
       debugPrint('Error getting low stock products: $e');
+      return [];
+    }
+  }
+
+  /// สร้าง PO อัตโนมัติสำหรับสินค้าต่ำสต็อก
+  static Future<bool> createAutoPOForLowStock({
+    required String productId,
+    required String supplierId,
+    required double quantity,
+    DateTime? expectedDate,
+    String? createdBy,
+  }) async {
+    try {
+      final poData = {
+        'order_number': '',
+        'supplier_id': supplierId,
+        'status': 'draft',
+        'expected_date': expectedDate?.toIso8601String(),
+        'subtotal': 0,
+        'tax_amount': 0,
+        'discount_amount': 0,
+        'total_amount': 0,
+        'notes': 'สร้างอัตโนมัติจากแจ้งเตือนสต็อกต่ำ',
+        'created_by': createdBy,
+      };
+
+      final poResponse = await _client
+          .from('procurement_purchase_orders')
+          .insert(poData)
+          .select()
+          .single();
+
+      final poId = poResponse['id']?.toString();
+      if (poId == null) return false;
+
+      await _client.from('procurement_purchase_order_lines').insert({
+        'po_id': poId,
+        'product_id': productId,
+        'quantity': quantity,
+        'unit_price': 0,
+        'line_total': 0,
+        'received_quantity': 0,
+      });
+
+      return true;
+    } catch (e) {
+      debugPrint('Error creating auto PO: $e');
+      return false;
+    }
+  }
+
+  /// สร้าง PO อัตโนมัติสำหรับสินค้าใกล้หมดอายุ
+  static Future<bool> createAutoPOForExpiringStock({
+    required String productId,
+    required String supplierId,
+    required double quantity,
+    DateTime? expectedDate,
+    String? createdBy,
+  }) async {
+    try {
+      final poData = {
+        'order_number': '',
+        'supplier_id': supplierId,
+        'status': 'draft',
+        'expected_date': expectedDate?.toIso8601String(),
+        'subtotal': 0,
+        'tax_amount': 0,
+        'discount_amount': 0,
+        'total_amount': 0,
+        'notes': 'สร้างอัตโนมัติจากแจ้งเตือนสินค้าใกล้หมดอายุ',
+        'created_by': createdBy,
+      };
+
+      final poResponse = await _client
+          .from('procurement_purchase_orders')
+          .insert(poData)
+          .select()
+          .single();
+
+      final poId = poResponse['id']?.toString();
+      if (poId == null) return false;
+
+      await _client.from('procurement_purchase_order_lines').insert({
+        'po_id': poId,
+        'product_id': productId,
+        'quantity': quantity,
+        'unit_price': 0,
+        'line_total': 0,
+        'received_quantity': 0,
+      });
+
+      return true;
+    } catch (e) {
+      debugPrint('Error creating auto PO for expiring stock: $e');
+      return false;
+    }
+  }
+
+  /// ดึงรายการ supplier ทั้งหมด
+  static Future<List<Map<String, dynamic>>> getSuppliers({bool activeOnly = true}) async {
+    try {
+      final response = await _client
+          .from('procurement_suppliers')
+          .select('*')
+          .order('name');
+      
+      if (activeOnly) {
+        return List<Map<String, dynamic>>.from(response)
+            .where((s) => s['is_active'] == true)
+            .toList();
+      }
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('InventoryService.getSuppliers error: $e');
+      return [];
+    }
+  }
+
+  /// Sync PO status กับ inventory adjustments
+  /// เมื่อ PO completed ให้ approve adjustment ที่เกี่ยวข้อง
+  static Future<bool> syncPOStatusToAdjustments(String poId) async {
+    try {
+      // ดึง PO detail
+      final poResponse = await _client
+          .from('procurement_purchase_orders')
+          .select('*')
+          .eq('id', poId)
+          .single();
+
+      final poStatus = poResponse['status']?.toString() ?? '';
+      
+      if (poStatus != 'completed') {
+        return true; // ไม่ต้อง sync ถ้า PO ยังไม่ completed
+      }
+
+      // ดึง PO lines
+      final linesResponse = await _client
+          .from('procurement_purchase_order_lines')
+          .select('*')
+          .eq('po_id', poId);
+
+      final lines = List<Map<String, dynamic>>.from(linesResponse);
+
+      // ค้นหา adjustments ที่เกี่ยวข้องกับ PO นี้
+      for (final line in lines) {
+        final productId = line['product_id']?.toString();
+        if (productId == null) continue;
+
+        // ค้นหา pending adjustment สำหรับสินค้านี้
+        final adjustmentResponse = await _client
+            .from('inventory_adjustments')
+            .select('*')
+            .eq('product_id', productId)
+            .eq('status', 'pending')
+            .order('created_at', ascending: false)
+            .limit(1);
+
+        if (adjustmentResponse.isNotEmpty) {
+          final adjustment = adjustmentResponse.first as Map<String, dynamic>;
+          final adjustmentId = adjustment['id']?.toString();
+
+          if (adjustmentId != null) {
+            // Auto-approve adjustment
+            await _client
+                .from('inventory_adjustments')
+                .update({
+                  'status': 'approved',
+                  'approved_by': 'system',
+                  'approved_at': DateTime.now().toIso8601String(),
+                  'approval_note': 'อนุมัติอัตโนมัติจากการรับสินค้า PO: $poId',
+                })
+                .eq('id', adjustmentId);
+          }
+        }
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('InventoryService.syncPOStatusToAdjustments error: $e');
+      return false;
+    }
+  }
+
+  // =============================================
+  // Reserve Stock System
+  // =============================================
+
+  /// ดึงจำนวนสินค้าที่พร้อมใช้ (quantity - reserved_quantity)
+  static Future<double> getAvailableStock(String productId) async {
+    try {
+      final response = await _client
+          .from('inventory_products')
+          .select('quantity, reserved_quantity')
+          .eq('id', productId)
+          .single();
+
+      final quantity = (response['quantity'] as num?)?.toDouble() ?? 0;
+      final reserved = (response['reserved_quantity'] as num?)?.toDouble() ?? 0;
+      
+      return quantity - reserved;
+    } catch (e) {
+      debugPrint('InventoryService.getAvailableStock error: $e');
+      return 0;
+    }
+  }
+
+  /// สำรองสินค้า (เพิ่ม reserved_quantity)
+  static Future<bool> reserveStock({
+    required String productId,
+    required double quantity,
+    String? orderId,
+    String? reservedBy,
+  }) async {
+    try {
+      // ดึงจำนวนปัจจุบัน
+      final response = await _client
+          .from('inventory_products')
+          .select('quantity, reserved_quantity')
+          .eq('id', productId)
+          .single();
+
+      final currentQty = (response['quantity'] as num?)?.toDouble() ?? 0;
+      final currentReserved = (response['reserved_quantity'] as num?)?.toDouble() ?? 0;
+      final available = currentQty - currentReserved;
+
+      // ตรวจสอบว่ามีสินค้าพอสำหรับสำรอง
+      if (available < quantity) {
+        debugPrint('InventoryService.reserveStock: Not enough available stock');
+        return false;
+      }
+
+      // อัปเดต reserved_quantity
+      final newReserved = currentReserved + quantity;
+      await _client
+          .from('inventory_products')
+          .update({'reserved_quantity': newReserved})
+          .eq('id', productId);
+
+      // บันทึก reserve log
+      await _client
+          .from('inventory_reserve_logs')
+          .insert({
+            'product_id': productId,
+            'quantity': quantity,
+            'order_id': orderId,
+            'action': 'reserve',
+            'reserved_by': reservedBy,
+            'created_at': DateTime.now().toIso8601String(),
+          });
+
+      return true;
+    } catch (e) {
+      debugPrint('InventoryService.reserveStock error: $e');
+      return false;
+    }
+  }
+
+  /// ปล่อยสำรองสินค้า (ลด reserved_quantity)
+  static Future<bool> releaseReservedStock({
+    required String productId,
+    required double quantity,
+    String? orderId,
+    String? releasedBy,
+  }) async {
+    try {
+      // ดึงจำนวนปัจจุบัน
+      final response = await _client
+          .from('inventory_products')
+          .select('reserved_quantity')
+          .eq('id', productId)
+          .single();
+
+      final currentReserved = (response['reserved_quantity'] as num?)?.toDouble() ?? 0;
+
+      // ตรวจสอบว่ามีสำรองพอสำหรับปล่อย
+      if (currentReserved < quantity) {
+        debugPrint('InventoryService.releaseReservedStock: Not enough reserved stock');
+        return false;
+      }
+
+      // อัปเดต reserved_quantity
+      final newReserved = currentReserved - quantity;
+      await _client
+          .from('inventory_products')
+          .update({'reserved_quantity': newReserved})
+          .eq('id', productId);
+
+      // บันทึก release log
+      await _client
+          .from('inventory_reserve_logs')
+          .insert({
+            'product_id': productId,
+            'quantity': quantity,
+            'order_id': orderId,
+            'action': 'release',
+            'released_by': releasedBy,
+            'created_at': DateTime.now().toIso8601String(),
+          });
+
+      return true;
+    } catch (e) {
+      debugPrint('InventoryService.releaseReservedStock error: $e');
+      return false;
+    }
+  }
+
+  /// ดึงข้อมูลสต็อกแบบละเอียด (quantity, reserved, available)
+  static Future<Map<String, dynamic>?> getStockDetails(String productId) async {
+    try {
+      final response = await _client
+          .from('inventory_products')
+          .select('id, name, quantity, reserved_quantity')
+          .eq('id', productId)
+          .single();
+
+      final quantity = (response['quantity'] as num?)?.toDouble() ?? 0;
+      final reserved = (response['reserved_quantity'] as num?)?.toDouble() ?? 0;
+      final available = quantity - reserved;
+
+      return {
+        'product_id': response['id'],
+        'product_name': response['name'],
+        'total_quantity': quantity,
+        'reserved_quantity': reserved,
+        'available_quantity': available,
+        'reserved_percentage': quantity > 0 ? (reserved / quantity * 100) : 0,
+      };
+    } catch (e) {
+      debugPrint('InventoryService.getStockDetails error: $e');
+      return null;
+    }
+  }
+
+  /// ดึง reserve logs สำหรับสินค้า
+  static Future<List<Map<String, dynamic>>> getReserveLogs({
+    String? productId,
+    String? orderId,
+    DateTime? fromDate,
+    DateTime? toDate,
+  }) async {
+    try {
+      var query = _client
+          .from('inventory_reserve_logs')
+          .select('*');
+
+      if (productId != null) {
+        query = query.eq('product_id', productId);
+      }
+      if (orderId != null) {
+        query = query.eq('order_id', orderId);
+      }
+
+      final response = await (query as dynamic).order('created_at', ascending: false);
+      List<Map<String, dynamic>> logs = List<Map<String, dynamic>>.from(response);
+
+      // Filter by date range
+      if (fromDate != null) {
+        logs = logs.where((log) {
+          final logDate = DateTime.tryParse(log['created_at']?.toString() ?? '');
+          return logDate != null && logDate.isAfter(fromDate.subtract(const Duration(days: 1)));
+        }).toList();
+      }
+      if (toDate != null) {
+        logs = logs.where((log) {
+          final logDate = DateTime.tryParse(log['created_at']?.toString() ?? '');
+          return logDate != null && logDate.isBefore(toDate.add(const Duration(days: 1)));
+        }).toList();
+      }
+
+      return logs;
+    } catch (e) {
+      debugPrint('InventoryService.getReserveLogs error: $e');
       return [];
     }
   }
@@ -2263,6 +3403,1036 @@ class InventoryService {
     } catch (e) {
       debugPrint('Error loading POS orders: $e');
       return [];
+    }
+  }
+
+  // =============================================
+  // Bulk Operations
+  // =============================================
+
+  /// ปรับปรุงสต็อกหลายรายการพร้อมกัน (Bulk Adjustment)
+  static Future<bool> bulkAdjustment({
+    required List<Map<String, dynamic>> adjustments, // [{productId, quantity, reason}, ...]
+    String? warehouseId,
+    String? adjustedBy,
+  }) async {
+    try {
+      final adjustmentRecords = <Map<String, dynamic>>[];
+
+      for (final adj in adjustments) {
+        final productId = adj['product_id']?.toString();
+        final quantity = (adj['quantity'] as num?)?.toDouble() ?? 0;
+        final reason = adj['reason']?.toString() ?? 'Bulk adjustment';
+
+        if (productId == null || quantity == 0) continue;
+
+        adjustmentRecords.add({
+          'product_id': productId,
+          'adjustment_type': 'manual',
+          'quantity_change': quantity,
+          'reason': reason,
+          'warehouse_id': warehouseId,
+          'status': 'pending',
+          'created_by': adjustedBy,
+          'created_at': DateTime.now().toIso8601String(),
+        });
+      }
+
+      if (adjustmentRecords.isEmpty) return false;
+
+      // Insert all adjustments
+      await _client
+          .from('inventory_adjustments')
+          .insert(adjustmentRecords);
+
+      return true;
+    } catch (e) {
+      debugPrint('InventoryService.bulkAdjustment error: $e');
+      return false;
+    }
+  }
+
+  /// อัปเดตราคาหลายรายการพร้อมกัน (Bulk Price Update)
+  static Future<bool> bulkUpdatePrice({
+    required List<Map<String, dynamic>> updates, // [{productId, newPrice}, ...]
+    String? updatedBy,
+  }) async {
+    try {
+      for (final update in updates) {
+        final productId = update['product_id']?.toString();
+        final newPrice = (update['new_price'] as num?)?.toDouble();
+
+        if (productId == null || newPrice == null) continue;
+
+        await _client
+            .from('inventory_products')
+            .update({
+              'price': newPrice,
+              'updated_at': DateTime.now().toIso8601String(),
+              'updated_by': updatedBy,
+            })
+            .eq('id', productId);
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('InventoryService.bulkUpdatePrice error: $e');
+      return false;
+    }
+  }
+
+  /// อัปเดตตำแหน่งเก็บหลายรายการพร้อมกัน (Bulk Location Update)
+  static Future<bool> bulkUpdateLocation({
+    required List<String> productIds,
+    required String newWarehouseId,
+    required String newShelfId,
+    String? updatedBy,
+  }) async {
+    try {
+      await _client
+          .from('inventory_products')
+          .update({
+            'warehouse_id': newWarehouseId,
+            'shelf_id': newShelfId,
+            'updated_at': DateTime.now().toIso8601String(),
+            'updated_by': updatedBy,
+          })
+          .inFilter('id', productIds);
+
+      return true;
+    } catch (e) {
+      debugPrint('InventoryService.bulkUpdateLocation error: $e');
+      return false;
+    }
+  }
+
+  /// อนุมัติหลายการปรับปรุงพร้อมกัน (Bulk Approve Adjustments)
+  static Future<bool> bulkApproveAdjustments({
+    required List<String> adjustmentIds,
+    String? approvedBy,
+    String? approvalNote,
+  }) async {
+    try {
+      await _client
+          .from('inventory_adjustments')
+          .update({
+            'status': 'approved',
+            'approved_by': approvedBy,
+            'approved_at': DateTime.now().toIso8601String(),
+            'approval_note': approvalNote,
+          })
+          .inFilter('id', adjustmentIds);
+
+      return true;
+    } catch (e) {
+      debugPrint('InventoryService.bulkApproveAdjustments error: $e');
+      return false;
+    }
+  }
+
+  /// ปฏิเสธหลายการปรับปรุงพร้อมกัน (Bulk Reject Adjustments)
+  static Future<bool> bulkRejectAdjustments({
+    required List<String> adjustmentIds,
+    String? rejectedBy,
+    String? rejectionReason,
+  }) async {
+    try {
+      await _client
+          .from('inventory_adjustments')
+          .update({
+            'status': 'rejected',
+            'rejected_by': rejectedBy,
+            'rejected_at': DateTime.now().toIso8601String(),
+            'rejection_reason': rejectionReason,
+          })
+          .inFilter('id', adjustmentIds);
+
+      return true;
+    } catch (e) {
+      debugPrint('InventoryService.bulkRejectAdjustments error: $e');
+      return false;
+    }
+  }
+
+  /// สำรองสินค้าหลายรายการพร้อมกัน (Bulk Reserve)
+  static Future<bool> bulkReserveStock({
+    required List<Map<String, dynamic>> reserves, // [{productId, quantity, orderId}, ...]
+    String? reservedBy,
+  }) async {
+    try {
+      for (final reserve in reserves) {
+        final productId = reserve['product_id']?.toString();
+        final quantity = (reserve['quantity'] as num?)?.toDouble() ?? 0;
+        final orderId = reserve['order_id']?.toString();
+
+        if (productId == null || quantity == 0) continue;
+
+        await reserveStock(
+          productId: productId,
+          quantity: quantity,
+          orderId: orderId,
+          reservedBy: reservedBy,
+        );
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('InventoryService.bulkReserveStock error: $e');
+      return false;
+    }
+  }
+
+  /// ปล่อยสำรองหลายรายการพร้อมกัน (Bulk Release)
+  static Future<bool> bulkReleaseStock({
+    required List<Map<String, dynamic>> releases, // [{productId, quantity, orderId}, ...]
+    String? releasedBy,
+  }) async {
+    try {
+      for (final release in releases) {
+        final productId = release['product_id']?.toString();
+        final quantity = (release['quantity'] as num?)?.toDouble() ?? 0;
+        final orderId = release['order_id']?.toString();
+
+        if (productId == null || quantity == 0) continue;
+
+        await releaseReservedStock(
+          productId: productId,
+          quantity: quantity,
+          orderId: orderId,
+          releasedBy: releasedBy,
+        );
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('InventoryService.bulkReleaseStock error: $e');
+      return false;
+    }
+  }
+
+  // =============================================
+  // Stock Forecasting
+  // =============================================
+
+  /// ดึงข้อมูลการขายสินค้า (historical sales)
+  static Future<List<Map<String, dynamic>>> getSalesHistory({
+    required String productId,
+    required DateTime fromDate,
+    required DateTime toDate,
+  }) async {
+    try {
+      final response = await _client
+          .from('pos_order_lines')
+          .select('''
+            *,
+            order:pos_orders(created_at)
+          ''')
+          .eq('product_id', productId)
+          .gte('created_at', fromDate.toIso8601String())
+          .lte('created_at', toDate.toIso8601String())
+          .order('created_at');
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('InventoryService.getSalesHistory error: $e');
+      return [];
+    }
+  }
+
+  /// คำนวณพยากรณ์สต็อก (Simple Moving Average)
+  /// ใช้ข้อมูลขาย 30 วันที่ผ่านมา เพื่อพยากรณ์ 7 วันข้างหน้า
+  static Future<Map<String, dynamic>?> forecastStock({
+    required String productId,
+    int historyDays = 30,
+    int forecastDays = 7,
+  }) async {
+    try {
+      final now = DateTime.now();
+      final fromDate = now.subtract(Duration(days: historyDays));
+      
+      // ดึงข้อมูลการขายในอดีต
+      final salesHistory = await getSalesHistory(
+        productId: productId,
+        fromDate: fromDate,
+        toDate: now,
+      );
+
+      if (salesHistory.isEmpty) {
+        return null;
+      }
+
+      // จัดกลุ่มการขายตามวัน
+      final dailySales = <String, double>{};
+      for (final sale in salesHistory) {
+        final orderDate = sale['order']?['created_at']?.toString() ?? '';
+        final quantity = (sale['quantity'] as num?)?.toDouble() ?? 0;
+        
+        if (orderDate.isNotEmpty) {
+          final date = DateTime.parse(orderDate);
+          final dateKey = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+          dailySales[dateKey] = (dailySales[dateKey] ?? 0) + quantity;
+        }
+      }
+
+      // คำนวณค่าเฉลี่ยรายวัน (Simple Moving Average)
+      final avgDailySales = dailySales.values.isEmpty 
+          ? 0.0 
+          : dailySales.values.reduce((a, b) => a + b) / dailySales.length;
+
+      // คำนวณ trend (เพิ่มขึ้น/ลดลง)
+      final recentSales = dailySales.values.toList().reversed.take(7).toList();
+      final olderSales = dailySales.values.toList().reversed.skip(7).take(7).toList();
+      
+      final recentAvg = recentSales.isEmpty ? 0.0 : recentSales.reduce((a, b) => a + b) / recentSales.length;
+      final olderAvg = olderSales.isEmpty ? 0.0 : olderSales.reduce((a, b) => a + b) / olderSales.length;
+      
+      final trendPercentage = olderAvg > 0 ? ((recentAvg - olderAvg) / olderAvg * 100) : 0.0;
+
+      // พยากรณ์สต็อกในอนาคต
+      final forecastedDemand = avgDailySales * forecastDays;
+      
+      // ดึงสต็อกปัจจุบัน
+      final productResponse = await _client
+          .from('inventory_products')
+          .select('quantity, reorder_point')
+          .eq('id', productId)
+          .single();
+
+      final currentStock = (productResponse['quantity'] as num?)?.toDouble() ?? 0;
+      final reorderPoint = (productResponse['reorder_point'] as num?)?.toDouble() ?? 0;
+      final projectedStock = currentStock - forecastedDemand;
+
+      return {
+        'product_id': productId,
+        'current_stock': currentStock,
+        'avg_daily_sales': avgDailySales,
+        'trend_percentage': trendPercentage,
+        'trend_direction': trendPercentage > 5 ? 'up' : trendPercentage < -5 ? 'down' : 'stable',
+        'forecast_days': forecastDays,
+        'forecasted_demand': forecastedDemand,
+        'projected_stock': projectedStock,
+        'will_stockout': projectedStock < 0,
+        'days_until_stockout': avgDailySales > 0 ? (currentStock / avgDailySales).ceil() : 999,
+        'reorder_point': reorderPoint,
+        'needs_reorder': projectedStock < reorderPoint,
+        'confidence': dailySales.length >= 14 ? 'high' : dailySales.length >= 7 ? 'medium' : 'low',
+      };
+    } catch (e) {
+      debugPrint('InventoryService.forecastStock error: $e');
+      return null;
+    }
+  }
+
+  /// พยากรณ์สต็อกหลายสินค้า
+  static Future<List<Map<String, dynamic>>> forecastMultipleProducts({
+    required List<String> productIds,
+    int historyDays = 30,
+    int forecastDays = 7,
+  }) async {
+    try {
+      final forecasts = <Map<String, dynamic>>[];
+
+      for (final productId in productIds) {
+        final forecast = await forecastStock(
+          productId: productId,
+          historyDays: historyDays,
+          forecastDays: forecastDays,
+        );
+
+        if (forecast != null) {
+          forecasts.add(forecast);
+        }
+      }
+
+      // เรียงตามความเสี่ยง (high risk first)
+      forecasts.sort((a, b) {
+        final aRisk = a['will_stockout'] == true ? 0 : 1;
+        final bRisk = b['will_stockout'] == true ? 0 : 1;
+        return aRisk.compareTo(bRisk);
+      });
+
+      return forecasts;
+    } catch (e) {
+      debugPrint('InventoryService.forecastMultipleProducts error: $e');
+      return [];
+    }
+  }
+
+  /// ดึงสินค้าที่มีความเสี่ยงสต็อกหมด (At-risk products)
+  static Future<List<Map<String, dynamic>>> getAtRiskProducts({
+    int historyDays = 30,
+    int forecastDays = 7,
+  }) async {
+    try {
+      // ดึงสินค้าทั้งหมด
+      final products = await getProducts();
+      final productIds = products
+          .map((p) => p['id']?.toString())
+          .whereType<String>()
+          .toList();
+
+      if (productIds.isEmpty) return [];
+
+      // พยากรณ์สต็อก
+      final forecasts = await forecastMultipleProducts(
+        productIds: productIds,
+        historyDays: historyDays,
+        forecastDays: forecastDays,
+      );
+
+      // กรองเฉพาะสินค้าที่มีความเสี่ยง
+      return forecasts.where((f) {
+        final willStockout = f['will_stockout'] == true;
+        final needsReorder = f['needs_reorder'] == true;
+        return willStockout || needsReorder;
+      }).toList();
+    } catch (e) {
+      debugPrint('InventoryService.getAtRiskProducts error: $e');
+      return [];
+    }
+  }
+
+  /// คำนวณ seasonal pattern (รูปแบบตามฤดูกาล)
+  static Future<Map<String, dynamic>?> analyzeSeasonalPattern({
+    required String productId,
+    int monthsBack = 12,
+  }) async {
+    try {
+      final now = DateTime.now();
+      final fromDate = DateTime(now.year - (monthsBack ~/ 12), now.month - (monthsBack % 12), 1);
+      
+      final salesHistory = await getSalesHistory(
+        productId: productId,
+        fromDate: fromDate,
+        toDate: now,
+      );
+
+      if (salesHistory.isEmpty) return null;
+
+      // จัดกลุ่มตามเดือน
+      final monthlySales = <String, double>{};
+      for (final sale in salesHistory) {
+        final orderDate = sale['order']?['created_at']?.toString() ?? '';
+        final quantity = (sale['quantity'] as num?)?.toDouble() ?? 0;
+        
+        if (orderDate.isNotEmpty) {
+          final date = DateTime.parse(orderDate);
+          final monthKey = '${date.year}-${date.month.toString().padLeft(2, '0')}';
+          monthlySales[monthKey] = (monthlySales[monthKey] ?? 0) + quantity;
+        }
+      }
+
+      if (monthlySales.length < 3) return null;
+
+      final avgMonthlySales = monthlySales.values.reduce((a, b) => a + b) / monthlySales.length;
+      final maxMonth = monthlySales.values.reduce((a, b) => a > b ? a : b);
+      final minMonth = monthlySales.values.reduce((a, b) => a < b ? a : b);
+      final seasonalIndex = maxMonth / avgMonthlySales;
+
+      return {
+        'product_id': productId,
+        'avg_monthly_sales': avgMonthlySales,
+        'peak_sales': maxMonth,
+        'low_sales': minMonth,
+        'seasonal_index': seasonalIndex,
+        'is_seasonal': seasonalIndex > 1.3,
+        'months_analyzed': monthlySales.length,
+      };
+    } catch (e) {
+      debugPrint('InventoryService.analyzeSeasonalPattern error: $e');
+      return null;
+    }
+  }
+
+  // =============================================
+  // Batch Expiry Tracking
+  // =============================================
+
+  /// ดึงข้อมูลล็อตสินค้า (batches)
+  static Future<List<Map<String, dynamic>>> getBatches({
+    String? productId,
+    String? warehouseId,
+    bool? expiredOnly,
+  }) async {
+    try {
+      var query = _client
+          .from('inventory_batches')
+          .select('*');
+
+      if (productId != null) {
+        query = query.eq('product_id', productId);
+      }
+      if (warehouseId != null) {
+        query = query.eq('warehouse_id', warehouseId);
+      }
+
+      final response = await (query as dynamic).order('expiry_date', ascending: true);
+      var batches = List<Map<String, dynamic>>.from(response);
+
+      // Filter expired if requested
+      if (expiredOnly == true) {
+        final now = DateTime.now();
+        batches = batches.where((b) {
+          final expiryDate = b['expiry_date']?.toString();
+          if (expiryDate == null) return false;
+          return DateTime.parse(expiryDate).isBefore(now);
+        }).toList();
+      }
+
+      return batches;
+    } catch (e) {
+      debugPrint('InventoryService.getBatches error: $e');
+      return [];
+    }
+  }
+
+  /// สร้างล็อตสินค้าใหม่
+  static Future<bool> createBatch({
+    required String productId,
+    required String batchNumber,
+    required double quantity,
+    required DateTime expiryDate,
+    String? warehouseId,
+    String? shelfId,
+    String? notes,
+    String? createdBy,
+  }) async {
+    try {
+      await _client
+          .from('inventory_batches')
+          .insert({
+            'product_id': productId,
+            'batch_number': batchNumber,
+            'quantity': quantity,
+            'expiry_date': expiryDate.toIso8601String(),
+            'warehouse_id': warehouseId,
+            'shelf_id': shelfId,
+            'notes': notes,
+            'created_by': createdBy,
+            'created_at': DateTime.now().toIso8601String(),
+            'is_expired': false,
+          });
+
+      return true;
+    } catch (e) {
+      debugPrint('InventoryService.createBatch error: $e');
+      return false;
+    }
+  }
+
+  /// ดึงล็อตที่ใกล้หมดอายุ (Expiring soon)
+  static Future<List<Map<String, dynamic>>> getExpiringBatches({
+    int daysUntilExpiry = 7,
+  }) async {
+    try {
+      final now = DateTime.now();
+      final expiryThreshold = now.add(Duration(days: daysUntilExpiry));
+
+      final response = await _client
+          .from('inventory_batches')
+          .select('*, product:inventory_products(name, code)')
+          .gte('expiry_date', now.toIso8601String())
+          .lte('expiry_date', expiryThreshold.toIso8601String())
+          .eq('is_expired', false)
+          .order('expiry_date', ascending: true);
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('InventoryService.getExpiringBatches error: $e');
+      return [];
+    }
+  }
+
+  /// ดึงล็อตที่หมดอายุแล้ว
+  static Future<List<Map<String, dynamic>>> getExpiredBatches() async {
+    try {
+      final now = DateTime.now();
+
+      final response = await _client
+          .from('inventory_batches')
+          .select('*, product:inventory_products(name, code)')
+          .lt('expiry_date', now.toIso8601String())
+          .eq('is_expired', false)
+          .order('expiry_date', ascending: true);
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('InventoryService.getExpiredBatches error: $e');
+      return [];
+    }
+  }
+
+  /// อัปเดตสถานะหมดอายุของล็อต
+  static Future<bool> markBatchAsExpired({
+    required String batchId,
+    String? disposedBy,
+    String? disposalNotes,
+  }) async {
+    try {
+      await _client
+          .from('inventory_batches')
+          .update({
+            'is_expired': true,
+            'disposed_by': disposedBy,
+            'disposal_notes': disposalNotes,
+            'disposed_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', batchId);
+
+      return true;
+    } catch (e) {
+      debugPrint('InventoryService.markBatchAsExpired error: $e');
+      return false;
+    }
+  }
+
+  /// ดึงล็อตตามลำดับ FIFO (First In First Out)
+  static Future<List<Map<String, dynamic>>> getBatchesByFIFO({
+    required String productId,
+    String? warehouseId,
+  }) async {
+    try {
+      var query = _client
+          .from('inventory_batches')
+          .select('*')
+          .eq('product_id', productId)
+          .eq('is_expired', false)
+          .gt('quantity', 0);
+
+      if (warehouseId != null) {
+        query = query.eq('warehouse_id', warehouseId);
+      }
+
+      final response = await (query as dynamic)
+          .order('expiry_date', ascending: true)
+          .order('created_at', ascending: true);
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('InventoryService.getBatchesByFIFO error: $e');
+      return [];
+    }
+  }
+
+  /// ลดจำนวนล็อต (เมื่อขายหรือใช้)
+  static Future<bool> reduceBatchQuantity({
+    required String batchId,
+    required double quantityToReduce,
+    String? reason,
+    String? usedBy,
+  }) async {
+    try {
+      // ดึงจำนวนปัจจุบัน
+      final response = await _client
+          .from('inventory_batches')
+          .select('quantity')
+          .eq('id', batchId)
+          .single();
+
+      final currentQty = (response['quantity'] as num?)?.toDouble() ?? 0;
+      final newQty = (currentQty - quantityToReduce).clamp(0, double.infinity);
+
+      // อัปเดต
+      await _client
+          .from('inventory_batches')
+          .update({
+            'quantity': newQty,
+            'last_used_at': DateTime.now().toIso8601String(),
+            'last_used_by': usedBy,
+          })
+          .eq('id', batchId);
+
+      // บันทึก log
+      await _client
+          .from('inventory_batch_logs')
+          .insert({
+            'batch_id': batchId,
+            'action': 'reduce',
+            'quantity_change': -quantityToReduce,
+            'reason': reason,
+            'performed_by': usedBy,
+            'created_at': DateTime.now().toIso8601String(),
+          });
+
+      return true;
+    } catch (e) {
+      debugPrint('InventoryService.reduceBatchQuantity error: $e');
+      return false;
+    }
+  }
+
+  /// ดึงประวัติล็อต (batch history)
+  static Future<List<Map<String, dynamic>>> getBatchHistory({
+    required String batchId,
+  }) async {
+    try {
+      final response = await _client
+          .from('inventory_batch_logs')
+          .select('*')
+          .eq('batch_id', batchId)
+          .order('created_at', ascending: false);
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('InventoryService.getBatchHistory error: $e');
+      return [];
+    }
+  }
+
+  /// ดึงสรุปล็อตสินค้า (Batch summary)
+  static Future<Map<String, dynamic>?> getBatchSummary({
+    required String productId,
+  }) async {
+    try {
+      final batches = await getBatches(productId: productId);
+      if (batches.isEmpty) return null;
+
+      final now = DateTime.now();
+      int totalBatches = batches.length;
+      int expiredBatches = 0;
+      int expiringBatches = 0;
+      double totalQuantity = 0;
+      double expiredQuantity = 0;
+
+      DateTime? oldestExpiry;
+      DateTime? newestExpiry;
+
+      for (final batch in batches) {
+        final qty = (batch['quantity'] as num?)?.toDouble() ?? 0;
+        final isExpired = batch['is_expired'] == true;
+        final expiryDate = batch['expiry_date']?.toString();
+
+        totalQuantity += qty;
+
+        if (isExpired) {
+          expiredBatches++;
+          expiredQuantity += qty;
+        } else if (expiryDate != null) {
+          final expiry = DateTime.parse(expiryDate);
+          if (expiry.isBefore(now.add(const Duration(days: 7)))) {
+            expiringBatches++;
+          }
+
+          if (oldestExpiry == null || expiry.isBefore(oldestExpiry)) {
+            oldestExpiry = expiry;
+          }
+          if (newestExpiry == null || expiry.isAfter(newestExpiry)) {
+            newestExpiry = expiry;
+          }
+        }
+      }
+
+      return {
+        'product_id': productId,
+        'total_batches': totalBatches,
+        'expired_batches': expiredBatches,
+        'expiring_soon_batches': expiringBatches,
+        'total_quantity': totalQuantity,
+        'expired_quantity': expiredQuantity,
+        'available_quantity': totalQuantity - expiredQuantity,
+        'oldest_expiry_date': oldestExpiry?.toIso8601String(),
+        'newest_expiry_date': newestExpiry?.toIso8601String(),
+        'expiry_risk_percentage': totalQuantity > 0 ? (expiredQuantity / totalQuantity * 100) : 0,
+      };
+    } catch (e) {
+      debugPrint('InventoryService.getBatchSummary error: $e');
+      return null;
+    }
+  }
+
+  // =============================================
+  // Multi-Warehouse Sync
+  // =============================================
+
+  /// ดึงข้อมูลสต็อกรวมทั้งหมด (Consolidated inventory)
+  static Future<List<Map<String, dynamic>>> getConsolidatedInventory() async {
+    try {
+      final response = await _client
+          .from('inventory_products')
+          .select('*, warehouse:inventory_store_locations(name, code)')
+          .order('name');
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('InventoryService.getConsolidatedInventory error: $e');
+      return [];
+    }
+  }
+
+  /// ดึงข้อมูลสต็อกแยกตามคลัง
+  static Future<Map<String, dynamic>> getInventoryByWarehouse({
+    required String warehouseId,
+  }) async {
+    try {
+      final response = await _client
+          .from('inventory_products')
+          .select('*')
+          .eq('warehouse_id', warehouseId);
+
+      final products = List<Map<String, dynamic>>.from(response);
+      double totalQuantity = 0;
+      double totalValue = 0;
+
+      for (final product in products) {
+        final qty = (product['quantity'] as num?)?.toDouble() ?? 0;
+        final price = (product['price'] as num?)?.toDouble() ?? 0;
+        totalQuantity += qty;
+        totalValue += qty * price;
+      }
+
+      return {
+        'warehouse_id': warehouseId,
+        'product_count': products.length,
+        'total_quantity': totalQuantity,
+        'total_value': totalValue,
+        'products': products,
+      };
+    } catch (e) {
+      debugPrint('InventoryService.getInventoryByWarehouse error: $e');
+      return {};
+    }
+  }
+
+  /// ดึงสรุปสต็อกทั้งหมด (Consolidated summary)
+  static Future<Map<String, dynamic>?> getConsolidatedSummary() async {
+    try {
+      final response = await _client
+          .from('inventory_products')
+          .select('quantity, price, reserved_quantity');
+
+      final products = List<Map<String, dynamic>>.from(response);
+      if (products.isEmpty) return null;
+
+      double totalQuantity = 0;
+      double totalReserved = 0;
+      double totalValue = 0;
+      int productCount = products.length;
+
+      for (final product in products) {
+        final qty = (product['quantity'] as num?)?.toDouble() ?? 0;
+        final reserved = (product['reserved_quantity'] as num?)?.toDouble() ?? 0;
+        final price = (product['price'] as num?)?.toDouble() ?? 0;
+        totalQuantity += qty;
+        totalReserved += reserved;
+        totalValue += qty * price;
+      }
+
+      return {
+        'product_count': productCount,
+        'total_quantity': totalQuantity,
+        'available_quantity': totalQuantity - totalReserved,
+        'reserved_quantity': totalReserved,
+        'total_value': totalValue,
+        'average_price': totalValue / productCount,
+      };
+    } catch (e) {
+      debugPrint('InventoryService.getConsolidatedSummary error: $e');
+      return null;
+    }
+  }
+
+  /// โอนสินค้าระหว่างคลัง (Warehouse transfer)
+  static Future<bool> transferBetweenWarehouses({
+    required String productId,
+    required double quantity,
+    required String fromWarehouseId,
+    required String toWarehouseId,
+    String? reason,
+    String? transferredBy,
+  }) async {
+    try {
+      // ตรวจสอบว่ามีสินค้าพอ
+      final fromResponse = await _client
+          .from('inventory_products')
+          .select('quantity')
+          .eq('id', productId)
+          .eq('warehouse_id', fromWarehouseId)
+          .single();
+
+      final fromQty = (fromResponse['quantity'] as num?)?.toDouble() ?? 0;
+      if (fromQty < quantity) {
+        debugPrint('InventoryService.transferBetweenWarehouses: Not enough stock');
+        return false;
+      }
+
+      // ลดสต็อกจากคลังต้นทาง
+      await _client
+          .from('inventory_products')
+          .update({'quantity': fromQty - quantity})
+          .eq('id', productId)
+          .eq('warehouse_id', fromWarehouseId);
+
+      // เพิ่มสต็อกไปยังคลังปลายทาง
+      final toResponse = await _client
+          .from('inventory_products')
+          .select('quantity')
+          .eq('id', productId)
+          .eq('warehouse_id', toWarehouseId)
+          .single();
+
+      final toQty = (toResponse['quantity'] as num?)?.toDouble() ?? 0;
+      await _client
+          .from('inventory_products')
+          .update({'quantity': toQty + quantity})
+          .eq('id', productId)
+          .eq('warehouse_id', toWarehouseId);
+
+      // บันทึก transfer log
+      await _client
+          .from('inventory_warehouse_transfers')
+          .insert({
+            'product_id': productId,
+            'quantity': quantity,
+            'from_warehouse_id': fromWarehouseId,
+            'to_warehouse_id': toWarehouseId,
+            'reason': reason,
+            'transferred_by': transferredBy,
+            'created_at': DateTime.now().toIso8601String(),
+          });
+
+      return true;
+    } catch (e) {
+      debugPrint('InventoryService.transferBetweenWarehouses error: $e');
+      return false;
+    }
+  }
+
+  /// ดึงประวัติการโอนสินค้า
+  static Future<List<Map<String, dynamic>>> getTransferHistory({
+    String? productId,
+    String? fromWarehouseId,
+    String? toWarehouseId,
+    DateTime? fromDate,
+    DateTime? toDate,
+  }) async {
+    try {
+      var query = _client
+          .from('inventory_warehouse_transfers')
+          .select('*');
+
+      if (productId != null) {
+        query = query.eq('product_id', productId);
+      }
+      if (fromWarehouseId != null) {
+        query = query.eq('from_warehouse_id', fromWarehouseId);
+      }
+      if (toWarehouseId != null) {
+        query = query.eq('to_warehouse_id', toWarehouseId);
+      }
+
+      final response = await (query as dynamic).order('created_at', ascending: false);
+      var transfers = List<Map<String, dynamic>>.from(response);
+
+      // Filter by date range
+      if (fromDate != null) {
+        transfers = transfers.where((t) {
+          final date = DateTime.tryParse(t['created_at']?.toString() ?? '');
+          return date != null && date.isAfter(fromDate);
+        }).toList();
+      }
+      if (toDate != null) {
+        transfers = transfers.where((t) {
+          final date = DateTime.tryParse(t['created_at']?.toString() ?? '');
+          return date != null && date.isBefore(toDate);
+        }).toList();
+      }
+
+      return transfers;
+    } catch (e) {
+      debugPrint('InventoryService.getTransferHistory error: $e');
+      return [];
+    }
+  }
+
+  /// ดึงรายงานการใช้สินค้าแยกตามคลัง
+  static Future<Map<String, dynamic>> getWarehouseUsageReport({
+    required String warehouseId,
+    DateTime? fromDate,
+    DateTime? toDate,
+  }) async {
+    try {
+      final now = DateTime.now();
+      final from = fromDate ?? DateTime(now.year, now.month - 1, 1);
+      final to = toDate ?? now;
+
+      // ดึงข้อมูลสินค้า
+      final inventoryResponse = await _client
+          .from('inventory_products')
+          .select('*')
+          .eq('warehouse_id', warehouseId);
+
+      final products = List<Map<String, dynamic>>.from(inventoryResponse);
+
+      // ดึงข้อมูลการปรับปรุง
+      final adjustmentsResponse = await _client
+          .from('inventory_adjustments')
+          .select('*')
+          .eq('warehouse_id', warehouseId)
+          .gte('created_at', from.toIso8601String())
+          .lte('created_at', to.toIso8601String());
+
+      final adjustments = List<Map<String, dynamic>>.from(adjustmentsResponse);
+
+      double totalQuantity = 0;
+      double totalValue = 0;
+      double totalAdjustments = 0;
+
+      for (final product in products) {
+        final qty = (product['quantity'] as num?)?.toDouble() ?? 0;
+        final price = (product['price'] as num?)?.toDouble() ?? 0;
+        totalQuantity += qty;
+        totalValue += qty * price;
+      }
+
+      for (final adj in adjustments) {
+        final change = (adj['quantity_change'] as num?)?.toDouble() ?? 0;
+        totalAdjustments += change.abs();
+      }
+
+      return {
+        'warehouse_id': warehouseId,
+        'period_from': from.toIso8601String(),
+        'period_to': to.toIso8601String(),
+        'product_count': products.length,
+        'total_quantity': totalQuantity,
+        'total_value': totalValue,
+        'total_adjustments': totalAdjustments,
+        'adjustment_count': adjustments.length,
+      };
+    } catch (e) {
+      debugPrint('InventoryService.getWarehouseUsageReport error: $e');
+      return {};
+    }
+  }
+
+  /// ซิงค์สต็อกทั้งหมด (Auto-sync all warehouses)
+  static Future<bool> syncAllWarehouses() async {
+    try {
+      // ดึงข้อมูลทั้งหมด
+      final response = await _client
+          .from('inventory_products')
+          .select('*');
+
+      final products = List<Map<String, dynamic>>.from(response);
+
+      // ตรวจสอบและอัปเดต
+      for (final product in products) {
+        final id = product['id']?.toString() ?? '';
+        final qty = (product['quantity'] as num?)?.toDouble() ?? 0;
+        final reserved = (product['reserved_quantity'] as num?)?.toDouble() ?? 0;
+
+        // ตรวจสอบว่า reserved ไม่เกิน quantity
+        if (reserved > qty && id.isNotEmpty) {
+          await _client
+              .from('inventory_products')
+              .update({'reserved_quantity': qty})
+              .eq('id', id);
+        }
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('InventoryService.syncAllWarehouses error: $e');
+      return false;
     }
   }
 }

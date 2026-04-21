@@ -22,6 +22,18 @@ CREATE TABLE IF NOT EXISTS inventory_warehouses (
   name TEXT NOT NULL,
   location TEXT,
   manager TEXT,
+  capacity_limit INT,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 1.1 ตารางโซนภายในคลัง (Warehouse Zones)
+CREATE TABLE IF NOT EXISTS inventory_zones (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  warehouse_id UUID REFERENCES inventory_warehouses(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  display_order INT DEFAULT 0,
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
@@ -31,11 +43,27 @@ CREATE TABLE IF NOT EXISTS inventory_warehouses (
 CREATE TABLE IF NOT EXISTS inventory_shelves (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   warehouse_id UUID REFERENCES inventory_warehouses(id) ON DELETE CASCADE,
+  zone_id UUID REFERENCES inventory_zones(id) ON DELETE SET NULL,
   code TEXT NOT NULL,
   capacity INT DEFAULT 0,
+  display_order INT DEFAULT 0,
   is_active BOOLEAN DEFAULT true,
-  created_at TIMESTAMPTZ DEFAULT now()
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- ปรับตารางชั้นวางสำหรับระบบเดิมที่มีอยู่แล้ว
+ALTER TABLE inventory_shelves
+  ADD COLUMN IF NOT EXISTS zone_id UUID REFERENCES inventory_zones(id) ON DELETE SET NULL;
+
+ALTER TABLE inventory_shelves
+  ADD COLUMN IF NOT EXISTS display_order INT DEFAULT 0;
+
+ALTER TABLE inventory_shelves
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+
+ALTER TABLE inventory_warehouses
+  ADD COLUMN IF NOT EXISTS capacity_limit INT;
 
 CREATE TABLE IF NOT EXISTS inventory_categories (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -70,10 +98,14 @@ CREATE TABLE IF NOT EXISTS inventory_products (
   price DOUBLE PRECISION DEFAULT 0,
   cost DOUBLE PRECISION DEFAULT 0,
   expiry_date DATE,
+  expiry_alert_days INT DEFAULT 7,
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+ALTER TABLE inventory_products
+  ADD COLUMN IF NOT EXISTS expiry_alert_days INT DEFAULT 7;
 
 -- 5.1 ตารางบาร์โค้ดสินค้า (Product Barcodes)
 CREATE TABLE IF NOT EXISTS inventory_product_barcodes (
@@ -135,7 +167,32 @@ CREATE TABLE IF NOT EXISTS inventory_adjustments (
   reference_id UUID,
   user_id UUID,
   user_name TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
+  status TEXT DEFAULT 'completed' CHECK (status IN ('pending', 'approved', 'rejected', 'completed')),
+  created_by UUID,
+  approved_by UUID,
+  approved_at TIMESTAMPTZ,
+  approval_note TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 10. ตารางโอนสินค้าระหว่างคลัง
+CREATE TABLE IF NOT EXISTS inventory_transfers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  product_id UUID REFERENCES inventory_products(id),
+  quantity DOUBLE PRECISION NOT NULL,
+  source_warehouse_id UUID REFERENCES inventory_warehouses(id),
+  source_shelf_id UUID REFERENCES inventory_shelves(id) ON DELETE SET NULL,
+  target_warehouse_id UUID REFERENCES inventory_warehouses(id),
+  target_shelf_id UUID REFERENCES inventory_shelves(id) ON DELETE SET NULL,
+  status TEXT NOT NULL CHECK (status IN ('draft','pending','approved','rejected')) DEFAULT 'draft',
+  reason TEXT,
+  note TEXT,
+  created_by UUID,
+  approved_by UUID,
+  approved_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
 );
 
 -- 9. ตารางประวัติการผลิต (Production Log)

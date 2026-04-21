@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'procurement/purchase_tab.dart';
 import 'procurement/tracking_tab.dart';
 import 'procurement/receive_tab.dart';
+import 'procurement/audit_trail_page.dart';
 import '../services/permission_service.dart';
 
 class ProcurementPage extends StatefulWidget {
@@ -22,6 +23,7 @@ class _ProcurementPageState extends State<ProcurementPage> with SingleTickerProv
     {'id': 'procurement_purchase', 'label': 'สั่งซื้อ', 'icon': Icons.shopping_cart},
     {'id': 'procurement_tracking', 'label': 'ติดตาม', 'icon': Icons.track_changes},
     {'id': 'procurement_receive', 'label': 'รับสินค้า', 'icon': Icons.inventory},
+    {'id': 'procurement_audit', 'label': 'Audit Trail', 'icon': Icons.history},
   ];
 
   List<Map<String, dynamic>> _visibleTabs = [];
@@ -77,6 +79,8 @@ class _ProcurementPageState extends State<ProcurementPage> with SingleTickerProv
         return TrackingTab();
       case 'procurement_receive':
         return ReceiveTab();
+      case 'procurement_audit':
+        return const AuditTrailPage();
       default:
         return Center(child: Text('ไม่พบหน้านี้'));
     }

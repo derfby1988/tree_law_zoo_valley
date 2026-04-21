@@ -124,7 +124,6 @@ class ProcurementService {
     required String action,
     required String actorUserId,
     required String actorRole,
-    required int? priority,
     required String message,
   }) async {
     try {
@@ -133,11 +132,49 @@ class ProcurementService {
         'action': action,
         'actor_user_id': actorUserId,
         'actor_role': actorRole,
-        'priority': priority,
         'message': message,
       });
     } catch (e) {
       debugPrint('ProcurementService._insertApprovalAuditLog: $e');
+    }
+  }
+
+  /// ดึง Audit Logs
+  static Future<List<Map<String, dynamic>>> getAuditLogs({
+    String? action,
+    DateTime? fromDate,
+    DateTime? toDate,
+  }) async {
+    try {
+      var query = _client
+          .from('procurement_po_approval_audit_logs')
+          .select('*')
+          .order('created_at', ascending: false);
+
+      final response = await query;
+      List<Map<String, dynamic>> logs = List<Map<String, dynamic>>.from(response);
+
+      // Apply filters in Dart
+      if (action != null) {
+        logs = logs.where((log) => log['action'] == action).toList();
+      }
+      if (fromDate != null) {
+        logs = logs.where((log) {
+          final logDate = DateTime.tryParse(log['created_at']?.toString() ?? '');
+          return logDate != null && logDate.isAfter(fromDate.subtract(const Duration(days: 1)));
+        }).toList();
+      }
+      if (toDate != null) {
+        logs = logs.where((log) {
+          final logDate = DateTime.tryParse(log['created_at']?.toString() ?? '');
+          return logDate != null && logDate.isBefore(toDate.add(const Duration(days: 1)));
+        }).toList();
+      }
+
+      return logs;
+    } catch (e) {
+      debugPrint('ProcurementService.getAuditLogs error: $e');
+      return [];
     }
   }
 
@@ -328,6 +365,45 @@ class ProcurementService {
     }
   }
 
+  /// ดึงรายการใบสั่งซื้อพร้อม PO lines
+  static Future<List<Map<String, dynamic>>> getPurchaseOrdersWithLines({
+    String? status,
+    String? supplierId,
+    DateTime? fromDate,
+    DateTime? toDate,
+  }) async {
+    try {
+      final orders = await getPurchaseOrders(
+        status: status,
+        supplierId: supplierId,
+        fromDate: fromDate,
+        toDate: toDate,
+      );
+
+      for (final order in orders) {
+        final poId = order['id']?.toString();
+        if (poId != null) {
+          final lines = await _client
+              .from('procurement_purchase_order_lines')
+              .select('''
+                *,
+                product:inventory_products(id, name, code, unit_id)
+              ''')
+              .eq('po_id', poId)
+              .order('created_at');
+          order['lines'] = lines;
+        } else {
+          order['lines'] = [];
+        }
+      }
+
+      return orders;
+    } catch (e) {
+      debugPrint('ProcurementService.getPurchaseOrdersWithLines error: $e');
+      return [];
+    }
+  }
+
   /// สร้าง PO ใหม่
   static Future<Map<String, dynamic>?> createPurchaseOrder({
     required String supplierId,
@@ -443,7 +519,11 @@ class ProcurementService {
   }
 
   /// รับสินค้า PO
-  static Future<bool> receivePurchaseOrder(String poId, List<Map<String, dynamic>> receivedItems) async {
+  static Future<bool> receivePurchaseOrder(
+    String poId,
+    List<Map<String, dynamic>> receivedItems, {
+    String? receivedBy,
+  }) async {
     try {
       // Update PO lines with received quantities
       for (final receivedItem in receivedItems) {
@@ -455,7 +535,7 @@ class ProcurementService {
             .eq('id', receivedItem['line_id']);
       }
 
-      // Update inventory quantities
+      // Update inventory quantities and create audit trail
       for (final receivedItem in receivedItems) {
         final productId = receivedItem['product_id'];
         final quantity = receivedItem['received_quantity'];
@@ -489,6 +569,17 @@ class ProcurementService {
         } else {
           await updatePurchaseOrderStatus(poId, statusPartialReceived);
         }
+      }
+
+      // Record audit log
+      if (receivedBy != null) {
+        await _insertApprovalAuditLog(
+          poId: poId,
+          action: 'received_items',
+          actorUserId: receivedBy,
+          actorRole: 'receiver',
+          message: 'รับสินค้า ${receivedItems.length} รายการ',
+        );
       }
 
       return true;
@@ -601,7 +692,6 @@ class ProcurementService {
             action: 'approved_step',
             actorUserId: approvedBy,
             actorRole: normalizedRole,
-            priority: approvedPriority,
             message: 'อนุมัติขั้นตอนลำดับ ${approvedPriority ?? '-'} สำเร็จ',
           );
 
@@ -645,7 +735,6 @@ class ProcurementService {
         action: 'approved_final',
         actorUserId: approvedBy,
         actorRole: normalizedRole,
-        priority: requiredRules.isEmpty ? null : ((requiredRules.first['priority'] as num?)?.toInt()),
         message: 'อนุมัติ PO สำเร็จและเปลี่ยนสถานะเป็น Confirmed',
       );
 
@@ -773,6 +862,185 @@ class ProcurementService {
   }
 
   // =============================================
+  // Receive Goods Flow
+  // =============================================
+
+  /// ดึง PO lines สำหรับการรับสินค้า
+  static Future<List<Map<String, dynamic>>> getReceivablePOLines({
+    String? poId,
+    String? productId,
+  }) async {
+    try {
+      var query = _client
+          .from('procurement_purchase_order_lines')
+          .select('''
+            *,
+            po:procurement_purchase_orders(id, order_number, status, expected_date),
+            product:inventory_products(id, name, code, unit_id)
+          ''')
+          .neq('received_quantity', 'quantity');
+
+      if (poId != null) {
+        query = query.eq('po_id', poId);
+      }
+      if (productId != null) {
+        query = query.eq('product_id', productId);
+      }
+
+      final response = await query.order('created_at');
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('ProcurementService.getReceivablePOLines error: $e');
+      return [];
+    }
+  }
+
+  /// บันทึกการรับสินค้าบางส่วน (Partial Receive)
+  static Future<bool> recordPartialReceive({
+    required String poLineId,
+    required double receivedQuantity,
+    required String warehouseId,
+    required String shelfId,
+    String? batchNumber,
+    DateTime? expiryDate,
+    String? qcStatus, // 'pass', 'fail', 'pending'
+    String? qcNotes,
+    String? receivedBy,
+  }) async {
+    try {
+      // Update PO line received quantity
+      await _client
+          .from('procurement_purchase_order_lines')
+          .update({
+            'received_quantity': receivedQuantity,
+            'warehouse_id': warehouseId,
+            'shelf_id': shelfId,
+            'batch_number': batchNumber,
+            'expiry_date': expiryDate?.toIso8601String(),
+            'qc_status': qcStatus ?? 'pending',
+            'qc_notes': qcNotes,
+            'received_at': DateTime.now().toIso8601String(),
+            'received_by': receivedBy,
+          })
+          .eq('id', poLineId);
+
+      // Get PO line details
+      final lineResponse = await _client
+          .from('procurement_purchase_order_lines')
+          .select('po_id, product_id, quantity')
+          .eq('id', poLineId)
+          .single();
+
+      final poId = lineResponse['po_id']?.toString();
+      final productId = lineResponse['product_id']?.toString();
+
+      if (poId != null && productId != null) {
+        // Create inventory adjustment for received goods
+        await _client
+            .from('inventory_adjustments')
+            .insert({
+              'product_id': productId,
+              'adjustment_type': 'purchase',
+              'quantity_before': 0, // Will be calculated
+              'quantity_after': receivedQuantity,
+              'quantity_change': receivedQuantity,
+              'warehouse_id': warehouseId,
+              'shelf_id': shelfId,
+              'batch_number': batchNumber,
+              'expiry_date': expiryDate?.toIso8601String(),
+              'reason': 'รับสินค้าจาก PO: $poId',
+              'notes': qcNotes,
+              'po_line_id': poLineId,
+              'status': qcStatus == 'fail' ? 'rejected' : 'pending',
+              'created_by': receivedBy,
+            });
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('ProcurementService.recordPartialReceive error: $e');
+      return false;
+    }
+  }
+
+  /// ดึงสถานะการรับสินค้าของ PO
+  static Future<Map<String, dynamic>?> getReceiveStatus(String poId) async {
+    try {
+      final poResponse = await _client
+          .from('procurement_purchase_orders')
+          .select('*')
+          .eq('id', poId)
+          .single();
+
+      final linesResponse = await _client
+          .from('procurement_purchase_order_lines')
+          .select('quantity, received_quantity, qc_status')
+          .eq('po_id', poId);
+
+      final lines = List<Map<String, dynamic>>.from(linesResponse);
+      
+      double totalQuantity = 0;
+      double totalReceived = 0;
+      int passedQC = 0;
+      int failedQC = 0;
+      int pendingQC = 0;
+
+      for (final line in lines) {
+        totalQuantity += (line['quantity'] as num).toDouble();
+        totalReceived += (line['received_quantity'] as num).toDouble();
+        
+        final qcStatus = line['qc_status']?.toString() ?? 'pending';
+        if (qcStatus == 'pass') passedQC++;
+        else if (qcStatus == 'fail') failedQC++;
+        else pendingQC++;
+      }
+
+      final receivePercentage = totalQuantity > 0 ? (totalReceived / totalQuantity * 100) : 0;
+
+      return {
+        'po_id': poId,
+        'po_number': poResponse['order_number'],
+        'status': poResponse['status'],
+        'total_quantity': totalQuantity,
+        'total_received': totalReceived,
+        'receive_percentage': receivePercentage,
+        'passed_qc': passedQC,
+        'failed_qc': failedQC,
+        'pending_qc': pendingQC,
+        'is_fully_received': totalReceived >= totalQuantity,
+      };
+    } catch (e) {
+      debugPrint('ProcurementService.getReceiveStatus error: $e');
+      return null;
+    }
+  }
+
+  /// อัปเดตสถานะ QC สำหรับ PO line
+  static Future<bool> updateQCStatus({
+    required String poLineId,
+    required String qcStatus, // 'pass', 'fail'
+    String? qcNotes,
+    String? inspectedBy,
+  }) async {
+    try {
+      await _client
+          .from('procurement_purchase_order_lines')
+          .update({
+            'qc_status': qcStatus,
+            'qc_notes': qcNotes,
+            'qc_inspected_by': inspectedBy,
+            'qc_inspected_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', poLineId);
+
+      return true;
+    } catch (e) {
+      debugPrint('ProcurementService.updateQCStatus error: $e');
+      return false;
+    }
+  }
+
+  // =============================================
   // Store Location Management
   // =============================================
 
@@ -793,6 +1061,288 @@ class ProcurementService {
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
       debugPrint('ProcurementService.getStoreLocations error: $e');
+      return [];
+    }
+  }
+
+  // =============================================
+  // Supplier Performance Metrics
+  // =============================================
+
+  /// คำนวณ On-Time Delivery Rate (ส่งตรงเวลา %)
+  static Future<double> calculateOnTimeDeliveryRate({
+    required String supplierId,
+    int monthsBack = 6,
+  }) async {
+    try {
+      final now = DateTime.now();
+      final fromDate = DateTime(now.year, now.month - monthsBack, 1);
+
+      final response = await _client
+          .from('procurement_purchase_orders')
+          .select('expected_date, received_date')
+          .eq('supplier_id', supplierId)
+          .eq('status', 'completed')
+          .gte('created_at', fromDate.toIso8601String());
+
+      final orders = List<Map<String, dynamic>>.from(response);
+      if (orders.isEmpty) return 0.0;
+
+      int onTimeCount = 0;
+      for (final order in orders) {
+        final expectedDate = order['expected_date']?.toString();
+        final receivedDate = order['received_date']?.toString();
+
+        if (expectedDate != null && receivedDate != null) {
+          final expected = DateTime.parse(expectedDate);
+          final received = DateTime.parse(receivedDate);
+          if (received.isBefore(expected) || received.isAtSameMomentAs(expected)) {
+            onTimeCount++;
+          }
+        }
+      }
+
+      return (onTimeCount / orders.length * 100);
+    } catch (e) {
+      debugPrint('ProcurementService.calculateOnTimeDeliveryRate error: $e');
+      return 0.0;
+    }
+  }
+
+  /// คำนวณ Quality Score (คุณภาพ %)
+  /// ตามจำนวน QC pass vs fail
+  static Future<double> calculateQualityScore({
+    required String supplierId,
+    int monthsBack = 6,
+  }) async {
+    try {
+      final now = DateTime.now();
+      final fromDate = DateTime(now.year, now.month - monthsBack, 1);
+
+      // ดึง PO IDs ของผู้ขายนี้
+      final posResponse = await _client
+          .from('procurement_purchase_orders')
+          .select('id')
+          .eq('supplier_id', supplierId)
+          .gte('created_at', fromDate.toIso8601String());
+
+      final poIds = List<Map<String, dynamic>>.from(posResponse)
+          .map((p) => p['id']?.toString())
+          .whereType<String>()
+          .toList();
+
+      if (poIds.isEmpty) return 100.0;
+
+      // ดึง QC status จาก PO lines
+      final linesResponse = await _client
+          .from('procurement_purchase_order_lines')
+          .select('qc_status')
+          .inFilter('po_id', poIds);
+
+      final lines = List<Map<String, dynamic>>.from(linesResponse)
+          .where((l) => l['qc_status'] != null)
+          .toList();
+      if (lines.isEmpty) return 100.0;
+
+      int passCount = 0;
+      for (final line in lines) {
+        if (line['qc_status']?.toString() == 'pass') {
+          passCount++;
+        }
+      }
+
+      return (passCount / lines.length * 100);
+    } catch (e) {
+      debugPrint('ProcurementService.calculateQualityScore error: $e');
+      return 100.0;
+    }
+  }
+
+  /// คำนวณ Price Competitiveness (ราคาแข่งขัน)
+  /// เปรียบเทียบราคาเฉลี่ยกับผู้ขายอื่น
+  static Future<double> calculatePriceCompetitiveness({
+    required String supplierId,
+    required String productId,
+    int monthsBack = 6,
+  }) async {
+    try {
+      final now = DateTime.now();
+      final fromDate = DateTime(now.year, now.month - monthsBack, 1);
+
+      // ดึงราคาของผู้ขายนี้
+      final supplierResponse = await _client
+          .from('procurement_purchase_order_lines')
+          .select('unit_price')
+          .eq('product_id', productId)
+          .gte('created_at', fromDate.toIso8601String())
+          .order('created_at', ascending: false)
+          .limit(10);
+
+      final supplierPrices = List<Map<String, dynamic>>.from(supplierResponse);
+      if (supplierPrices.isEmpty) return 50.0;
+
+      final supplierAvgPrice = supplierPrices
+          .map((p) => (p['unit_price'] as num?)?.toDouble() ?? 0)
+          .reduce((a, b) => a + b) / supplierPrices.length;
+
+      // ดึงราคาเฉลี่ยของผู้ขายอื่น
+      final otherResponse = await _client
+          .from('procurement_purchase_order_lines')
+          .select('unit_price')
+          .eq('product_id', productId)
+          .neq('supplier_id', supplierId)
+          .gte('created_at', fromDate.toIso8601String())
+          .order('created_at', ascending: false)
+          .limit(20);
+
+      final otherPrices = List<Map<String, dynamic>>.from(otherResponse);
+      if (otherPrices.isEmpty) return 50.0;
+
+      final otherAvgPrice = otherPrices
+          .map((p) => (p['unit_price'] as num?)?.toDouble() ?? 0)
+          .reduce((a, b) => a + b) / otherPrices.length;
+
+      // คำนวณ competitiveness (100 = ราคาเท่ากับค่าเฉลี่ย)
+      if (otherAvgPrice == 0) return 50.0;
+      return (otherAvgPrice / supplierAvgPrice * 100).clamp(0, 200);
+    } catch (e) {
+      debugPrint('ProcurementService.calculatePriceCompetitiveness error: $e');
+      return 50.0;
+    }
+  }
+
+  /// คำนวณ Response Time (ตอบสนองเร็ว)
+  /// วัดจากเวลาระหว่างสั่ง PO ถึงส่งมา
+  static Future<double> calculateAverageResponseTime({
+    required String supplierId,
+    int monthsBack = 6,
+  }) async {
+    try {
+      final now = DateTime.now();
+      final fromDate = DateTime(now.year, now.month - monthsBack, 1);
+
+      final response = await _client
+          .from('procurement_purchase_orders')
+          .select('created_at, received_date')
+          .eq('supplier_id', supplierId)
+          .eq('status', 'completed')
+          .gte('created_at', fromDate.toIso8601String());
+
+      final orders = List<Map<String, dynamic>>.from(response);
+      if (orders.isEmpty) return 0.0;
+
+      double totalDays = 0;
+      int validCount = 0;
+
+      for (final order in orders) {
+        final createdDate = order['created_at']?.toString();
+        final receivedDate = order['received_date']?.toString();
+
+        if (createdDate != null && receivedDate != null) {
+          final created = DateTime.parse(createdDate);
+          final received = DateTime.parse(receivedDate);
+          final days = received.difference(created).inDays;
+          totalDays += days;
+          validCount++;
+        }
+      }
+
+      return validCount > 0 ? (totalDays / validCount) : 0.0;
+    } catch (e) {
+      debugPrint('ProcurementService.calculateAverageResponseTime error: $e');
+      return 0.0;
+    }
+  }
+
+  /// ดึงข้อมูลประเมินผลผู้ขายแบบสมบูรณ์
+  static Future<Map<String, dynamic>?> getSupplierPerformance({
+    required String supplierId,
+    int monthsBack = 6,
+  }) async {
+    try {
+      // ดึงข้อมูลผู้ขาย
+      final supplierResponse = await _client
+          .from('procurement_suppliers')
+          .select('*')
+          .eq('id', supplierId)
+          .single();
+
+      // คำนวณ metrics
+      final results = await Future.wait([
+        calculateOnTimeDeliveryRate(supplierId: supplierId, monthsBack: monthsBack),
+        calculateQualityScore(supplierId: supplierId, monthsBack: monthsBack),
+        calculateAverageResponseTime(supplierId: supplierId, monthsBack: monthsBack),
+      ]);
+
+      final onTimeRate = results[0] as double;
+      final qualityScore = results[1] as double;
+      final responseTime = results[2] as double;
+
+      // คำนวณ overall rating (0-100)
+      final overallRating = (onTimeRate * 0.4 + qualityScore * 0.4 + (100 - (responseTime / 30 * 100).clamp(0, 100)) * 0.2);
+
+      return {
+        'supplier_id': supplierId,
+        'supplier_name': supplierResponse['name'],
+        'on_time_delivery_rate': onTimeRate,
+        'quality_score': qualityScore,
+        'average_response_time_days': responseTime,
+        'overall_rating': overallRating.clamp(0, 100),
+        'rating_grade': overallRating >= 90 ? 'A' : overallRating >= 80 ? 'B' : overallRating >= 70 ? 'C' : 'D',
+        'months_analyzed': monthsBack,
+      };
+    } catch (e) {
+      debugPrint('ProcurementService.getSupplierPerformance error: $e');
+      return null;
+    }
+  }
+
+  /// ดึงข้อมูลประเมินผลผู้ขายทั้งหมด (เพื่อเปรียบเทียบ)
+  static Future<List<Map<String, dynamic>>> getAllSuppliersPerformance({
+    int monthsBack = 6,
+  }) async {
+    try {
+      final suppliers = await getSuppliers();
+      final performanceList = <Map<String, dynamic>>[];
+
+      for (final supplier in suppliers) {
+        final supplierId = supplier['id']?.toString();
+        if (supplierId == null) continue;
+
+        final performance = await getSupplierPerformance(
+          supplierId: supplierId,
+          monthsBack: monthsBack,
+        );
+
+        if (performance != null) {
+          performanceList.add(performance);
+        }
+      }
+
+      // เรียงตามคะแนนสูงสุด
+      performanceList.sort((a, b) {
+        final aRating = (a['overall_rating'] as num?)?.toDouble() ?? 0;
+        final bRating = (b['overall_rating'] as num?)?.toDouble() ?? 0;
+        return bRating.compareTo(aRating);
+      });
+
+      return performanceList;
+    } catch (e) {
+      debugPrint('ProcurementService.getAllSuppliersPerformance error: $e');
+      return [];
+    }
+  }
+
+  /// ดึงผู้ขายที่ดีที่สุด (Top suppliers)
+  static Future<List<Map<String, dynamic>>> getTopSuppliers({
+    int limit = 5,
+    int monthsBack = 6,
+  }) async {
+    try {
+      final allPerformance = await getAllSuppliersPerformance(monthsBack: monthsBack);
+      return allPerformance.take(limit).toList();
+    } catch (e) {
+      debugPrint('ProcurementService.getTopSuppliers error: $e');
       return [];
     }
   }

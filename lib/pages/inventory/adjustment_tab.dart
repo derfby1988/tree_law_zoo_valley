@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/inventory_service.dart';
 import '../../services/permission_service.dart';
+import '../../services/inventory_event_bus.dart';
 import '../../utils/permission_helpers.dart';
 import '../../theme/app_design_system.dart';
+import 'dialogs/adjustment_approval_dialog.dart';
 
 class AdjustmentTab extends StatefulWidget {
   const AdjustmentTab({super.key});
@@ -22,8 +27,10 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
   List<Map<String, dynamic>> _products = [];
   List<Map<String, dynamic>> _warehouses = [];
   List<Map<String, dynamic>> _shelves = [];
+  List<Map<String, dynamic>> _pendingAdjustments = [];
   bool _isLoading = true;
   String? _errorMessage;
+  StreamSubscription<InventoryEventType>? _inventoryEventSub;
   Color get _surface => AppDesignSystem.surface;
   Color get _surfaceAlt => AppDesignSystem.background;
   Color get _textPrimary => AppDesignSystem.textPrimary;
@@ -35,6 +42,10 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
   Color get _warningColor => AppDesignSystem.warning;
   Color get _dangerColor => AppDesignSystem.danger;
   Color get _onPrimaryColor => Theme.of(context).colorScheme.onPrimary;
+  final Set<String> _processingApprovalIds = {};
+  bool get _canApproveAdjustments => PermissionService.canAccessActionSync('inventory_adjustment_approve');
+  String? get _currentUserId => Supabase.instance.client.auth.currentUser?.id;
+  String? get _currentUserEmail => Supabase.instance.client.auth.currentUser?.email;
 
   // ฟอร์มปรับปรุง
   final _newQtyController = TextEditingController();
@@ -44,6 +55,12 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
   void initState() {
     super.initState();
     _loadData();
+    _inventoryEventSub = InventoryEventBus.stream.listen((event) {
+      if (!mounted) return;
+      if (event == InventoryEventType.storageStructureChanged) {
+        _loadData();
+      }
+    });
   }
 
   void _showPurchaseReceiveDialog() {
@@ -69,6 +86,7 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
     _searchController.dispose();
     _newQtyController.dispose();
     _reasonController.dispose();
+    _inventoryEventSub?.cancel();
     super.dispose();
   }
 
@@ -79,11 +97,13 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
         InventoryService.getProducts(),
         InventoryService.getWarehouses(),
         InventoryService.getShelves(),
+        InventoryService.getPendingAdjustments(),
       ]);
       setState(() {
         _products = results[0];
         _warehouses = results[1];
         _shelves = results[2];
+        _pendingAdjustments = results[3];
         _isLoading = false;
       });
     } catch (e) {
@@ -114,6 +134,10 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (_canApproveAdjustments) ...[
+              _buildPendingApprovalCard(),
+              SizedBox(height: 16),
+            ],
             _buildActionButtons(),
             SizedBox(height: 16),
             _buildWarehouseList(),
@@ -121,6 +145,116 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
             _buildShelfList(), // New shelf listing section
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildPendingApprovalCard() {
+    return Card(
+      elevation: 0,
+      color: _surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppDesignSystem.radiusMd),
+        side: const BorderSide(color: AppDesignSystem.border),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppDesignSystem.spacingMd),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.verified, color: _warningColor),
+                const SizedBox(width: 8),
+                Expanded(child: Text('คำขอปรับปรุงรออนุมัติ', style: Theme.of(context).textTheme.titleMedium)),
+                TextButton.icon(
+                  onPressed: _loadData,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('รีเฟรช'),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppDesignSystem.spacingMd),
+            if (_pendingAdjustments.isEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(AppDesignSystem.spacingLg),
+                decoration: BoxDecoration(
+                  color: _surfaceAlt,
+                  borderRadius: BorderRadius.circular(AppDesignSystem.radiusSm),
+                ),
+                child: Text('ไม่มีคำขอรออนุมัติ', style: TextStyle(color: _textSecondary)),
+              )
+            else
+              Column(
+                children: _pendingAdjustments.map(_buildPendingAdjustmentRow).toList(),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPendingAdjustmentRow(Map<String, dynamic> adjustment) {
+    final id = adjustment['id']?.toString() ?? '';
+    final productName = adjustment['product']?['name']?.toString() ?? '-';
+    final qtyChange = (adjustment['quantity_change'] as num?)?.toDouble() ?? 0;
+    final reason = adjustment['reason']?.toString() ?? '-';
+    final requester = adjustment['user_name']?.toString() ?? 'ไม่ระบุ';
+    final createdAt = _formatThaiDate(adjustment['created_at']?.toString());
+    final unitAbbr = adjustment['product']?['unit']?['abbreviation']?.toString() ?? '';
+    final color = qtyChange >= 0 ? _successColor : _dangerColor;
+    final isProcessing = _processingApprovalIds.contains(id);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppDesignSystem.spacingSm),
+      padding: const EdgeInsets.all(AppDesignSystem.spacingMd),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(AppDesignSystem.radiusSm),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(productName, style: const TextStyle(fontWeight: FontWeight.bold)),
+              ),
+              Chip(
+                backgroundColor: color.withOpacity(0.2),
+                label: Text(
+                  '${qtyChange >= 0 ? '+' : ''}${qtyChange.toStringAsFixed(qtyChange == qtyChange.roundToDouble() ? 0 : 1)} $unitAbbr',
+                  style: TextStyle(color: color, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text('เหตุผล: $reason', style: TextStyle(color: _textSecondary)),
+          const SizedBox(height: 4),
+          Text('ผู้ขอ: $requester  •  เวลา: $createdAt', style: TextStyle(color: _textSecondary, fontSize: 12)),
+          const SizedBox(height: AppDesignSystem.spacingSm),
+          Align(
+            alignment: Alignment.centerRight,
+            child: ElevatedButton.icon(
+              icon: const Icon(Icons.fact_check),
+              style: ElevatedButton.styleFrom(backgroundColor: _secondaryColor, foregroundColor: _onPrimaryColor),
+              onPressed: isProcessing ? null : () => _openApprovalDialog(adjustment),
+              label: isProcessing
+                  ? SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(_onPrimaryColor),
+                      ),
+                    )
+                  : const Text('อนุมัติ / ปฏิเสธ'),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1588,6 +1722,9 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
     final qtyController = TextEditingController();
     final reasonController = TextEditingController();
     bool isLoading = false;
+    final canApplyImmediately = _canApproveAdjustments;
+    final currentUserId = _currentUserId;
+    final currentUserName = _currentUserEmail ?? 'ระบบ';
 
     showDialog(
       context: context,
@@ -1638,6 +1775,10 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('กรุณากรอกข้อมูลให้ครบถ้วน')));
                     return;
                   }
+                  if (currentUserId == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('กรุณาล็อกอินก่อนดำเนินการ')));
+                    return;
+                  }
                   setDialogState(() => isLoading = true);
                   try {
                     final newQty = double.tryParse(qtyController.text) ?? 0;
@@ -1647,12 +1788,20 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
                       quantityBefore: currentQty,
                       quantityAfter: newQty,
                       reason: reasonController.text.trim().isEmpty ? null : reasonController.text.trim(),
+                      userName: currentUserName,
+                      createdBy: currentUserId,
+                      applyImmediately: canApplyImmediately,
                     );
                     if (context.mounted) {
                       Navigator.pop(context);
                       if (ok) {
                         _loadData();
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$title สำเร็จ'), backgroundColor: _successColor));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(canApplyImmediately ? '$title สำเร็จ' : 'ส่งคำขออนุมัติแล้ว'),
+                            backgroundColor: canApplyImmediately ? _successColor : _warningColor,
+                          ),
+                        );
                       } else {
                         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('เกิดข้อผิดพลาด'), backgroundColor: _dangerColor));
                       }
@@ -1681,5 +1830,67 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
         },
       ),
     );
+  }
+
+  Future<void> _openApprovalDialog(Map<String, dynamic> adjustment) async {
+    final id = adjustment['id']?.toString();
+    if (id == null) return;
+
+    final result = await showAdjustmentApprovalDialog(
+      context: context,
+      adjustment: adjustment,
+      title: 'อนุมัติการปรับปรุงสินค้า',
+    );
+
+    if (result == null) return;
+    final action = result['action']?.toString();
+    final note = result['note']?.toString();
+    final approverId = _currentUserId;
+
+    if (action == null || approverId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('กรุณาล็อกอินก่อนอนุมัติ')));
+      return;
+    }
+
+    setState(() => _processingApprovalIds.add(id));
+    bool ok = false;
+    if (action == 'approve') {
+      ok = await InventoryService.approveAdjustment(adjustmentId: id, approverId: approverId, note: note);
+    } else if (action == 'reject') {
+      ok = await InventoryService.rejectAdjustment(adjustmentId: id, approverId: approverId, note: note);
+    }
+
+    if (!mounted) return;
+    setState(() => _processingApprovalIds.remove(id));
+
+    if (ok) {
+      await _loadData();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(action == 'approve' ? 'อนุมัติเรียบร้อย' : 'ปฏิเสธคำขอแล้ว'),
+          backgroundColor: action == 'approve' ? _successColor : _dangerColor,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('ไม่สามารถอัปเดตสถานะได้'),
+          backgroundColor: _dangerColor,
+        ),
+      );
+    }
+  }
+
+  String _formatThaiDate(String? isoString) {
+    if (isoString == null) return '-';
+    try {
+      final date = DateTime.parse(isoString).toLocal();
+      final buddhistYear = date.year + 543;
+      final hh = date.hour.toString().padLeft(2, '0');
+      final mm = date.minute.toString().padLeft(2, '0');
+      return '${date.day}/${date.month}/$buddhistYear $hh:$mm';
+    } catch (_) {
+      return isoString;
+    }
   }
 }

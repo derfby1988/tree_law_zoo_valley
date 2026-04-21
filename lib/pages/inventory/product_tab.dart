@@ -5,6 +5,7 @@ import '../../utils/permission_helpers.dart';
 import '../../theme/app_design_system.dart';
 import 'inventory_filter_widget.dart';
 import 'product_action_buttons_card.dart';
+import 'widgets/procurement_integration_panel.dart';
 import '../procurement/purchase_tab.dart';
 import '../procurement/tracking_tab.dart';
 import '../procurement/receive_tab.dart';
@@ -224,37 +225,12 @@ class _ProductTabState extends State<ProductTab> {
     final warehouseOptions = ['ทั้งหมด', ..._warehouses.map((w) => w['name'] as String)];
     final shelfOptions = ['ทั้งหมด', 'ยังไม่มีชั้นวาง', ..._shelves.map((s) => s['code'] as String)];
 
-<<<<<<< HEAD
-    return RefreshIndicator(
-      onRefresh: _loadData,
-      child: SingleChildScrollView(
-        physics: AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            InventoryFilterWidget(
-              searchController: _searchController,
-              selectedWarehouse: _selectedWarehouse,
-              selectedShelf: _selectedShelf,
-              onWarehouseChanged: (value) => setState(() { _selectedWarehouse = value!; _currentPage = 0; }),
-              onShelfChanged: (value) => setState(() { _selectedShelf = value!; _currentPage = 0; }),
-              warehouseOptions: warehouseOptions,
-              shelfOptions: shelfOptions,
-              showNoShelfOption: true,
-            ),
-            SizedBox(height: 16),
-            if (_accountErrorMessage != null)
-              Padding(
-                padding: EdgeInsets.only(bottom: 8),
-                child: Text(_accountErrorMessage!, style: TextStyle(color: _dangerColor)),
-=======
     return SafeArea(
       child: RefreshIndicator(
         onRefresh: _loadData,
         child: SingleChildScrollView(
-          physics: AlwaysScrollableScrollPhysics(),
-          padding: EdgeInsets.all(16),
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(AppDesignSystem.spacingLg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -267,13 +243,12 @@ class _ProductTabState extends State<ProductTab> {
                 warehouseOptions: warehouseOptions,
                 shelfOptions: shelfOptions,
                 showNoShelfOption: true,
->>>>>>> UI inventory
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: AppDesignSystem.spacingLg),
               if (_accountErrorMessage != null)
                 Padding(
-                  padding: EdgeInsets.only(bottom: 8),
-                  child: Text(_accountErrorMessage!, style: TextStyle(color: Colors.red)),
+                  padding: const EdgeInsets.only(bottom: AppDesignSystem.spacingSm),
+                  child: Text(_accountErrorMessage!, style: TextStyle(color: _dangerColor)),
                 ),
               ProductActionButtonsCard(
                 onShowCategoryDialog: _showCategoryDialog,
@@ -285,9 +260,9 @@ class _ProductTabState extends State<ProductTab> {
                 onNavigateToProcurementReceive: () => _openProcurementTab('procurement_receive'),
                 onNavigateToProcurementApprove: () => _openProcurementTab('procurement_purchase'),
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: AppDesignSystem.spacingLg),
               _buildNoShelfCard(),
-              SizedBox(height: 16),
+              const SizedBox(height: AppDesignSystem.spacingLg),
               _buildProductList(),
             ],
           ),
@@ -670,43 +645,77 @@ class _ProductTabState extends State<ProductTab> {
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Row(children: [Icon(Icons.edit, color: _secondaryColor), const SizedBox(width: 8), const Text('แก้ไขสินค้า')]),
-          content: SingleChildScrollView(
+        builder: (context, setDialogState) => Dialog(
+          child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextField(controller: nameController, decoration: const InputDecoration(labelText: 'ชื่อสินค้า', border: OutlineInputBorder())),
-                const SizedBox(height: AppDesignSystem.spacingMd),
-                Row(children: [
-                  Expanded(child: TextField(controller: qtyController, decoration: const InputDecoration(labelText: 'จำนวน', border: OutlineInputBorder()), keyboardType: TextInputType.number)),
-                  const SizedBox(width: AppDesignSystem.spacingMd),
-                  Expanded(child: TextField(controller: priceController, decoration: const InputDecoration(labelText: 'ราคา', border: OutlineInputBorder()), keyboardType: TextInputType.number)),
-                ]),
+                Padding(
+                  padding: const EdgeInsets.all(AppDesignSystem.spacingMd),
+                  child: Row(
+                    children: [
+                      Icon(Icons.edit, color: _secondaryColor),
+                      const SizedBox(width: 8),
+                      const Text('แก้ไขสินค้า', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: AppDesignSystem.spacingMd),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextField(controller: nameController, decoration: const InputDecoration(labelText: 'ชื่อสินค้า', border: OutlineInputBorder())),
+                      const SizedBox(height: AppDesignSystem.spacingMd),
+                      Row(children: [
+                        Expanded(child: TextField(controller: qtyController, decoration: const InputDecoration(labelText: 'จำนวน', border: OutlineInputBorder()), keyboardType: TextInputType.number)),
+                        const SizedBox(width: AppDesignSystem.spacingMd),
+                        Expanded(child: TextField(controller: priceController, decoration: const InputDecoration(labelText: 'ราคา', border: OutlineInputBorder()), keyboardType: TextInputType.number)),
+                      ]),
+                      const SizedBox(height: AppDesignSystem.spacingLg),
+                      ProcurementIntegrationPanel(
+                        productId: product['id']?.toString() ?? '',
+                        productName: product['name']?.toString() ?? 'Unknown',
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(AppDesignSystem.spacingMd),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(onPressed: isLoading ? null : () => Navigator.pop(context), child: const Text('ยกเลิก')),
+                      const SizedBox(width: AppDesignSystem.spacingSm),
+                      ElevatedButton(
+                        onPressed: isLoading ? null : () async {
+                          setDialogState(() => isLoading = true);
+                          final ok = await InventoryService.updateProduct(product['id'], {
+                            'name': nameController.text.trim(),
+                            'quantity': double.tryParse(qtyController.text) ?? 0,
+                            'price': double.tryParse(priceController.text) ?? 0,
+                          });
+                          if (context.mounted) {
+                            Navigator.pop(context);
+                            if (ok) {
+                              _loadData();
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('แก้ไขสินค้าสำเร็จ'), backgroundColor: _successColor));
+                            }
+                          }
+                        },
+                        child: isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('บันทึก'),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
-          actions: [
-            TextButton(onPressed: isLoading ? null : () => Navigator.pop(context), child: const Text('ยกเลิก')),
-            ElevatedButton(
-              onPressed: isLoading ? null : () async {
-                setDialogState(() => isLoading = true);
-                final ok = await InventoryService.updateProduct(product['id'], {
-                  'name': nameController.text.trim(),
-                  'quantity': double.tryParse(qtyController.text) ?? 0,
-                  'price': double.tryParse(priceController.text) ?? 0,
-                });
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  if (ok) {
-                    _loadData();
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('แก้ไขสินค้าสำเร็จ'), backgroundColor: _successColor));
-                  }
-                }
-              },
-              child: isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('บันทึก'),
-            ),
-          ],
         ),
       ),
     );

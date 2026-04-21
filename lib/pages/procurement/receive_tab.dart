@@ -3,7 +3,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/inventory_service.dart';
 import '../../services/procurement_service.dart';
 import '../../services/permission_service.dart';
+import '../../utils/responsive_helper.dart';
 import 'dialogs/receive_goods_dialog.dart';
+import 'dialogs/receive_goods_enhanced_dialog.dart';
 
 class ReceiveTab extends StatefulWidget {
   const ReceiveTab({super.key});
@@ -50,7 +52,7 @@ class _ReceiveTabState extends State<ReceiveTab> {
     try {
       final results = await Future.wait([
         InventoryService.getAdjustments(limit: 50),
-        ProcurementService.getPurchaseOrders(status: 'confirmed'), // Ready to receive
+        ProcurementService.getReceivablePOLines(), // Get PO lines that need receiving
       ]);
       
       setState(() {
@@ -268,73 +270,126 @@ class _ReceiveTabState extends State<ReceiveTab> {
     );
   }
 
-  Widget _buildPOCard(Map<String, dynamic> po) {
-    final supplier = po['supplier'] as Map<String, dynamic>? ?? {};
-    final totalAmount = (po['total_amount'] as num?)?.toDouble() ?? 0.0;
-    final orderDate = po['order_date'] as String?;
+  Widget _buildPOCard(Map<String, dynamic> poLine) {
+    final product = poLine['product'] as Map<String, dynamic>? ?? {};
+    final po = poLine['po'] as Map<String, dynamic>? ?? {};
+    final quantity = (poLine['quantity'] as num?)?.toDouble() ?? 0.0;
+    final receivedQuantity = (poLine['received_quantity'] as num?)?.toDouble() ?? 0.0;
+    final remainingQuantity = quantity - receivedQuantity;
+    final receivePercentage = quantity > 0 ? (receivedQuantity / quantity * 100) : 0;
+    final qcStatus = poLine['qc_status']?.toString() ?? 'pending';
+
+    Color qcColor = Colors.grey;
+    String qcLabel = 'รอตรวจ';
+    if (qcStatus == 'pass') {
+      qcColor = Colors.green;
+      qcLabel = 'ผ่าน';
+    } else if (qcStatus == 'fail') {
+      qcColor = Colors.red;
+      qcLabel = 'ไม่ผ่าน';
+    }
 
     return Card(
-      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: InkWell(
-        onTap: () => _receivePurchaseOrder(po),
+        onTap: _canReceiveGoods ? () => _showReceiveDialog(poLine) : null,
         child: Padding(
-          padding: EdgeInsets.all(16),
+          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Header: PO number & Product name
               Row(
                 children: [
                   Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          po['order_number'] ?? '-',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          product['name'] ?? 'Unknown',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // QC Status badge
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: qcColor.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
                     child: Text(
-                      po['order_number'] ?? '',
+                      qcLabel,
                       style: TextStyle(
+                        color: qcColor,
+                        fontSize: 11,
                         fontWeight: FontWeight.bold,
-                        fontSize: 16,
                       ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // Progress bar
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: receivePercentage / 100,
+                  minHeight: 6,
+                  backgroundColor: Colors.grey[300],
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    remainingQuantity > 0 ? Colors.orange : Colors.green,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+
+              // Quantity info
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'สั่ง: $quantity | รับ: $receivedQuantity | เหลือ: $remainingQuantity',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
                     ),
                   ),
                   Text(
-                    '฿${totalAmount.toStringAsFixed(2)}',
-                    style: TextStyle(
+                    '${receivePercentage.toStringAsFixed(0)}%',
+                    style: const TextStyle(
+                      fontSize: 12,
                       fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      color: Colors.green[700],
                     ),
                   ),
                 ],
               ),
-              SizedBox(height: 8),
-              Row(
-                children: [
-                  Icon(Icons.store, size: 16, color: Colors.grey),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      supplier['name'] ?? 'ไม่ระบุผู้ขาย',
-                      style: TextStyle(color: Colors.grey[700]),
-                    ),
-                  ),
-                  if (orderDate != null)
-                    Text(
-                      _formatDate(orderDate),
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                ],
-              ),
-              if (_canReceiveGoods) ...[
-                SizedBox(height: 8),
+
+              if (_canReceiveGoods && remainingQuantity > 0) ...[
+                const SizedBox(height: 12),
                 Align(
                   alignment: Alignment.centerRight,
                   child: ElevatedButton.icon(
-                    onPressed: () => _receivePurchaseOrder(po),
-                    icon: Icon(Icons.download),
-                    label: Text('รับสินค้า'),
+                    onPressed: () => _showReceiveDialog(poLine),
+                    icon: const Icon(Icons.download, size: 16),
+                    label: const Text('รับสินค้า'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
                       foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     ),
                   ),
                 ),
@@ -415,7 +470,7 @@ class _ReceiveTabState extends State<ReceiveTab> {
     }
   }
 
-  Future<void> _receivePurchaseOrder(Map<String, dynamic> po) async {
+  Future<void> _showReceiveDialog(Map<String, dynamic> poLine) async {
     if (!_canReceiveGoods) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -427,30 +482,14 @@ class _ReceiveTabState extends State<ReceiveTab> {
       return;
     }
 
-    final detail = await ProcurementService.getPurchaseOrderDetail(po['id']);
     if (!mounted) return;
-
-    if (detail == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('ไม่สามารถโหลดรายละเอียด PO ได้'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
-    final result = await showDialog<bool>(
+    await showDialog(
       context: context,
-      builder: (dialogContext) => ReceiveGoodsDialog(
-        purchaseOrder: detail,
-        currentUserId: currentUserId,
+      builder: (dialogContext) => ReceiveGoodsEnhancedDialog(
+        poLineId: poLine['id']?.toString() ?? '',
+        poLineData: poLine,
+        onSuccess: _loadData,
       ),
     );
-
-    if (result == true) {
-      await _loadData();
-    }
   }
 }
