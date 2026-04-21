@@ -2158,19 +2158,88 @@ class InventoryService {
     }
   }
 
-  /// ค้นหาวัตถุดิบตามชื่อ (ใช้สำหรับ autocomplete)
+  /// ค้นหาวัตถุดิบตามชื่อ (ใช้สำหรับ autocomplete ในสูตร)
+  /// ค้นหาจากทั้ง inventory_ingredients และ inventory_products (item_type=ingredient)
   static Future<List<Map<String, dynamic>>> searchProductsByName(String query) async {
     if (query.isEmpty) return [];
     try {
-      final response = await _client
+      debugPrint('🔍 searchProductsByName: query="$query"');
+      
+      // ✅ ค้นหาจากตาราง inventory_ingredients (ตารางหลักของวัตถุดิบ)
+      // ใช้ select('*') และ enrich unit/category ภายหลัง (FK name ไม่ตรงกับ products)
+      final ingredientsRaw = await _client
+          .from('inventory_ingredients')
+          .select('id, name, unit_id, category_id')
+          .ilike('name', '%$query%')
+          .eq('is_active', true)
+          .limit(10);
+      debugPrint('📦 inventory_ingredients: ${(ingredientsRaw as List).length} results');
+
+      // Enrich with unit and category data
+      final ingredientsResponse = <Map<String, dynamic>>[];
+      for (final raw in List<Map<String, dynamic>>.from(ingredientsRaw)) {
+        Map<String, dynamic>? unit;
+        Map<String, dynamic>? category;
+        
+        if (raw['unit_id'] != null) {
+          try {
+            final unitData = await _client
+                .from('inventory_units')
+                .select('id, name, abbreviation')
+                .eq('id', raw['unit_id'])
+                .maybeSingle();
+            if (unitData != null) unit = Map<String, dynamic>.from(unitData);
+          } catch (_) {}
+        }
+        
+        if (raw['category_id'] != null) {
+          try {
+            final catData = await _client
+                .from('inventory_categories')
+                .select('id, name')
+                .eq('id', raw['category_id'])
+                .maybeSingle();
+            if (catData != null) category = Map<String, dynamic>.from(catData);
+          } catch (_) {}
+        }
+        
+        ingredientsResponse.add({
+          'id': raw['id'],
+          'name': raw['name'],
+          'unit': unit,
+          'category': category,
+        });
+      }
+
+      // ✅ ค้นหาจากตาราง inventory_products (วัตถุดิบที่เก็บใน products)
+      final productsResponse = await _client
           .from('inventory_products')
           .select('id, name, unit:inventory_units(id, name, abbreviation), category:inventory_categories(id, name)')
           .ilike('name', '%$query%')
           .eq('is_active', true)
+          .or('item_type.eq.ingredient,item_type.is.null')
           .limit(10);
-      return List<Map<String, dynamic>>.from(response);
+      debugPrint('📦 inventory_products: ${(productsResponse as List).length} results');
+
+      // รวมผลลัพธ์จากทั้งสองตาราง
+      final combined = <Map<String, dynamic>>[
+        ...ingredientsResponse,
+        ...List<Map<String, dynamic>>.from(productsResponse),
+      ];
+
+      // ลบรายการซ้ำโดยใช้ชื่อเป็น key
+      final seen = <String>{};
+      final unique = combined.where((item) {
+        final name = item['name'] as String? ?? '';
+        if (seen.contains(name)) return false;
+        seen.add(name);
+        return true;
+      }).toList();
+
+      debugPrint('✅ Final results: ${unique.length} unique items');
+      return unique.take(10).toList();
     } catch (e) {
-      debugPrint('Error searching products: $e');
+      debugPrint('❌ Error searching products: $e');
       return [];
     }
   }

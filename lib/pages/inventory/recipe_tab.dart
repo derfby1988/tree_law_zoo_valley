@@ -993,7 +993,7 @@ class _RecipeTabState extends State<RecipeTab> {
                                               : null,
                                           hintText: 'พิมพ์ชื่อวัตถุดิบ...',
                                         ),
-                                        onChanged: (value) => searchProducts(value),
+                                        onChanged: (value) async => await searchProducts(value),
                                       ),
                                     ),
                                     SizedBox(width: 8),
