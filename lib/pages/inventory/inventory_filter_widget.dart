@@ -12,6 +12,8 @@ class InventoryFilterWidget extends StatelessWidget {
   final List<String>? shelfOptions;
   final bool showNoWarehouseOption;
   final bool showNoShelfOption;
+  final Set<String> highlightedWarehouseOptions;
+  final Set<String> highlightedShelfOptions;
 
   const InventoryFilterWidget({
     super.key,
@@ -24,6 +26,8 @@ class InventoryFilterWidget extends StatelessWidget {
     this.shelfOptions,
     this.showNoWarehouseOption = false,
     this.showNoShelfOption = false,
+    this.highlightedWarehouseOptions = const {},
+    this.highlightedShelfOptions = const {},
   });
 
   @override
@@ -60,7 +64,20 @@ class InventoryFilterWidget extends StatelessWidget {
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppDesignSystem.radiusSm)),
               contentPadding: dropdownPadding,
             ),
-            items: warehouses.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+            items: warehouses
+                .map(
+                  (e) => DropdownMenuItem(
+                    value: e,
+                    child: Text(
+                      e,
+                      style: TextStyle(
+                        color: highlightedWarehouseOptions.contains(e) ? Colors.green.shade700 : null,
+                        fontWeight: highlightedWarehouseOptions.contains(e) ? FontWeight.w600 : FontWeight.normal,
+                      ),
+                    ),
+                  ),
+                )
+                .toList(),
             onChanged: onWarehouseChanged,
           );
           final shelfDropdown = DropdownButtonFormField<String>(
@@ -70,7 +87,20 @@ class InventoryFilterWidget extends StatelessWidget {
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppDesignSystem.radiusSm)),
               contentPadding: dropdownPadding,
             ),
-            items: shelves.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+            items: shelves
+                .map(
+                  (e) => DropdownMenuItem(
+                    value: e,
+                    child: Text(
+                      e,
+                      style: TextStyle(
+                        color: highlightedShelfOptions.contains(e) ? Colors.green.shade700 : null,
+                        fontWeight: highlightedShelfOptions.contains(e) ? FontWeight.w600 : FontWeight.normal,
+                      ),
+                    ),
+                  ),
+                )
+                .toList(),
             onChanged: onShelfChanged,
           );
 
@@ -94,7 +124,6 @@ class InventoryFilterWidget extends StatelessWidget {
                       warehouseDropdown,
                       const SizedBox(height: AppDesignSystem.spacingSm),
                       shelfDropdown,
-                      const SizedBox(height: AppDesignSystem.spacingSm),
                     ],
                   )
                 else

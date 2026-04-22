@@ -987,6 +987,67 @@ class InventoryService {
     }
   }
 
+  static Future<bool> updateUnit({
+    required String unitId,
+    required String name,
+    String? abbreviation,
+  }) async {
+    try {
+      await _client.from('inventory_units').update({
+        'name': name,
+        'abbreviation': abbreviation ?? name,
+      }).eq('id', unitId);
+      return true;
+    } catch (e) {
+      debugPrint('Error updating unit: $e');
+      return false;
+    }
+  }
+
+  static Future<Map<String, int>> getUnitUsageSummary() async {
+    try {
+      final products = await _client
+          .from('inventory_products')
+          .select('unit_id, item_type')
+          .not('unit_id', 'is', null);
+
+      final recipeIngredients = await _client
+          .from('inventory_recipe_ingredients')
+          .select('unit_id')
+          .not('unit_id', 'is', null);
+
+      final usage = <String, int>{};
+      for (final row in products) {
+        final unitId = row['unit_id']?.toString();
+        if (unitId == null || unitId.isEmpty) continue;
+        usage[unitId] = (usage[unitId] ?? 0) + 1;
+      }
+      for (final row in recipeIngredients) {
+        final unitId = row['unit_id']?.toString();
+        if (unitId == null || unitId.isEmpty) continue;
+        usage[unitId] = (usage[unitId] ?? 0) + 1;
+      }
+      return usage;
+    } catch (e) {
+      debugPrint('Error loading unit usage summary: $e');
+      return {};
+    }
+  }
+
+  static Future<bool> deleteUnit(String unitId) async {
+    try {
+      final usage = await getUnitUsageSummary();
+      if ((usage[unitId] ?? 0) > 0) {
+        return false;
+      }
+      await _client.from('inventory_units').delete().eq('id', unitId);
+      return true;
+    } catch (e) {
+      debugPrint('Error deleting unit: $e');
+      return false;
+    }
+  }
+
   // =============================================
   // Warehouses & Shelves
   // =============================================

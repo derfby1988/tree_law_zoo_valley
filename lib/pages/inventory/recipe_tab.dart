@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -101,7 +102,7 @@ class _RecipeTabState extends State<RecipeTab> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()));
+      return _buildLoadingShimmer();
     }
     if (_errorMessage != null) {
       return Center(child: Padding(padding: EdgeInsets.all(32), child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -113,6 +114,60 @@ class _RecipeTabState extends State<RecipeTab> {
       ])));
     }
 
+    return _buildRecipeContent();
+  }
+
+  Widget _buildLoadingShimmer() {
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Recipe list shimmer
+            Shimmer.fromColors(
+              baseColor: Colors.grey[300]!,
+              highlightColor: Colors.grey[100]!,
+              child: Card(
+                elevation: 0,
+                child: Padding(
+                  padding: EdgeInsets.all(12),
+                  child: Column(
+                    children: List.generate(
+                      5,
+                      (index) => Padding(
+                        padding: EdgeInsets.only(bottom: index < 4 ? 12 : 0),
+                        child: Row(
+                          children: [
+                            Container(width: 80, height: 80, color: Colors.white),
+                            SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(height: 16, color: Colors.white),
+                                  SizedBox(height: 8),
+                                  Container(height: 14, width: 150, color: Colors.white),
+                                  SizedBox(height: 8),
+                                  Container(height: 12, width: 100, color: Colors.white),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRecipeContent() {
     var filtered = _selectedCategory == 'ทั้งหมด'
         ? _recipes
         : _recipes.where((r) => _getCategoryName(r) == _selectedCategory).toList();

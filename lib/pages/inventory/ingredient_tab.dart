@@ -1,12 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:shimmer/shimmer.dart';
 import '../../services/inventory_service.dart';
 import '../../services/permission_service.dart';
 import '../../services/inventory_event_bus.dart';
 import '../../utils/permission_helpers.dart';
 import 'inventory_filter_widget.dart';
 import 'add_product_page.dart';
+import 'unit_management_page.dart';
 
 class IngredientTab extends StatefulWidget {
   const IngredientTab({super.key});
@@ -161,7 +163,7 @@ class _IngredientTabState extends State<IngredientTab> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()));
+      return _buildLoadingShimmer();
     }
     if (_errorMessage != null) {
       return Center(child: Padding(padding: EdgeInsets.all(32), child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -175,6 +177,14 @@ class _IngredientTabState extends State<IngredientTab> {
 
     final warehouseOptions = ['ทั้งหมด', ..._warehouses.map((w) => w['name'] as String)];
     final shelfOptions = ['ทั้งหมด', 'ยังไม่มีชั้นวาง', ..._shelves.map((s) => s['code'] as String)];
+    final highlightedWarehouseOptions = _ingredients
+        .where((p) => p['shelf']?['warehouse']?['name'] != null)
+        .map((p) => p['shelf']['warehouse']['name'].toString())
+        .toSet();
+    final highlightedShelfOptions = _ingredients
+        .where((p) => p['shelf']?['code'] != null)
+        .map((p) => p['shelf']['code'].toString())
+        .toSet();
 
     return SafeArea(
       child: RefreshIndicator(
@@ -185,6 +195,10 @@ class _IngredientTabState extends State<IngredientTab> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              _buildActionButtons(),
+              SizedBox(height: 16),
+              _buildNoShelfCard(),
+              SizedBox(height: 16),
               InventoryFilterWidget(
                 searchController: _searchController,
                 selectedWarehouse: _selectedWarehouse,
@@ -193,15 +207,112 @@ class _IngredientTabState extends State<IngredientTab> {
                 onShelfChanged: (value) => setState(() { _selectedShelf = value!; _currentPage = 0; }),
                 warehouseOptions: warehouseOptions,
                 shelfOptions: shelfOptions,
+                highlightedWarehouseOptions: highlightedWarehouseOptions,
+                highlightedShelfOptions: highlightedShelfOptions,
               ),
-              SizedBox(height: 16),
-              _buildActionButtons(),
-              SizedBox(height: 16),
-              _buildNoShelfCard(),
               SizedBox(height: 16),
               _buildIngredientList(),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoadingShimmer() {
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Filter card shimmer
+            Shimmer.fromColors(
+              baseColor: Colors.grey[300]!,
+              highlightColor: Colors.grey[100]!,
+              child: Card(
+                elevation: 0,
+                child: Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      Container(height: 48, color: Colors.white),
+                      SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(child: Container(height: 48, color: Colors.white)),
+                          SizedBox(width: 12),
+                          Expanded(child: Container(height: 48, color: Colors.white)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(height: 16),
+            // Action buttons shimmer
+            Shimmer.fromColors(
+              baseColor: Colors.grey[300]!,
+              highlightColor: Colors.grey[100]!,
+              child: Card(
+                elevation: 2,
+                child: Padding(
+                  padding: EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(height: 20, width: 120, color: Colors.white),
+                      SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Container(height: 40, width: 100, color: Colors.white),
+                          SizedBox(width: 8),
+                          Container(height: 40, width: 100, color: Colors.white),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(height: 16),
+            // Ingredient list shimmer
+            Shimmer.fromColors(
+              baseColor: Colors.grey[300]!,
+              highlightColor: Colors.grey[100]!,
+              child: Card(
+                elevation: 0,
+                child: Padding(
+                  padding: EdgeInsets.all(12),
+                  child: Column(
+                    children: List.generate(
+                      5,
+                      (index) => Padding(
+                        padding: EdgeInsets.only(bottom: index < 4 ? 12 : 0),
+                        child: Row(
+                          children: [
+                            Container(width: 60, height: 60, color: Colors.white),
+                            SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(height: 16, color: Colors.white),
+                                  SizedBox(height: 8),
+                                  Container(height: 14, width: 100, color: Colors.white),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -297,9 +408,9 @@ class _IngredientTabState extends State<IngredientTab> {
                 Spacer(),
                 if (_selectedNoShelfIds.isNotEmpty)
                   ElevatedButton.icon(
-                    onPressed: () => _showAssignShelfDialog(),
-                    icon: Icon(Icons.shelves, size: 16),
-                    label: Text('จัดเข้าชั้นวาง (${_selectedNoShelfIds.length})'),
+                    onPressed: () => _showMoveWarehouseShelfDialog(),
+                    icon: Icon(Icons.warehouse, size: 16),
+                    label: Text('ย้ายคลัง/ชั้นวาง (${_selectedNoShelfIds.length})'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue,
                       foregroundColor: Colors.white,
@@ -376,7 +487,8 @@ class _IngredientTabState extends State<IngredientTab> {
     );
   }
 
-  void _showAssignShelfDialog() {
+  void _showMoveWarehouseShelfDialog() {
+    String? selectedWarehouseId;
     String? selectedShelfId;
     bool isLoading = false;
 
@@ -385,9 +497,9 @@ class _IngredientTabState extends State<IngredientTab> {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: Row(children: [
-            Icon(Icons.shelves, color: Colors.blue),
+            Icon(Icons.warehouse, color: Colors.blue),
             SizedBox(width: 8),
-            Text('จัดเข้าชั้นวาง'),
+            Text('ย้ายคลัง/ชั้นวาง'),
           ]),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -395,18 +507,71 @@ class _IngredientTabState extends State<IngredientTab> {
             children: [
               Text('เลือก ${_selectedNoShelfIds.length} รายการ', style: TextStyle(color: Colors.grey[600])),
               SizedBox(height: 16),
+              Text('เลือกคลังปลายทางก่อน แล้วจึงเลือกชั้นวางในคลังนั้น', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+              SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 decoration: InputDecoration(
-                  labelText: 'เลือกชั้นวาง *',
+                  labelText: 'เลือกคลังปลายทาง *',
+                  border: OutlineInputBorder(),
+                ),
+                value: selectedWarehouseId,
+                items: _warehouses
+                    .map((w) => DropdownMenuItem(
+                          value: w['id'] as String,
+                          child: Text(w['name'] as String? ?? ''),
+                        ))
+                    .toList(),
+                onChanged: (v) => setDialogState(() {
+                  selectedWarehouseId = v;
+                  selectedShelfId = null;
+                }),
+              ),
+              SizedBox(height: 12),
+              if (selectedWarehouseId != null)
+              DropdownButtonFormField<String>(
+                decoration: InputDecoration(
+                  labelText: 'เลือกชั้นวางปลายทาง *',
                   border: OutlineInputBorder(),
                 ),
                 value: selectedShelfId,
-                items: _shelves.map((s) => DropdownMenuItem(
-                  value: s['id'] as String,
-                  child: Text('${s['code']} (${s['warehouse']?['name'] ?? ''})'),
-                )).toList(),
+                items: _shelves
+                    .where((s) => s['warehouse_id'] == selectedWarehouseId)
+                    .map((s) => DropdownMenuItem(
+                          value: s['id'] as String,
+                          child: Text('${s['code']} (${s['warehouse']?['name'] ?? ''})'),
+                        ))
+                    .toList(),
                 onChanged: (v) => setDialogState(() => selectedShelfId = v),
               ),
+              if (selectedWarehouseId != null && _shelves.where((s) => s['warehouse_id'] == selectedWarehouseId).isEmpty)
+                Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(
+                    'คลังนี้ยังไม่มีชั้นวาง กรุณาเพิ่มชั้นวางก่อน',
+                    style: TextStyle(color: Colors.orange[700], fontSize: 12),
+                  ),
+                ),
+              if (selectedWarehouseId != null)
+                Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(
+                    'เมื่อเลือกชั้นวางแล้ว ระบบจะย้ายคลังตามชั้นวางนั้นให้ด้วย',
+                    style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                  ),
+                ),
+              SizedBox(height: 8),
+              Text('หมายเหตุ: การย้ายคลังจะผูกกับชั้นวางที่เลือก', style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+              SizedBox(height: 8),
+              if (selectedWarehouseId != null && selectedShelfId == null && _shelves.where((s) => s['warehouse_id'] == selectedWarehouseId).isNotEmpty)
+                Padding(
+                  padding: EdgeInsets.only(bottom: 4),
+                  child: Text('กรุณาเลือกชั้นวางปลายทาง', style: TextStyle(fontSize: 12, color: Colors.red[700])),
+                ),
+              if (selectedWarehouseId == null)
+                Padding(
+                  padding: EdgeInsets.only(bottom: 4),
+                  child: Text('กรุณาเลือกคลังปลายทาง', style: TextStyle(fontSize: 12, color: Colors.red[700])),
+                ),
             ],
           ),
           actions: [
@@ -415,7 +580,7 @@ class _IngredientTabState extends State<IngredientTab> {
               child: Text('ยกเลิก'),
             ),
             ElevatedButton(
-              onPressed: isLoading || selectedShelfId == null ? null : () async {
+              onPressed: isLoading || selectedWarehouseId == null || selectedShelfId == null ? null : () async {
                 setDialogState(() => isLoading = true);
                 int success = 0;
                 for (final id in _selectedNoShelfIds) {
@@ -428,7 +593,7 @@ class _IngredientTabState extends State<IngredientTab> {
                   _loadData();
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('จัดเข้าชั้นวางสำเร็จ $success รายการ'),
+                      content: Text('ย้ายคลัง/ชั้นวางสำเร็จ $success รายการ'),
                       backgroundColor: Colors.green,
                     ),
                   );
@@ -436,7 +601,7 @@ class _IngredientTabState extends State<IngredientTab> {
               },
               child: isLoading
                   ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : Text('บันทึก'),
+                  : Text('ย้าย'),
             ),
           ],
         ),
@@ -591,10 +756,14 @@ class _IngredientTabState extends State<IngredientTab> {
   }
 
   void _showUnitDialog() {
-    // TODO: Implement unit dialog for ingredients
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('จัดการหน่วยนับวัตถุดิบยังไม่พร้อมใช้งาน')),
-    );
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const UnitManagementPage()),
+    ).then((_) {
+      if (mounted) {
+        _loadData();
+      }
+    });
   }
 
   void _showAddIngredientDialog() async {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/inventory_service.dart';
 import 'inventory_filter_widget.dart';
@@ -52,7 +53,7 @@ class _OverviewTabState extends State<OverviewTab> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()));
+      return _buildLoadingShimmer();
     }
     if (_errorMessage != null) {
       return Center(
@@ -72,6 +73,88 @@ class _OverviewTabState extends State<OverviewTab> {
       );
     }
 
+    return _buildOverviewContent();
+  }
+
+  Widget _buildLoadingShimmer() {
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(AppDesignSystem.spacingLg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Summary cards shimmer
+            Shimmer.fromColors(
+              baseColor: Colors.grey[300]!,
+              highlightColor: Colors.grey[100]!,
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(child: Container(height: 120, color: Colors.white)),
+                      const SizedBox(width: AppDesignSystem.spacingSm),
+                      Expanded(child: Container(height: 120, color: Colors.white)),
+                    ],
+                  ),
+                  const SizedBox(height: AppDesignSystem.spacingSm),
+                  Row(
+                    children: [
+                      Expanded(child: Container(height: 120, color: Colors.white)),
+                      const SizedBox(width: AppDesignSystem.spacingSm),
+                      Expanded(child: Container(height: 120, color: Colors.white)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppDesignSystem.spacingLg),
+            // Alert cards shimmer
+            Shimmer.fromColors(
+              baseColor: Colors.grey[300]!,
+              highlightColor: Colors.grey[100]!,
+              child: Column(
+                children: [
+                  Container(height: 80, color: Colors.white),
+                  const SizedBox(height: AppDesignSystem.spacingSm),
+                  Container(height: 80, color: Colors.white),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppDesignSystem.spacingLg),
+            // Statistics card shimmer
+            Shimmer.fromColors(
+              baseColor: Colors.grey[300]!,
+              highlightColor: Colors.grey[100]!,
+              child: Card(
+                elevation: 0,
+                child: Padding(
+                  padding: const EdgeInsets.all(AppDesignSystem.spacingMd),
+                  child: Column(
+                    children: List.generate(
+                      4,
+                      (index) => Padding(
+                        padding: EdgeInsets.only(bottom: index < 3 ? AppDesignSystem.spacingSm : 0),
+                        child: Row(
+                          children: [
+                            Container(width: 20, height: 20, color: Colors.white),
+                            const SizedBox(width: 12),
+                            Expanded(child: Container(height: 16, color: Colors.white)),
+                            Container(width: 80, height: 16, color: Colors.white),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOverviewContent() {
     return SafeArea(
       child: RefreshIndicator(
         onRefresh: _loadData,

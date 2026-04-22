@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shimmer/shimmer.dart';
 import '../../services/inventory_service.dart';
 import '../../services/account_chart_service.dart';
 import '../../utils/permission_helpers.dart';
@@ -11,6 +12,7 @@ import '../procurement/tracking_tab.dart';
 import '../procurement/receive_tab.dart';
 import 'category_management_page.dart';
 import 'add_product_page.dart';
+import 'unit_management_page.dart';
 
 class ProductTab extends StatefulWidget {
   const ProductTab({super.key});
@@ -193,7 +195,7 @@ class _ProductTabState extends State<ProductTab> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()));
+      return _buildLoadingShimmer();
     }
     if (_errorMessage != null) {
       return Center(
@@ -225,6 +227,87 @@ class _ProductTabState extends State<ProductTab> {
     final warehouseOptions = ['ทั้งหมด', ..._warehouses.map((w) => w['name'] as String)];
     final shelfOptions = ['ทั้งหมด', 'ยังไม่มีชั้นวาง', ..._shelves.map((s) => s['code'] as String)];
 
+    return _buildProductContent(warehouseOptions, shelfOptions);
+  }
+
+  Widget _buildLoadingShimmer() {
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(AppDesignSystem.spacingLg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Filter card shimmer
+            Shimmer.fromColors(
+              baseColor: Colors.grey[300]!,
+              highlightColor: Colors.grey[100]!,
+              child: Card(
+                elevation: 0,
+                color: _surface,
+                child: Padding(
+                  padding: const EdgeInsets.all(AppDesignSystem.spacingMd),
+                  child: Column(
+                    children: [
+                      Container(height: 48, color: Colors.white),
+                      const SizedBox(height: AppDesignSystem.spacingMd),
+                      Row(
+                        children: [
+                          Expanded(child: Container(height: 48, color: Colors.white)),
+                          const SizedBox(width: AppDesignSystem.spacingMd),
+                          Expanded(child: Container(height: 48, color: Colors.white)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: AppDesignSystem.spacingLg),
+            // Product list shimmer
+            Shimmer.fromColors(
+              baseColor: Colors.grey[300]!,
+              highlightColor: Colors.grey[100]!,
+              child: Card(
+                elevation: 0,
+                color: _surface,
+                child: Padding(
+                  padding: const EdgeInsets.all(AppDesignSystem.spacingMd),
+                  child: Column(
+                    children: List.generate(
+                      5,
+                      (index) => Padding(
+                        padding: EdgeInsets.only(bottom: index < 4 ? AppDesignSystem.spacingMd : 0),
+                        child: Row(
+                          children: [
+                            Container(width: 80, height: 80, color: Colors.white),
+                            const SizedBox(width: AppDesignSystem.spacingMd),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(height: 16, color: Colors.white),
+                                  const SizedBox(height: 8),
+                                  Container(height: 14, width: 120, color: Colors.white),
+                                  const SizedBox(height: 8),
+                                  Container(height: 12, width: 80, color: Colors.white),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProductContent(List<String> warehouseOptions, List<String> shelfOptions) {
     return SafeArea(
       child: RefreshIndicator(
         onRefresh: _loadData,
@@ -729,10 +812,12 @@ class _ProductTabState extends State<ProductTab> {
   }
 
   void _showUnitDialog() {
-    // TODO: Implement unit dialog
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('จัดการหน่วยนับยังไม่พร้อมใช้งาน')),
-    );
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const UnitManagementPage()),
+    ).then((_) async {
+      await _loadData();
+    });
   }
 
   void _showAddProductDialog() async {

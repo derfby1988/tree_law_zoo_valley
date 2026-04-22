@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../services/inventory_service.dart';
@@ -1047,7 +1048,7 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return _buildLoadingShimmer();
     }
     if (_errorMessage != null) {
       return Center(
@@ -1072,6 +1073,43 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage> {
     final canManageManager = PermissionService.canAccessActionSync('inventory_adjustment_warehouse_add');
     final alertsPanel = _buildAlertsPanel();
 
+    return _buildWarehouseContent(canAddWarehouse, canManageManager, alertsPanel ?? const SizedBox.shrink());
+  }
+
+  Widget _buildLoadingShimmer() {
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(AppDesignSystem.spacingLg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Warehouse cards shimmer
+            Shimmer.fromColors(
+              baseColor: Colors.grey[300]!,
+              highlightColor: Colors.grey[100]!,
+              child: Column(
+                children: List.generate(
+                  3,
+                  (index) => Padding(
+                    padding: const EdgeInsets.only(bottom: AppDesignSystem.spacingMd),
+                    child: Container(
+                      height: 200,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(AppDesignSystem.radiusMd),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWarehouseContent(bool canAddWarehouse, bool canManageManager, Widget alertsPanel) {
     return SafeArea(
       child: RefreshIndicator(
         onRefresh: _loadData,

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/inventory_service.dart';
 import '../../services/permission_service.dart';
@@ -114,7 +115,7 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()));
+      return _buildLoadingShimmer();
     }
     if (_errorMessage != null) {
       return Center(child: Padding(padding: EdgeInsets.all(32), child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -126,6 +127,58 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
       ])));
     }
 
+    return _buildAdjustmentContent();
+  }
+
+  Widget _buildLoadingShimmer() {
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Adjustment list shimmer
+            Shimmer.fromColors(
+              baseColor: Colors.grey[300]!,
+              highlightColor: Colors.grey[100]!,
+              child: Card(
+                elevation: 0,
+                child: Padding(
+                  padding: EdgeInsets.all(12),
+                  child: Column(
+                    children: List.generate(
+                      5,
+                      (index) => Padding(
+                        padding: EdgeInsets.only(bottom: index < 4 ? 12 : 0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(height: 20, width: 150, color: Colors.white),
+                            SizedBox(height: 8),
+                            Container(height: 16, width: 200, color: Colors.white),
+                            SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Container(height: 14, width: 80, color: Colors.white),
+                                SizedBox(width: 16),
+                                Container(height: 14, width: 100, color: Colors.white),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAdjustmentContent() {
     return RefreshIndicator(
       onRefresh: _loadData,
       child: SingleChildScrollView(
