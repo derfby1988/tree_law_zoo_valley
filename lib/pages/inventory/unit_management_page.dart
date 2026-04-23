@@ -134,6 +134,17 @@ class _UnitManagementPageState extends State<UnitManagementPage> {
 
     return Scaffold(
       backgroundColor: _surfaceAlt,
+      appBar: AppBar(
+        backgroundColor: _surfaceAlt,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+          color: _textPrimary,
+          onPressed: () => Navigator.of(context).maybePop(),
+        ),
+        title: Text('จัดการหน่วยนับ', style: TextStyle(color: _textPrimary, fontWeight: FontWeight.w600)),
+        centerTitle: false,
+      ),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _loadData,
@@ -144,13 +155,13 @@ class _UnitManagementPageState extends State<UnitManagementPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                _buildSummaryCards(),
+                const SizedBox(height: AppDesignSystem.spacingLg),
                 _buildGuideBanner(),
                 const SizedBox(height: AppDesignSystem.spacingLg),
                 _buildActionRow(),
                 const SizedBox(height: AppDesignSystem.spacingMd),
                 _buildSearchCard(),
-                const SizedBox(height: AppDesignSystem.spacingLg),
-                _buildSummaryCards(),
                 const SizedBox(height: AppDesignSystem.spacingLg),
                 _buildUnitsList(),
               ],

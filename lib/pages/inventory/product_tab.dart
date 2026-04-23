@@ -317,17 +317,6 @@ class _ProductTabState extends State<ProductTab> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              InventoryFilterWidget(
-                searchController: _searchController,
-                selectedWarehouse: _selectedWarehouse,
-                selectedShelf: _selectedShelf,
-                onWarehouseChanged: (value) => setState(() { _selectedWarehouse = value!; _currentPage = 0; }),
-                onShelfChanged: (value) => setState(() { _selectedShelf = value!; _currentPage = 0; }),
-                warehouseOptions: warehouseOptions,
-                shelfOptions: shelfOptions,
-                showNoShelfOption: true,
-              ),
-              const SizedBox(height: AppDesignSystem.spacingLg),
               if (_accountErrorMessage != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: AppDesignSystem.spacingSm),
@@ -342,6 +331,17 @@ class _ProductTabState extends State<ProductTab> {
                 onNavigateToProcurementTracking: () => _openProcurementTab('procurement_tracking'),
                 onNavigateToProcurementReceive: () => _openProcurementTab('procurement_receive'),
                 onNavigateToProcurementApprove: () => _openProcurementTab('procurement_purchase'),
+              ),
+              const SizedBox(height: AppDesignSystem.spacingLg),
+              InventoryFilterWidget(
+                searchController: _searchController,
+                selectedWarehouse: _selectedWarehouse,
+                selectedShelf: _selectedShelf,
+                onWarehouseChanged: (value) => setState(() { _selectedWarehouse = value!; _currentPage = 0; }),
+                onShelfChanged: (value) => setState(() { _selectedShelf = value!; _currentPage = 0; }),
+                warehouseOptions: warehouseOptions,
+                shelfOptions: shelfOptions,
+                showNoShelfOption: true,
               ),
               const SizedBox(height: AppDesignSystem.spacingLg),
               _buildNoShelfCard(),
@@ -804,10 +804,440 @@ class _ProductTabState extends State<ProductTab> {
     );
   }
 
+  // ===== Helper methods for recipes =====
+  List<Map<String, dynamic>> _getIngredients(Map<String, dynamic> recipe) {
+    final raw = recipe['ingredients'];
+    if (raw == null || raw is! List) return [];
+    return List<Map<String, dynamic>>.from(raw);
+  }
+
+  String _getIngName(Map<String, dynamic> ing) => ing['product']?['name'] ?? '-';
+  double _getIngQty(Map<String, dynamic> ing) => (ing['quantity'] as num?)?.toDouble() ?? 0;
+  String _getIngUnit(Map<String, dynamic> ing) => ing['product']?['unit']?['abbreviation'] ?? '';
+  double _getIngStock(Map<String, dynamic> ing) => (ing['product']?['quantity'] as num?)?.toDouble() ?? 0;
+  String _getIngProductId(Map<String, dynamic> ing) => ing['product']?['id'] ?? '';
+
+  double _getYield(Map<String, dynamic> recipe) => (recipe['yield_quantity'] as num?)?.toDouble() ?? 1;
+  String _getYieldUnit(Map<String, dynamic> recipe) => recipe['yield_unit'] ?? 'ชิ้น';
+
+  bool _canProduceRecipe(Map<String, dynamic> recipe) {
+    final ings = _getIngredients(recipe);
+    if (ings.isEmpty) return false;
+    return ings.every((ing) => _getIngStock(ing) >= _getIngQty(ing));
+  }
+
+  int _getMaxBatch(Map<String, dynamic> recipe) {
+    final ings = _getIngredients(recipe);
+    if (ings.isEmpty) return 0;
+    int maxBatch = 999999;
+    for (final ing in ings) {
+      final qty = _getIngQty(ing);
+      final stock = _getIngStock(ing);
+      if (qty <= 0) continue;
+      final batch = (stock / qty).floor();
+      if (batch < maxBatch) maxBatch = batch;
+    }
+    return maxBatch == 999999 ? 0 : maxBatch;
+  }
+
   void _showProduceProductDialog() {
-    // TODO: Implement produce product dialog
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('ผลิตสินค้า'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(Icons.menu_book, color: _primaryColor),
+              title: const Text('ผลิตจากสูตร'),
+              subtitle: const Text('เลือกสูตรอาหารและผลิตตามสูตร'),
+              onTap: () {
+                Navigator.pop(context);
+                _showProduceFromRecipeDialog();
+              },
+            ),
+            const Divider(),
+            ListTile(
+              leading: Icon(Icons.build, color: _secondaryColor),
+              title: const Text('ผลิตแบบ Manual'),
+              subtitle: const Text('กำหนดวัตถุดิบเอง'),
+              onTap: () {
+                Navigator.pop(context);
+                _showProduceManualDialog();
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('ยกเลิก'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showProduceFromRecipeDialog() {
+    // ดึง recipes ทั้งหมด (ไม่ filter ที่ผลิตได้)
+    if (_recipes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('ไม่มีสูตรอาหาร'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    String? selectedRecipeId;  // ✅ ว่างไว้ก่อน (null)
+    final formKey = GlobalKey<FormState>();
+    final qtyController = TextEditingController(text: '1');
+    bool isLoading = false;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final selectedRecipe = selectedRecipeId != null
+              ? _recipes.firstWhere(
+                  (r) => r['id'] == selectedRecipeId,
+                  orElse: () => _recipes.first,
+                )
+              : null;
+          
+          final maxBatch = selectedRecipe != null ? _getMaxBatch(selectedRecipe) : 0;
+          final ingredients = selectedRecipe != null ? _getIngredients(selectedRecipe) : [];
+          final batchQty = int.tryParse(qtyController.text) ?? 1;
+          
+          // 🔍 Debug
+          if (selectedRecipe != null) {
+            debugPrint('📋 Selected Recipe: ${selectedRecipe['name']}');
+            debugPrint('🥘 Ingredients count: ${ingredients.length}');
+            debugPrint('🥘 Ingredients: $ingredients');
+          }
+
+          // ✅ ตรวจสอบวัตถุดิบไม่พอ (หลังจากเลือกสูตร)
+          final insufficientIngredients = selectedRecipe != null
+              ? ingredients.where((ing) {
+                  final stock = _getIngStock(ing);
+                  final needed = _getIngQty(ing) * batchQty;
+                  return stock < needed;
+                }).toList()
+              : [];
+
+          return GestureDetector(
+            onTap: () => FocusScope.of(context).unfocus(),  // ✅ ซ่อนแป้นพิมพ์
+            child: AlertDialog(
+              title: Row(
+                children: [
+                  Icon(Icons.play_arrow, color: _successColor),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      selectedRecipe != null
+                          ? 'ผลิตจากสูตร: ${selectedRecipe['name']}'
+                          : 'ผลิตจากสูตร',
+                    ),
+                  ),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Dropdown: เลือกสูตร (default ว่าง)
+                      DropdownButtonFormField<String>(
+                        decoration: InputDecoration(
+                          labelText: 'เลือกสูตร *',
+                          border: const OutlineInputBorder(),
+                          prefixIcon: const Icon(Icons.menu_book),
+                        ),
+                        value: selectedRecipeId,
+                        items: [
+                          const DropdownMenuItem<String>(
+                            value: null,
+                            child: Text('-- เลือกสูตร --'),
+                          ),
+                          ..._recipes.map((r) => DropdownMenuItem<String>(
+                            value: r['id'] as String?,
+                            child: Text(r['name'] ?? ''),
+                          )).toList(),
+                        ],
+                        onChanged: (value) => setDialogState(() => selectedRecipeId = value),
+                        validator: (v) => v == null ? 'กรุณาเลือกสูตร' : null,
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Info: สูงสุดที่ผลิตได้ (แสดงเฉพาะเมื่อเลือกสูตร)
+                      if (selectedRecipe != null)
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.info_outline, color: Colors.blue[800], size: 20),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'ผลิตได้สูงสุด $maxBatch ชุด (ได้ ${(maxBatch * _getYield(selectedRecipe)).toStringAsFixed(0)} ${_getYieldUnit(selectedRecipe)})',
+                                  style: TextStyle(fontSize: 13, color: Colors.blue[800]),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      if (selectedRecipe != null) const SizedBox(height: 16),
+
+                      // Input: จำนวนชุด (แสดงเฉพาะเมื่อเลือกสูตร)
+                      if (selectedRecipe != null)
+                        TextFormField(
+                          controller: qtyController,
+                          decoration: const InputDecoration(
+                            labelText: 'จำนวนชุดที่ต้องการผลิต *',
+                            border: OutlineInputBorder(),
+                            suffixText: 'ชุด',
+                          ),
+                          keyboardType: TextInputType.number,
+                          onChanged: (_) => setDialogState(() {}),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) return 'กรุณากรอกจำนวน';
+                            final n = int.tryParse(value);
+                            if (n == null || n <= 0) return 'กรุณากรอกจำนวนที่ถูกต้อง';
+                            if (n > maxBatch) return 'วัตถุดิบไม่เพียงพอ (สูงสุด $maxBatch ชุด)';
+                            return null;
+                          },
+                        ),
+                      if (selectedRecipe != null) const SizedBox(height: 16),
+
+                      // ⚠️ Warning: วัตถุดิบไม่พอ (แสดงเฉพาะเมื่อเลือกสูตร)
+                      if (selectedRecipe != null && insufficientIngredients.isNotEmpty)
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.red.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.red.withOpacity(0.3)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.warning_amber, color: Colors.red[800], size: 20),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'วัตถุดิบไม่พอ',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.red[800],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              ...insufficientIngredients.map((ing) {
+                                final stock = _getIngStock(ing);
+                                final needed = _getIngQty(ing) * batchQty;
+                                final short = needed - stock;
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 4),
+                                  child: Text(
+                                    '• ${_getIngName(ing)}: ต้องการ ${needed.toStringAsFixed(2)} แต่มี ${stock.toStringAsFixed(2)} (ขาด ${short.toStringAsFixed(2)} ${_getIngUnit(ing)})',
+                                    style: TextStyle(fontSize: 12, color: Colors.red[700]),
+                                  ),
+                                );
+                              }).toList(),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: ElevatedButton.icon(
+                                      onPressed: () => Navigator.pop(context),
+                                      icon: const Icon(Icons.add_shopping_cart),
+                                      label: const Text('เติมสต็อก'),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.orange,
+                                        foregroundColor: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: ElevatedButton.icon(
+                                      onPressed: () => Navigator.pop(context),
+                                      icon: const Icon(Icons.refresh),
+                                      label: const Text('ตรวจนับสต็อก'),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.blue,
+                                        foregroundColor: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        )
+                      else if (selectedRecipe != null)
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.check_circle, color: _successColor, size: 20),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'วัตถุดิบพอสำหรับผลิต',
+                                  style: TextStyle(fontSize: 13, color: _successColor),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      if (selectedRecipe != null) const SizedBox(height: 16),
+
+                      // Preview: วัตถุดิบที่จะใช้ (แสดงเสมอเมื่อเลือกสูตร)
+                      if (selectedRecipe != null)
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'วัตถุดิบที่จะถูกตัด:',
+                              style: TextStyle(fontWeight: FontWeight.bold, color: _textPrimary),
+                            ),
+                            const SizedBox(height: 8),
+                            ...ingredients.map((ing) {
+                              final qty = _getIngQty(ing);
+                              final totalUse = qty * batchQty;
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 4),
+                                child: Row(
+                                  children: [
+                                    Expanded(child: Text(_getIngName(ing))),
+                                    Text(
+                                      '-${totalUse.toStringAsFixed(2)} ${_getIngUnit(ing)}',
+                                      style: const TextStyle(
+                                        color: Colors.red,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                            const Divider(),
+
+                            // Output: สินค้าที่จะได้
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    'สินค้าที่จะได้:',
+                                    style: TextStyle(fontWeight: FontWeight.bold, color: _textPrimary),
+                                  ),
+                                ),
+                                Text(
+                                  '+${(batchQty * _getYield(selectedRecipe)).toStringAsFixed(0)} ${_getYieldUnit(selectedRecipe)}',
+                                  style: TextStyle(
+                                    color: _successColor,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isLoading ? null : () => Navigator.pop(context),
+                  child: const Text('ยกเลิก'),
+                ),
+                ElevatedButton.icon(
+                  onPressed: (isLoading || insufficientIngredients.isNotEmpty || selectedRecipe == null)
+                      ? null
+                      : () async {
+                    if (formKey.currentState?.validate() != true) return;
+                    setDialogState(() => isLoading = true);
+
+                    final batchQty = int.tryParse(qtyController.text) ?? 1;
+                    final ingData = ingredients.map((ing) => {
+                      'product_id': _getIngProductId(ing),
+                      'quantity': _getIngQty(ing),
+                      'current_stock': _getIngStock(ing),
+                    }).toList();
+
+                    final result = await InventoryService.produceFromRecipe(
+                      recipeId: selectedRecipeId!,
+                      batchQuantity: batchQty,
+                      ingredients: ingData,
+                      yieldQuantity: (batchQty * _getYield(selectedRecipe!)).toDouble(),
+                    );
+
+                    if (context.mounted) {
+                      Navigator.pop(context);
+                      if (result['success'] == true) {
+                        await _loadData();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('ผลิต ${selectedRecipe!['name']} $batchQty ชุด สำเร็จ'),
+                            backgroundColor: _successColor,
+                          ),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(result['message'] ?? 'เกิดข้อผิดพลาด'),
+                            backgroundColor: _dangerColor,
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  icon: isLoading
+                      ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                      : const Icon(Icons.play_arrow),
+                  label: const Text('ยืนยันผลิต'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _successColor,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _showProduceManualDialog() {
+    // TODO: Implement manual produce dialog
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('ผลิตสินค้ายังไม่พร้อมใช้งาน')),
+      const SnackBar(content: Text('ผลิตแบบ Manual - ยังไม่พร้อมใช้งาน')),
     );
   }
 

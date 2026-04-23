@@ -1450,6 +1450,8 @@ class InventoryService {
             ingredients:inventory_recipe_ingredients(
               id,
               quantity,
+              unit_id,
+              unit:inventory_units(id, name, abbreviation),
               product:inventory_products(id, name, quantity, unit:inventory_units(id, name, abbreviation))
             )
           ''')
@@ -1645,13 +1647,135 @@ class InventoryService {
     }
   }
 
+  // ✅ Update recipe with ingredients
+  static Future<bool> updateRecipeWithIngredients({
+    required String recipeId,
+    required String name,
+    String? shortName,
+    double? netWeight,
+    required String categoryId,
+    required String yieldUnit,
+    String? description,
+    double? cost,
+    double? price,
+    String? imageUrl,
+    required List<Map<String, dynamic>> ingredients,
+    required List<Map<String, dynamic>> newIngredientsToCreate,
+  }) async {
+    try {
+      // ✅ หา default unit_id (กรัม) สำหรับ fallback
+      String? defaultUnitId;
+      final gramResp = await _client
+          .from('inventory_units')
+          .select('id')
+          .eq('name', 'กรัม')
+          .maybeSingle();
+      defaultUnitId = gramResp?['id'] as String?;
+      defaultUnitId ??= (await _client.from('inventory_units').select('id').limit(1).maybeSingle())?['id'] as String?;
+      
+      // ✅ เก็บ product_id ของวัตถุดิบใหม่ที่สร้าง
+      final newIngredientIds = <String>[];
+      
+      // 1. Create new ingredients if any
+      for (final ing in newIngredientsToCreate) {
+        final unitIdForNew = (ing['unit_id'] as String?) ?? defaultUnitId;
+        final response = await _client.from('inventory_products').insert({
+          'name': ing['name'],
+          'unit_id': unitIdForNew,  // ✅ fallback
+          'category_id': null,
+          'quantity': 0,
+          'is_active': true,
+        }).select('id');
+        
+        if (response.isNotEmpty) {
+          newIngredientIds.add(response[0]['id'] as String);
+        }
+      }
+
+      // 2. Delete existing ingredients
+      await _client.from('inventory_recipe_ingredients').delete().eq('recipe_id', recipeId);
+
+      // 3. Update recipe
+      final data = {
+        'name': name,
+        'short_name': shortName,
+        'net_weight': netWeight ?? 0,  // ✅ น้ำหนักสุทธิ
+        'recipe_category_id': categoryId,
+        'yield_unit': yieldUnit,
+        'description': description,
+        'cost': cost ?? 0,
+        'price': price ?? 0,
+        'image_url': imageUrl,
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+      await _client.from('inventory_recipes').update(data).eq('id', recipeId);
+
+      // 4. Insert existing ingredients (✅ resolve product_id ก่อน)
+      for (final ing in ingredients) {
+        final resolvedId = await resolveToProductId(
+          sourceId: ing['product_id'] as String,
+          name: (ing['product_name'] as String?) ?? '',
+          unitId: ing['unit_id'] as String?,
+        );
+        if (resolvedId == null) {
+          debugPrint('⚠️ Cannot resolve product_id for: ${ing['product_name']}');
+          continue;
+        }
+        await _client.from('inventory_recipe_ingredients').insert({
+          'recipe_id': recipeId,
+          'product_id': resolvedId,
+          'quantity': ing['quantity'],
+          'unit_id': (ing['unit_id'] as String?) ?? defaultUnitId,  // ✅ fallback
+        });
+      }
+      
+      // 5. ✅ Insert new ingredients with correct product_id
+      for (int i = 0; i < newIngredientsToCreate.length; i++) {
+        if (i < newIngredientIds.length) {
+          final ing = newIngredientsToCreate[i];
+          await _client.from('inventory_recipe_ingredients').insert({
+            'recipe_id': recipeId,
+            'product_id': newIngredientIds[i],  // ✅ ใช้ product_id ที่เพิ่งสร้าง
+            'quantity': ing['quantity'],
+            'unit_id': (ing['unit_id'] as String?) ?? defaultUnitId,  // ✅ fallback
+          });
+        }
+      }
+
+      return true;
+    } catch (e, st) {
+      debugPrint('❌ Error updating recipe with ingredients: $e');
+      debugPrint('Stack: $st');
+      return false;
+    }
+  }
+
   static Future<bool> deleteRecipe(String id) async {
     try {
+      debugPrint('🗑️ Hard Deleting recipe: $id');
+      
+      // 1. ลบ ingredients ก่อน (FK constraint)
+      debugPrint('📌 Step 1: Deleting recipe ingredients...');
       await _client.from('inventory_recipe_ingredients').delete().eq('recipe_id', id);
-      await _client.from('inventory_recipes').update({'is_active': false}).eq('id', id);
+      debugPrint('✅ Recipe ingredients deleted');
+      
+      // 2. Hard delete recipe
+      debugPrint('📌 Step 2: Hard deleting recipe...');
+      final response = await _client
+          .from('inventory_recipes')
+          .delete()
+          .eq('id', id)
+          .select();
+      
+      if (response.isEmpty) {
+        debugPrint('❌ Recipe not found or delete failed: $id');
+        return false;
+      }
+      
+      debugPrint('✅ Recipe hard deleted successfully: $id');
       return true;
     } catch (e) {
-      debugPrint('Error deleting recipe: $e');
+      debugPrint('❌ Error deleting recipe: $e');
       return false;
     }
   }
@@ -2269,6 +2393,7 @@ class InventoryService {
           'name': raw['name'],
           'unit': unit,
           'category': category,
+          '_source': 'ingredient',  // ✅ มาจาก inventory_ingredients
         });
       }
 
@@ -2281,11 +2406,16 @@ class InventoryService {
           .or('item_type.eq.ingredient,item_type.is.null')
           .limit(10);
       debugPrint('📦 inventory_products: ${(productsResponse as List).length} results');
+      
+      // ✅ Mark source = product
+      final productsList = List<Map<String, dynamic>>.from(productsResponse)
+          .map((p) => {...p, '_source': 'product'})
+          .toList();
 
       // รวมผลลัพธ์จากทั้งสองตาราง
       final combined = <Map<String, dynamic>>[
         ...ingredientsResponse,
-        ...List<Map<String, dynamic>>.from(productsResponse),
+        ...productsList,
       ];
 
       // ลบรายการซ้ำโดยใช้ชื่อเป็น key
@@ -2321,13 +2451,73 @@ class InventoryService {
     }
   }
 
+  /// ✅ แปลง id (อาจมาจาก inventory_ingredients) → product_id ใน inventory_products
+  /// ถ้า id มีอยู่ใน inventory_products แล้ว → คืน id เดิม
+  /// ถ้าไม่มี → หาจากชื่อใน inventory_products หรือสร้างใหม่
+  static Future<String?> resolveToProductId({
+    required String sourceId,
+    required String name,
+    String? unitId,
+  }) async {
+    try {
+      // 1. เช็คว่า id มีใน inventory_products หรือไม่
+      final existing = await _client
+          .from('inventory_products')
+          .select('id')
+          .eq('id', sourceId)
+          .maybeSingle();
+      if (existing != null) return sourceId;
+
+      // 2. หาใน inventory_products ด้วยชื่อ
+      final byName = await _client
+          .from('inventory_products')
+          .select('id')
+          .eq('name', name)
+          .eq('is_active', true)
+          .maybeSingle();
+      if (byName != null) return byName['id'] as String;
+
+      // 3. สร้าง product ใหม่
+      final created = await addProductSimple(name: name, unitId: unitId);
+      return created?['id'] as String?;
+    } catch (e) {
+      debugPrint('❌ resolveToProductId error: $e');
+      return null;
+    }
+  }
+
   /// เพิ่มวัตถุดิบใหม่แบบง่าย (ใช้สำหรับสร้างวัตถุดิบใหม่จาก dialog สูตร)
   static Future<Map<String, dynamic>?> addProductSimple({
     required String name,
-    required String unitId,
+    String? unitId,  // ✅ ยอมให้ null ได้ - จะหา default
     String? shelfId,
   }) async {
     try {
+      // ✅ หา unit_id ถ้าไม่ระบุ (ใช้ "กรัม" เป็น default)
+      String? targetUnitId = unitId;
+      if (targetUnitId == null || targetUnitId.isEmpty) {
+        final unitResp = await _client
+            .from('inventory_units')
+            .select('id')
+            .eq('name', 'กรัม')
+            .maybeSingle();
+        targetUnitId = unitResp?['id'] as String?;
+        // ถ้ายังไม่มี ใช้ unit แรก
+        if (targetUnitId == null) {
+          final firstUnit = await _client
+              .from('inventory_units')
+              .select('id')
+              .limit(1)
+              .maybeSingle();
+          targetUnitId = firstUnit?['id'] as String?;
+        }
+      }
+      
+      if (targetUnitId == null) {
+        debugPrint('❌ addProductSimple: No unit available in database');
+        return null;
+      }
+      
       // หา shelf แรกถ้าไม่ระบุ
       String? targetShelfId = shelfId;
       if (targetShelfId == null) {
@@ -2359,7 +2549,7 @@ class InventoryService {
       final response = await _client.from('inventory_products').insert({
         'name': name,
         'category_id': categoryResp?['id'],
-        'unit_id': unitId,
+        'unit_id': targetUnitId,  // ✅ ใช้ targetUnitId (มี fallback)
         'shelf_id': targetShelfId,
         'quantity': 0,
         'min_quantity': 0,
@@ -2378,9 +2568,11 @@ class InventoryService {
   /// เพิ่มสูตรพร้อมส่วนผสม โดยจัดการวัตถุดิบใหม่ที่ยังไม่มีในระบบ
   static Future<bool> addRecipeWithIngredientsAndImage({
     required String name,
+    String? shortName,
+    double? netWeight,
     required String categoryId,
     double yieldQuantity = 1,
-    String yieldUnit = 'ชิ้น',
+    required String yieldUnit,
     double cost = 0,
     double price = 0,
     String? description,
@@ -2389,27 +2581,55 @@ class InventoryService {
     required List<Map<String, dynamic>> newIngredientsToCreate,
   }) async {
     try {
+      // ✅ หา default unit_id (กรัม) สำหรับ fallback
+      String? defaultUnitId;
+      final gramResp = await _client
+          .from('inventory_units')
+          .select('id')
+          .eq('name', 'กรัม')
+          .maybeSingle();
+      defaultUnitId = gramResp?['id'] as String?;
+      defaultUnitId ??= (await _client.from('inventory_units').select('id').limit(1).maybeSingle())?['id'] as String?;
+      
       // สร้างวัตถุดิบใหม่ก่อนถ้ามี
       final List<Map<String, dynamic>> finalIngredients = [];
       for (final newIng in newIngredientsToCreate) {
+        final unitIdForNew = (newIng['unit_id'] as String?) ?? defaultUnitId;
         final created = await addProductSimple(
           name: newIng['name'],
-          unitId: newIng['unit_id'],
+          unitId: unitIdForNew,
         );
         if (created != null) {
           finalIngredients.add({
             'product_id': created['id'],
             'quantity': newIng['quantity'],
-            'unit_id': newIng['unit_id'],
+            'unit_id': unitIdForNew,
           });
         }
       }
 
-      // รวมกับวัตถุดิบที่มีอยู่แล้ว
-      finalIngredients.addAll(ingredients);
+      // ✅ Resolve product_id สำหรับ ingredients ที่มีอยู่แล้ว (อาจมาจาก inventory_ingredients)
+      for (final ing in ingredients) {
+        final resolvedId = await resolveToProductId(
+          sourceId: ing['product_id'] as String,
+          name: (ing['product_name'] as String?) ?? '',
+          unitId: ing['unit_id'] as String?,
+        );
+        if (resolvedId == null) {
+          debugPrint('⚠️ Cannot resolve product_id for: ${ing['product_name']}');
+          continue;
+        }
+        finalIngredients.add({
+          'product_id': resolvedId,
+          'quantity': ing['quantity'],
+          'unit_id': ing['unit_id'],
+        });
+      }
 
       final recipeResponse = await _client.from('inventory_recipes').insert({
         'name': name,
+        'short_name': shortName,
+        'net_weight': netWeight ?? 0,  // ✅ น้ำหนักสุทธิ
         'recipe_category_id': categoryId,
         'yield_quantity': yieldQuantity,
         'yield_unit': yieldUnit,
@@ -2426,15 +2646,16 @@ class InventoryService {
           'recipe_id': recipeId,
           'product_id': ing['product_id'],
           'quantity': ing['quantity'],
-          'unit_id': ing['unit_id'],
+          'unit_id': (ing['unit_id'] as String?) ?? defaultUnitId,  // ✅ fallback
         }).toList();
 
         await _client.from('inventory_recipe_ingredients').insert(ingredientsData);
       }
 
       return true;
-    } catch (e) {
-      debugPrint('Error adding recipe with ingredients and image: $e');
+    } catch (e, st) {
+      debugPrint('❌ Error adding recipe with ingredients: $e');
+      debugPrint('Stack: $st');
       return false;
     }
   }

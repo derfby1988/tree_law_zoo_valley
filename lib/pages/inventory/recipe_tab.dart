@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:image_picker/image_picker.dart';
@@ -6,7 +8,13 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/inventory_service.dart';
 import '../../services/permission_service.dart';
+import '../../services/inventory_event_bus.dart';
 import '../../utils/permission_helpers.dart';
+import 'inventory_filter_widget.dart';
+import 'add_product_page.dart';
+import 'unit_management_page.dart';
+import 'category_management_page.dart';
+import 'edit_recipe_page.dart';
 
 class RecipeTab extends StatefulWidget {
   const RecipeTab({super.key});
@@ -23,6 +31,9 @@ class _RecipeTabState extends State<RecipeTab> {
   List<Map<String, dynamic>> _recipeCategories = [];
   List<Map<String, dynamic>> _units = [];
   List<Map<String, dynamic>> _products = [];
+  List<Map<String, dynamic>> _ingredientCategories = [];  // ✅ หมวดหมู่จาก inventory_categories
+  List<Map<String, dynamic>> _shelves = [];
+  List<Map<String, dynamic>> _warehouses = [];
   bool _isLoading = true;
   String? _errorMessage;
 
@@ -47,12 +58,18 @@ class _RecipeTabState extends State<RecipeTab> {
         InventoryService.getRecipeCategories(),
         InventoryService.getUnitsSortedByRecipeUsage(),
         InventoryService.getProducts(),
+        InventoryService.getShelves(),
+        InventoryService.getWarehouses(),
+        InventoryService.getCategories(),  // ✅ หมวดหมู่จาก inventory_categories
       ]);
       setState(() {
         _recipes = results[0];
         _recipeCategories = results[1];
         _units = results[2];
         _products = results[3];
+        _shelves = results[4];
+        _warehouses = results[5];
+        _ingredientCategories = results[6];  // ✅
         _isLoading = false;
       });
     } catch (e) {
@@ -603,6 +620,8 @@ class _RecipeTabState extends State<RecipeTab> {
   void _showAddRecipeDialog() {
     final formKey = GlobalKey<FormState>();
     final nameController = TextEditingController();
+    final shortNameController = TextEditingController();
+    final netWeightController = TextEditingController();
     final descriptionController = TextEditingController();
     String? selectedCategoryId;
     String? selectedYieldUnit = 'จาน';  // Default หน่วยนับ
@@ -667,11 +686,16 @@ class _RecipeTabState extends State<RecipeTab> {
 
           // เพิ่มวัตถุดิบในรายการ
           void addIngredient() {
-            if ((selectedProductId != null || selectedIngredientIsNew == true) && quantityController.text.isNotEmpty && selectedIngredientUnit != null) {
+            // ✅ ลดเงื่อนไข - ไม่บังคับ unit และ category
+            if ((selectedProductId != null || selectedIngredientIsNew == true) && 
+                quantityController.text.isNotEmpty) {
               final quantity = double.tryParse(quantityController.text) ?? 0;
 
               if (quantity > 0) {
-                final unit = _units.firstWhere((u) => u['id'] == selectedIngredientUnit);
+                // ✅ หา unit - ถ้าไม่มีให้ใช้ default
+                final unit = selectedIngredientUnit != null
+                    ? _units.firstWhere((u) => u['id'] == selectedIngredientUnit, orElse: () => {'name': '', 'abbreviation': ''})
+                    : {'name': '', 'abbreviation': ''};
                 setDialogState(() {
                   ingredients.add({
                     'product_id': selectedProductId,
@@ -922,6 +946,29 @@ class _RecipeTabState extends State<RecipeTab> {
                       ),
                       SizedBox(height: 12),
 
+                      // ชื่อย่อสูตร
+                      TextFormField(
+                        controller: shortNameController,
+                        decoration: InputDecoration(
+                          labelText: 'ชื่อย่อ / บนใบเสร็จ',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          prefixIcon: Icon(Icons.short_text),
+                        ),
+                      ),
+                      SizedBox(height: 12),
+
+                      // น้ำหนักสุทธิ
+                      TextFormField(
+                        controller: netWeightController,
+                        decoration: InputDecoration(
+                          labelText: 'น้ำหนักสุทธิ (กรัม)',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          prefixIcon: Icon(Icons.scale),
+                        ),
+                        keyboardType: TextInputType.number,
+                      ),
+                      SizedBox(height: 12),
+
                       // ประเภท (เรียงตามล่าสุด)
                       DropdownButtonFormField<String>(
                         decoration: InputDecoration(
@@ -972,6 +1019,7 @@ class _RecipeTabState extends State<RecipeTab> {
                               )).toList(),
                               onChanged: (v) => setDialogState(() => selectedYieldUnit = v),
                               validator: (v) => v == null ? 'กรุณาเลือกหน่วย' : null,
+                              menuMaxHeight: 320,  // ✅ ความสูง ~10 รายการ (32px per item)
                             ),
                           ),
                           SizedBox(width: 8),
@@ -1018,53 +1066,64 @@ class _RecipeTabState extends State<RecipeTab> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 // Autocomplete field + Add button
-                                Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Expanded(
-                                      child: TextFormField(
-                                        controller: ingredientSearchController,
-                                        decoration: InputDecoration(
-                                          labelText: 'ค้นหา *',
-                                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-                                          isDense: true,
-                                          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                                          prefixIcon: Icon(Icons.search, size: 18),
-                                          suffixIcon: ingredientSearchController.text.isNotEmpty
-                                              ? IconButton(
-                                                  icon: Icon(Icons.clear, size: 18),
-                                                  onPressed: () {
-                                                    ingredientSearchController.clear();
-                                                    setDialogState(() {
-                                                      searchResults = [];
-                                                      selectedProductId = null;
-                                                      selectedIngredientName = null;
-                                                      selectedIngredientIsNew = null;
-                                                      selectedIngredientCategoryId = null;
-                                                      selectedIngredientCategoryName = null;
-                                                    });
-                                                  },
-                                                )
-                                              : null,
-                                          hintText: 'พิมพ์ชื่อวัตถุดิบ...',
+                                // ✅ ห่อด้วย GestureDetector เพื่อซ่อนแป้นพิมพ์เมื่อแตะพื้นที่ว่าง
+                                GestureDetector(
+                                  onTap: () {
+                                    // ✅ ซ่อนแป้นพิมพ์
+                                    FocusScope.of(context).unfocus();
+                                    // ✅ ปิด dropdown
+                                    setDialogState(() => searchResults = []);
+                                  },
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(
+                                        child: TextFormField(
+                                          controller: ingredientSearchController,
+                                          decoration: InputDecoration(
+                                            labelText: 'ค้นหา *',
+                                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                                            isDense: true,
+                                            contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                            prefixIcon: Icon(Icons.search, size: 18),
+                                            suffixIcon: ingredientSearchController.text.isNotEmpty
+                                                ? IconButton(
+                                                    icon: Icon(Icons.clear, size: 18),
+                                                    onPressed: () {
+                                                      ingredientSearchController.clear();
+                                                      setDialogState(() {
+                                                        searchResults = [];
+                                                        selectedProductId = null;
+                                                        selectedIngredientName = null;
+                                                        selectedIngredientIsNew = null;
+                                                        selectedIngredientCategoryId = null;
+                                                        selectedIngredientCategoryName = null;
+                                                      });
+                                                    },
+                                                  )
+                                                : null,
+                                            hintText: 'พิมพ์ชื่อวัตถุดิบ...',
+                                          ),
+                                          onChanged: (value) async => await searchProducts(value),
                                         ),
-                                        onChanged: (value) async => await searchProducts(value),
                                       ),
-                                    ),
-                                    SizedBox(width: 8),
-                                    IconButton(
-                                      onPressed: (selectedProductId != null || selectedIngredientIsNew == true) && quantityController.text.isNotEmpty && selectedIngredientUnit != null
-                                          ? addIngredient
-                                          : null,
-                                      icon: Icon(
-                                        Icons.add_circle,
-                                        color: (selectedProductId != null || selectedIngredientIsNew == true) && quantityController.text.isNotEmpty && selectedIngredientUnit != null
-                                            ? Colors.green
-                                            : Colors.grey,
+                                      SizedBox(width: 8),
+                                      IconButton(
+                                        onPressed: (selectedProductId != null || selectedIngredientIsNew == true) && 
+                                                   quantityController.text.isNotEmpty
+                                            ? addIngredient
+                                            : null,
+                                        icon: Icon(
+                                          Icons.add_circle,
+                                          color: (selectedProductId != null || selectedIngredientIsNew == true) && 
+                                                 quantityController.text.isNotEmpty
+                                              ? Colors.green
+                                              : Colors.grey,
+                                        ),
+                                        tooltip: 'เพิ่มวัตถุดิบ',
                                       ),
-                                      tooltip: 'เพิ่มวัตถุดิบ',
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                                 
                                 // Search results dropdown
@@ -1104,36 +1163,59 @@ class _RecipeTabState extends State<RecipeTab> {
                                     margin: EdgeInsets.only(top: 4),
                                     padding: EdgeInsets.all(8),
                                     decoration: BoxDecoration(
-                                      color: isThaiOnly(ingredientSearchController.text) ? Colors.orange.withOpacity(0.1) : Colors.red.withOpacity(0.1),
+                                      color: Colors.orange.withOpacity(0.1),
                                       borderRadius: BorderRadius.circular(6),
-                                      border: Border.all(color: isThaiOnly(ingredientSearchController.text) ? Colors.orange.withOpacity(0.3) : Colors.red.withOpacity(0.3)),
+                                      border: Border.all(color: Colors.orange.withOpacity(0.3)),
                                     ),
                                     child: Row(
                                       children: [
-                                        Icon(
-                                          isThaiOnly(ingredientSearchController.text) ? Icons.add_circle_outline : Icons.warning,
-                                          color: isThaiOnly(ingredientSearchController.text) ? Colors.orange : Colors.red,
-                                          size: 18,
-                                        ),
+                                        Icon(Icons.add_circle_outline, color: Colors.orange, size: 18),
                                         SizedBox(width: 8),
                                         Expanded(
                                           child: Text(
-                                            isThaiOnly(ingredientSearchController.text)
-                                                ? 'ไม่เคยใช้ "${ingredientSearchController.text}"'
-                                                : 'กรุณาใช้ภาษาไทยเท่านั้น',
-                                            style: TextStyle(fontSize: 12, color: isThaiOnly(ingredientSearchController.text) ? Colors.orange[800] : Colors.red[800]),
+                                            'ไม่พบ "${ingredientSearchController.text}"',
+                                            style: TextStyle(fontSize: 12, color: Colors.orange[800]),
                                           ),
                                         ),
-                                        if (isThaiOnly(ingredientSearchController.text))
-                                          TextButton.icon(
-                                            onPressed: () => onSelectNewIngredient(ingredientSearchController.text),
-                                            icon: Icon(Icons.add, size: 16),
-                                            label: Text('ใช้ชื่อนี้', style: TextStyle(fontSize: 12)),
-                                            style: TextButton.styleFrom(
-                                              foregroundColor: Colors.green,
-                                              padding: EdgeInsets.symmetric(horizontal: 8),
-                                            ),
+                                        TextButton.icon(
+                                          onPressed: () async {
+                                            // ✅ Navigate ไป AddProductPage
+                                            final newProduct = await Navigator.push<Map<String, dynamic>>(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (context) => AddProductPage(
+                                                  categories: _recipeCategories,
+                                                  units: _units,
+                                                  recipes: [],
+                                                  shelves: _shelves,
+                                                  warehouses: _warehouses,
+                                                  initialItemType: ItemType.ingredient,
+                                                  initialProductName: ingredientSearchController.text.trim(),
+                                                ),
+                                              ),
+                                            );
+
+                                            if (newProduct != null && mounted) {
+                                              // ✅ Auto-select สินค้าที่เพิ่งสร้าง
+                                              setDialogState(() {
+                                                selectedProductId = newProduct['id'];
+                                                selectedIngredientName = newProduct['name'];
+                                                selectedIngredientIsNew = false;
+                                                ingredientSearchController.text = newProduct['name'];
+                                                searchResults = [];
+                                                if (newProduct['unit'] != null && newProduct['unit']['id'] != null) {
+                                                  selectedIngredientUnit = newProduct['unit']['id'];
+                                                }
+                                              });
+                                            }
+                                          },
+                                          icon: Icon(Icons.add, size: 16),
+                                          label: Text('เพิ่มวัตถุดิบใหม่', style: TextStyle(fontSize: 12)),
+                                          style: TextButton.styleFrom(
+                                            foregroundColor: Colors.orange,
+                                            padding: EdgeInsets.symmetric(horizontal: 8),
                                           ),
+                                        ),
                                       ],
                                     ),
                                   ),
@@ -1266,32 +1348,40 @@ class _RecipeTabState extends State<RecipeTab> {
                                       ),
                                     ),
                                     SizedBox(width: 8),
+                                    // ✅ แสดงหน่วยจากวัตถุดิบ (read-only)
                                     Expanded(
                                       flex: 3,
-                                      child: DropdownButtonFormField<String>(
-                                        decoration: InputDecoration(
-                                          labelText: 'หน่วย *',
-                                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-                                          isDense: true,
-                                          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                      child: Container(
+                                        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                        decoration: BoxDecoration(
+                                          border: Border.all(color: Colors.grey.shade300),
+                                          borderRadius: BorderRadius.circular(6),
+                                          color: Colors.grey.shade50,
                                         ),
-                                        value: selectedIngredientUnit,
-                                        isExpanded: true,
-                                        items: _units.map((u) => DropdownMenuItem(
-                                          value: u['id'] as String,
-                                          child: Align(
-                                            alignment: Alignment.centerRight,
-                                            child: Text(u['name'] ?? '', overflow: TextOverflow.ellipsis),
-                                          ),
-                                        )).toList(),
-                                        onChanged: (v) => setDialogState(() => selectedIngredientUnit = v),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Text(
+                                              'หน่วย',
+                                              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                                            ),
+                                            Text(
+                                              selectedIngredientUnit != null
+                                                  ? _units.firstWhere((u) => u['id'] == selectedIngredientUnit, orElse: () => {'name': '-'})['name'] ?? '-'
+                                                  : '-',
+                                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   ],
                                 ),
                                 
                                 // Category dropdown - แก้ไขหมวดหมู่ได้
-                                if (selectedIngredientName != null) ...[
+                                // ✅ แสดงเสมอเมื่อเลือกวัตถุดิบแล้ว (ไม่ว่าจะมีหมวดหมู่หรือไม่)
+                                if (selectedProductId != null || selectedIngredientIsNew == true) ...[
                                   SizedBox(height: 8),
                                   DropdownButtonFormField<String?>(
                                     decoration: InputDecoration(
@@ -1303,19 +1393,9 @@ class _RecipeTabState extends State<RecipeTab> {
                                     ),
                                     value: selectedIngredientCategoryId ?? (selectedIngredientIsNew == true ? '__new__' : null),
                                     isExpanded: true,
+                                    menuMaxHeight: 320,
                                     items: () {
-                                      // ดึงหมวดหมู่ที่ไม่ซ้ำจาก _products
-                                      final categories = <String, String>{};
-                                      for (final p in _products) {
-                                        final cat = p['category'] as Map<String, dynamic>?;
-                                        if (cat != null && cat['id'] != null) {
-                                          categories[cat['id'] as String] = cat['name'] as String? ?? 'ไม่ระบุ';
-                                        }
-                                      }
-                                      // เรียงตามชื่อ
-                                      final sorted = categories.entries.toList()
-                                        ..sort((a, b) => a.value.compareTo(b.value));
-                                      
+                                      // ✅ ใช้หมวดหมู่จากตาราง inventory_categories โดยตรง
                                       final items = <DropdownMenuItem<String?>>[];
                                       
                                       // ถ้าเป็นวัตถุดิบใหม่ เพิ่ม option "วัตถุดิบใหม่" ก่อน
@@ -1326,18 +1406,16 @@ class _RecipeTabState extends State<RecipeTab> {
                                         ));
                                       }
                                       
-                                      // เพิ่ม "ไม่ระบุหมวดหมู่" สำหรับวัตถุดิบที่มีอยู่แล้ว
-                                      if (selectedIngredientIsNew != true) {
-                                        items.add(DropdownMenuItem<String?>(
-                                          value: null,
-                                          child: Text('ไม่ระบุหมวดหมู่', style: TextStyle(color: Colors.grey[600])),
-                                        ));
-                                      }
+                                      // เพิ่ม "ไม่ระบุหมวดหมู่"
+                                      items.add(DropdownMenuItem<String?>(
+                                        value: null,
+                                        child: Text('ไม่ระบุหมวดหมู่', style: TextStyle(color: Colors.grey[600])),
+                                      ));
                                       
-                                      // เพิ่มหมวดหมู่จาก products
-                                      items.addAll(sorted.map((e) => DropdownMenuItem<String?>(
-                                        value: e.key,
-                                        child: Text(e.value),
+                                      // ✅ เพิ่มหมวดหมู่จาก _ingredientCategories (inventory_categories)
+                                      items.addAll(_ingredientCategories.map((c) => DropdownMenuItem<String?>(
+                                        value: c['id'] as String?,
+                                        child: Text(c['name'] as String? ?? 'ไม่ระบุ'),
                                       )));
                                       
                                       return items;
@@ -1348,15 +1426,15 @@ class _RecipeTabState extends State<RecipeTab> {
                                         selectedIngredientCategoryName = 'วัตถุดิบใหม่';
                                       } else {
                                         selectedIngredientCategoryId = v;
-                                        // อัปเดตชื่อหมวดหมู่
                                         if (v == null) {
                                           selectedIngredientCategoryName = 'ไม่ระบุหมวดหมู่';
                                         } else {
-                                          final cat = _products.firstWhere(
-                                            (p) => (p['category']?['id'] as String?) == v,
+                                          // ✅ หาชื่อหมวดหมู่จาก _ingredientCategories
+                                          final cat = _ingredientCategories.firstWhere(
+                                            (c) => c['id'] == v,
                                             orElse: () => {},
                                           );
-                                          selectedIngredientCategoryName = cat['category']?['name'] ?? 'ไม่ระบุ';
+                                          selectedIngredientCategoryName = cat['name'] as String? ?? 'ไม่ระบุ';
                                         }
                                       }
                                     }),
@@ -1516,6 +1594,20 @@ class _RecipeTabState extends State<RecipeTab> {
                 onPressed: isLoading ? null : () async {
                   if (formKey.currentState?.validate() != true) return;
 
+                  // ✅ ตรวจสอบว่ามีวัตถุดิบอย่างน้อย 1 รายการ
+                  if (ingredients.isEmpty) {
+                    Navigator.pop(context);  // ✅ ปิด Dialog ก่อน
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('กรุณาเพิ่มวัตถุดิบอย่างน้อย 1 รายการ'),
+                          backgroundColor: Colors.orange,
+                        ),
+                      );
+                    }
+                    return;
+                  }
+
                   // ตรวจสอบชื่อซ้ำ
                   setDialogState(() => isLoading = true);
                   final exists = await InventoryService.checkRecipeNameExists(nameController.text.trim());
@@ -1530,6 +1622,7 @@ class _RecipeTabState extends State<RecipeTab> {
                   // เตรียมข้อมูลวัตถุดิบสำหรับบันทึก
                   final existingIngredients = ingredients.where((ing) => ing['is_new'] != true).map((ing) => {
                     'product_id': ing['product_id'],
+                    'product_name': ing['product_name'],  // ✅ ส่งชื่อไปด้วย (เผื่อ resolve)
                     'quantity': ing['quantity'],
                     'unit_id': ing['unit_id'],
                   }).toList();
@@ -1542,6 +1635,8 @@ class _RecipeTabState extends State<RecipeTab> {
 
                   final ok = await InventoryService.addRecipeWithIngredientsAndImage(
                     name: nameController.text.trim(),
+                    shortName: shortNameController.text.trim().isEmpty ? null : shortNameController.text.trim(),
+                    netWeight: double.tryParse(netWeightController.text) ?? 0,  // ✅ น้ำหนักสุทธิ
                     categoryId: selectedCategoryId!,
                     yieldUnit: selectedYieldUnit!,
                     description: descriptionController.text.trim().isEmpty ? null : descriptionController.text.trim(),
@@ -1686,67 +1781,77 @@ class _RecipeTabState extends State<RecipeTab> {
     );
   }
 
-  void _showEditRecipeDialog(Map<String, dynamic> recipe) {
-    final nameController = TextEditingController(text: recipe['name'] ?? '');
-    final costController = TextEditingController(text: '${_getCost(recipe)}');
-    final priceController = TextEditingController(text: '${_getPrice(recipe)}');
-    bool isLoading = false;
+  void _showEditRecipeDialog(Map<String, dynamic> recipe) async {
+    // ✅ Navigate ไป Edit Recipe Page
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EditRecipePage(
+          recipe: recipe,
+          categories: _recipeCategories,
+          units: _units,
+          shelves: _shelves,
+          warehouses: _warehouses,
+        ),
+      ),
+    );
 
+    // Refresh data เมื่อกลับมา
+    if (result == true && mounted) {
+      await _loadData();
+    }
+  }
+
+  void _showDeleteConfirmDialog(Map<String, dynamic> recipe) {
+    bool isDeleting = false;
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('แก้ไขสูตร')]),
-          content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-            TextFormField(controller: nameController, decoration: InputDecoration(labelText: 'ชื่อสูตร', border: OutlineInputBorder())),
-            SizedBox(height: 12),
-            TextFormField(controller: costController, decoration: InputDecoration(labelText: 'ต้นทุน/ชุด', border: OutlineInputBorder(), prefixText: '฿'), keyboardType: TextInputType.number),
-            SizedBox(height: 12),
-            TextFormField(controller: priceController, decoration: InputDecoration(labelText: 'ราคาขาย/ชิ้น', border: OutlineInputBorder(), prefixText: '฿'), keyboardType: TextInputType.number),
-          ])),
-          actions: [
-            TextButton(onPressed: isLoading ? null : () => Navigator.pop(context), child: Text('ยกเลิก')),
-            ElevatedButton(
-              onPressed: isLoading ? null : () async {
-                setDialogState(() => isLoading = true);
-                final ok = await InventoryService.updateRecipe(recipe['id'], {
-                  'name': nameController.text.trim(),
-                  'cost': double.tryParse(costController.text) ?? 0,
-                  'price': double.tryParse(priceController.text) ?? 0,
-                });
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  if (ok) { _loadData(); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('แก้ไขสูตรสำเร็จ'), backgroundColor: Colors.green)); }
-                }
-              },
-              child: isLoading ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text('บันทึก'),
-            ),
-          ],
+          title: Row(children: [Icon(Icons.warning, color: Colors.red), SizedBox(width: 8), Text('ยืนยันการลบ')]),
+          content: isDeleting
+              ? Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('กำลังลบสูตร "${recipe['name']}"...'),
+                  ],
+                )
+              : Text('ต้องการลบสูตร "${recipe['name']}" หรือไม่?\nการลบจะไม่สามารถกู้คืนได้'),
+          actions: isDeleting
+              ? []
+              : [
+                  TextButton(onPressed: () => Navigator.pop(context), child: Text('ยกเลิก')),
+                  ElevatedButton(
+                    onPressed: () async {
+                      setDialogState(() => isDeleting = true);
+                      final ok = await InventoryService.deleteRecipe(recipe['id']);
+                      if (mounted) {
+                        Navigator.pop(context);
+                        if (ok) {
+                          _loadData();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('ลบสูตร ${recipe['name']} สำเร็จ'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('ลบสูตรล้มเหลว'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                    child: Text('ลบ'),
+                  ),
+                ],
         ),
-      ),
-    );
-  }
-
-  void _showDeleteConfirmDialog(Map<String, dynamic> recipe) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(children: [Icon(Icons.warning, color: Colors.red), SizedBox(width: 8), Text('ยืนยันการลบ')]),
-        content: Text('ต้องการลบสูตร "${recipe['name']}" หรือไม่?\nการลบจะไม่สามารถกู้คืนได้'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text('ยกเลิก')),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              final ok = await InventoryService.deleteRecipe(recipe['id']);
-              if (mounted) {
-                if (ok) { _loadData(); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('ลบสูตร ${recipe['name']} แล้ว'), backgroundColor: Colors.red)); }
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-            child: Text('ลบ'),
-          ),
-        ],
       ),
     );
   }

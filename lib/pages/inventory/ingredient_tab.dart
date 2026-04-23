@@ -9,6 +9,8 @@ import '../../utils/permission_helpers.dart';
 import 'inventory_filter_widget.dart';
 import 'add_product_page.dart';
 import 'unit_management_page.dart';
+import 'category_management_page.dart';
+import '../../services/account_chart_service.dart';
 
 class IngredientTab extends StatefulWidget {
   const IngredientTab({super.key});
@@ -27,6 +29,9 @@ class _IngredientTabState extends State<IngredientTab> {
   List<Map<String, dynamic>> _units = [];
   List<Map<String, dynamic>> _shelves = [];
   List<Map<String, dynamic>> _warehouses = [];
+  List<Map<String, dynamic>> _assetAccounts = [];
+  List<Map<String, dynamic>> _revenueAccounts = [];
+  List<Map<String, dynamic>> _costAccounts = [];
   bool _isLoading = true;
   String? _errorMessage;
   StreamSubscription<InventoryEventType>? _inventoryEventSub;
@@ -72,6 +77,9 @@ class _IngredientTabState extends State<IngredientTab> {
         InventoryService.getUnits(),
         InventoryService.getShelves(),
         InventoryService.getWarehouses(),
+        AccountChartService.getAccounts(type: 'asset'),
+        AccountChartService.getAccounts(type: 'revenue'),
+        AccountChartService.getAccounts(type: 'cogs'),
       ]);
       setState(() {
         _ingredients = results[0];
@@ -79,6 +87,9 @@ class _IngredientTabState extends State<IngredientTab> {
         _units = results[2];
         _shelves = results[3];
         _warehouses = results[4];
+        _assetAccounts = results[5];
+        _revenueAccounts = results[6];
+        _costAccounts = results[7];
         _isLoading = false;
       });
     } catch (e) {
@@ -748,11 +759,24 @@ class _IngredientTabState extends State<IngredientTab> {
   }
 
   // Dialogs
-  void _showCategoryDialog() {
-    // TODO: Implement category dialog for ingredients
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('จัดการประเภทวัตถุดิบยังไม่พร้อมใช้งาน')),
+  void _showCategoryDialog() async {
+    // ใช้ CategoryManagementPage ร่วมกับ product tab
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CategoryManagementPage(
+          initialCategories: _categories,
+          initialProducts: _ingredients,  // ส่ง ingredients เป็น products
+          assetAccounts: _assetAccounts,
+          revenueAccounts: _revenueAccounts,
+          costAccounts: _costAccounts,
+        ),
+      ),
     );
+    // Refresh data when returning from management page
+    if (mounted) {
+      await _loadData();
+    }
   }
 
   void _showUnitDialog() {

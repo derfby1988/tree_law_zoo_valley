@@ -13,6 +13,7 @@ class AddProductPage extends StatefulWidget {
   final List<Map<String, dynamic>> shelves;
   final List<Map<String, dynamic>> warehouses;
   final ItemType initialItemType;
+  final String? initialProductName;
 
   const AddProductPage({
     super.key,
@@ -22,6 +23,7 @@ class AddProductPage extends StatefulWidget {
     required this.shelves,
     required this.warehouses,
     this.initialItemType = ItemType.product,
+    this.initialProductName,
   });
 
   @override
@@ -86,6 +88,24 @@ class _AddProductPageState extends State<AddProductPage> {
   String get _typeLabel => _itemType == ItemType.product ? 'สินค้า' : 'วัตถุดิบ';
   String get _itemTypeValue => _itemType == ItemType.product ? 'product' : 'ingredient';
   bool get _isProducedFromRecipe => _itemType == ItemType.product && _selectedRecipeId != null;
+
+  /// Filter categories ตามประเภท (product/ingredient)
+  /// ✅ ทั้ง product และ ingredient ต้องมี account codes
+  List<Map<String, dynamic>> get _filteredCategories {
+    return widget.categories.where((cat) {
+      // ✅ ตรวจสอบว่า category มี account codes ครบ
+      final hasAllAccounts = 
+          cat['inventory_account_code'] != null &&
+          cat['revenue_account_code'] != null &&
+          cat['cost_account_code'] != null;
+      
+      if (!hasAllAccounts) return false;
+      
+      // ✅ ไม่มี item_type_restriction → ใช้ได้ทั้ง product และ ingredient
+      // ⚠️ ในอนาคต อาจเพิ่ม field 'item_type_restriction' ใน categories table
+      return true;
+    }).toList();
+  }
   String get _resolvedBarcodeAccountCode {
     final inv = (_categoryInvAccount ?? '').trim();
     if (inv.isNotEmpty) return inv;
@@ -152,6 +172,10 @@ class _AddProductPageState extends State<AddProductPage> {
   void initState() {
     super.initState();
     _itemType = widget.initialItemType;
+    // ✅ ใช้ initialProductName ถ้ามี
+    if (widget.initialProductName != null && widget.initialProductName!.isNotEmpty) {
+      _nameController.text = widget.initialProductName!;
+    }
     _nameFocusNode.addListener(() {
       if (_nameFocusNode.hasFocus) {
         _scrollProductInfoToTop();
@@ -355,9 +379,9 @@ class _AddProductPageState extends State<AddProductPage> {
       return;
     }
 
-    // คะแนนแต่ละ category
+    // คะแนนแต่ละ category (ใช้เฉพาะ categories ที่มี account codes)
     final scored = <Map<String, dynamic>, int>{};
-    for (final cat in widget.categories) {
+    for (final cat in _filteredCategories) {
       final catName = (cat['name'] as String? ?? '').toLowerCase();
       int score = 0;
 
@@ -593,31 +617,62 @@ class _AddProductPageState extends State<AddProductPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('ประเภทรายการ', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildToggleButton(
-                    label: 'สินค้า',
-                    icon: Icons.shopping_bag,
-                    isSelected: _itemType == ItemType.product,
-                    color: Colors.blue,
-                    onTap: () => _handleItemTypeChanged(ItemType.product),
+            // ✅ ซ่อนปุ่มประเภทรายการถ้าเป็น ingredient จากการเพิ่มวัตถุดิบ
+            if (widget.initialItemType == ItemType.product)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('ประเภทรายการ', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildToggleButton(
+                          label: 'สินค้า',
+                          icon: Icons.shopping_bag,
+                          isSelected: _itemType == ItemType.product,
+                          color: Colors.blue,
+                          onTap: () => _handleItemTypeChanged(ItemType.product),
+                        ),
+                      ),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: _buildToggleButton(
+                          label: 'วัตถุดิบ',
+                          icon: Icons.eco,
+                          isSelected: _itemType == ItemType.ingredient,
+                          color: Colors.teal,
+                          onTap: () => _handleItemTypeChanged(ItemType.ingredient),
+                        ),
+                      ),
+                    ],
                   ),
+                ],
+              )
+            else
+              // ✅ แสดง badge วัตถุดิบเมื่อเป็น ingredient
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.teal.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.teal.withOpacity(0.3)),
                 ),
-                SizedBox(width: 12),
-                Expanded(
-                  child: _buildToggleButton(
-                    label: 'วัตถุดิบ',
-                    icon: Icons.eco,
-                    isSelected: _itemType == ItemType.ingredient,
-                    color: Colors.teal,
-                    onTap: () => _handleItemTypeChanged(ItemType.ingredient),
-                  ),
+                child: Row(
+                  children: [
+                    Icon(Icons.eco, color: Colors.teal, size: 20),
+                    SizedBox(width: 8),
+                    Text(
+                      'เพิ่มวัตถุดิบใหม่',
+                      style: TextStyle(
+                        color: Colors.teal[800],
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
           ],
         ),
       ),
@@ -922,6 +977,7 @@ class _AddProductPageState extends State<AddProductPage> {
             // หน่วยนับ
             DropdownButtonFormField<String>(
               isExpanded: true,
+              alignment: AlignmentDirectional.bottomStart,
               decoration: InputDecoration(
                 labelText: 'หน่วยนับ *',
                 border: _inputBorder,
@@ -934,6 +990,7 @@ class _AddProductPageState extends State<AddProductPage> {
               )).toList(),
               onChanged: (v) => setState(() => _selectedUnitId = v),
               validator: (v) => v == null ? 'กรุณาเลือกหน่วยนับ' : null,
+              menuMaxHeight: 320,  // ✅ ความสูง ~10 รายการ (32px per item)
             ),
             SizedBox(height: 12),
             // ประเภท
@@ -983,7 +1040,7 @@ class _AddProductPageState extends State<AddProductPage> {
   }
 
   Widget _buildCategoryField() {
-    final categories = widget.categories;
+    final categories = _filteredCategories;  // ✅ ใช้ filtered categories
     final selectedCat = _selectedCategoryId != null
         ? categories.firstWhere((c) => c['id'] == _selectedCategoryId, orElse: () => <String, dynamic>{})
         : null;
@@ -1621,7 +1678,7 @@ class _AddProductPageState extends State<AddProductPage> {
 
   // ===== Category Dialog (Top) =====
   Future<void> _showCategoryBottomSheet() async {
-    final categories = widget.categories;
+    final categories = _filteredCategories;  // ✅ ใช้ filtered categories
     final searchController = TextEditingController();
     bool didAutoScrollToSelected = false;
     final taxExemptCategoryIds = <String>{};
