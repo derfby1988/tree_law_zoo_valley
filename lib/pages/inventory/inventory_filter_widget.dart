@@ -14,6 +14,7 @@ class InventoryFilterWidget extends StatelessWidget {
   final bool showNoShelfOption;
   final Set<String> highlightedWarehouseOptions;
   final Set<String> highlightedShelfOptions;
+  final String searchHint;
 
   const InventoryFilterWidget({
     super.key,
@@ -28,6 +29,7 @@ class InventoryFilterWidget extends StatelessWidget {
     this.showNoShelfOption = false,
     this.highlightedWarehouseOptions = const {},
     this.highlightedShelfOptions = const {},
+    this.searchHint = 'ค้นหาสินค้า...',
   });
 
   @override
@@ -111,7 +113,7 @@ class InventoryFilterWidget extends StatelessWidget {
                 TextField(
                   controller: searchController,
                   decoration: InputDecoration(
-                    hintText: 'ค้นหาสินค้า...',
+                    hintText: searchHint,
                     prefixIcon: const Icon(Icons.search),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppDesignSystem.radiusSm)),
                   ),

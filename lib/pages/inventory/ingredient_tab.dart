@@ -272,6 +272,7 @@ class _IngredientTabState extends State<IngredientTab> {
               SizedBox(height: 16),
               InventoryFilterWidget(
                 searchController: _searchController,
+                searchHint: 'ค้นหาวัตถุดิบ...',
                 selectedWarehouse: _selectedWarehouse,
                 selectedShelf: _selectedShelf,
                 onWarehouseChanged: (value) => setState(() {

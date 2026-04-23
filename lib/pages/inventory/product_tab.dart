@@ -1536,7 +1536,30 @@ class _ProductTabState extends State<ProductTab> {
     );
   }
 
-  void _showUnitDialog() {
+  void _showUnitDialog() async {
+    // ✅ แสดง loading dialog ระหว่างเปิดหน้าหน่วยนับ
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('กำลังโหลดข้อมูลหน่วยนับ...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await Future.delayed(const Duration(milliseconds: 300));
+    if (!mounted) return;
+    Navigator.pop(context); // ปิด loading
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const UnitManagementPage()),
