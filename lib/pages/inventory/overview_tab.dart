@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/inventory_service.dart';
 import 'inventory_filter_widget.dart';
 import 'dialogs/stock_alert_dialog.dart';
+import 'count_history_page.dart';
 import '../../theme/app_design_system.dart';
 
 class OverviewTab extends StatefulWidget {
@@ -22,6 +23,10 @@ class _OverviewTabState extends State<OverviewTab> {
   bool _isLoading = true;
   String? _errorMessage;
   bool _updatingAlert = false;
+
+  // ✅ ประวัติการตรวจนับ
+  List<Map<String, dynamic>> _stockCountHistory = [];
+  List<Map<String, dynamic>> _ingredientCountHistory = [];
 
   Color get _surface => AppDesignSystem.surface;
   Color get _surfaceAlt => AppDesignSystem.background;
@@ -43,8 +48,17 @@ class _OverviewTabState extends State<OverviewTab> {
   Future<void> _loadData() async {
     setState(() { _isLoading = true; _errorMessage = null; });
     try {
-      final stats = await InventoryService.getOverviewStats();
-      setState(() { _stats = stats; _isLoading = false; });
+      final results = await Future.wait([
+        InventoryService.getOverviewStats(),
+        InventoryService.getStockCountHistory(limit: 10),
+        InventoryService.getIngredientCountHistory(limit: 10),
+      ]);
+      setState(() {
+        _stats = results[0] as Map<String, dynamic>;
+        _stockCountHistory = results[1] as List<Map<String, dynamic>>;
+        _ingredientCountHistory = results[2] as List<Map<String, dynamic>>;
+        _isLoading = false;
+      });
     } catch (e) {
       setState(() { _errorMessage = 'ไม่สามารถโหลดข้อมูล: $e'; _isLoading = false; });
     }
@@ -177,6 +191,8 @@ class _OverviewTabState extends State<OverviewTab> {
               _buildExpandableAlerts(),
               const SizedBox(height: AppDesignSystem.spacingLg),
               _buildMovementStatistics(),
+              const SizedBox(height: AppDesignSystem.spacingLg),
+              _buildCountHistorySection(),
             ],
           ),
         ),
@@ -508,5 +524,158 @@ class _OverviewTabState extends State<OverviewTab> {
         ],
       ),
     );
+  }
+
+  // ✅ ส่วนแสดงประวัติการตรวจนับ
+  Widget _buildCountHistorySection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.history, color: _secondaryColor),
+            const SizedBox(width: 8),
+            Expanded(child: Text('ประวัติการตรวจนับ', style: Theme.of(context).textTheme.titleMedium)),
+            TextButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const CountHistoryPage()),
+                ).then((_) => _loadData());
+              },
+              icon: const Icon(Icons.open_in_new, size: 16),
+              label: const Text('ดูทั้งหมด'),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppDesignSystem.spacingMd),
+        _buildAlertExpansionTile(
+          title: 'ประวัติตรวจนับสต็อกสินค้า',
+          icon: Icons.inventory_2,
+          color: Colors.orange,
+          count: _stockCountHistory.length,
+          child: _buildStockCountHistoryContent(),
+        ),
+        const SizedBox(height: AppDesignSystem.spacingSm),
+        _buildAlertExpansionTile(
+          title: 'ประวัติตรวจนับวัตถุดิบ',
+          icon: Icons.checklist,
+          color: Colors.purple,
+          count: _ingredientCountHistory.length,
+          child: _buildIngredientCountHistoryContent(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStockCountHistoryContent() {
+    if (_stockCountHistory.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(AppDesignSystem.spacingMd),
+        child: Text('ยังไม่มีประวัติตรวจนับสต็อก', style: TextStyle(color: _textSecondary)),
+      );
+    }
+    return Column(
+      children: _stockCountHistory.map((rec) {
+        final productName = rec['inventory_products']?['name'] ?? '-';
+        final before = (rec['quantity_before'] as num?)?.toDouble() ?? 0;
+        final after = (rec['quantity_after'] as num?)?.toDouble() ?? 0;
+        final change = (rec['quantity_change'] as num?)?.toDouble() ?? (after - before);
+        final createdAt = rec['created_at']?.toString() ?? '';
+        final isIncrease = change >= 0;
+        final changeColor = isIncrease ? _successColor : _dangerColor;
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: AppDesignSystem.spacingSm),
+          padding: const EdgeInsets.all(AppDesignSystem.spacingMd),
+          decoration: BoxDecoration(
+            color: _surfaceAlt,
+            borderRadius: BorderRadius.circular(AppDesignSystem.radiusSm),
+            border: Border.all(color: _borderColor),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.inventory_2, color: Colors.orange, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(productName, style: const TextStyle(fontWeight: FontWeight.w500)),
+                    Text('${_formatDate(createdAt)} | $before → $after', style: TextStyle(fontSize: 12, color: _textSecondary)),
+                  ],
+                ),
+              ),
+              Text(
+                '${isIncrease ? '+' : ''}${change.toStringAsFixed(change == change.roundToDouble() ? 0 : 2)}',
+                style: TextStyle(fontWeight: FontWeight.bold, color: changeColor),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildIngredientCountHistoryContent() {
+    if (_ingredientCountHistory.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(AppDesignSystem.spacingMd),
+        child: Text('ยังไม่มีประวัติตรวจนับวัตถุดิบ', style: TextStyle(color: _textSecondary)),
+      );
+    }
+    return Column(
+      children: _ingredientCountHistory.map((rec) {
+        final ingName = rec['inventory_ingredients']?['name'] ?? '-';
+        final before = (rec['quantity_before'] as num?)?.toDouble() ?? 0;
+        final counted = (rec['quantity_counted'] as num?)?.toDouble() ?? 0;
+        final diff = counted - before;
+        final countedAt = rec['counted_at']?.toString() ?? '';
+        final isIncrease = diff >= 0;
+        final diffColor = diff == 0 ? _textSecondary : (isIncrease ? _successColor : _dangerColor);
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: AppDesignSystem.spacingSm),
+          padding: const EdgeInsets.all(AppDesignSystem.spacingMd),
+          decoration: BoxDecoration(
+            color: _surfaceAlt,
+            borderRadius: BorderRadius.circular(AppDesignSystem.radiusSm),
+            border: Border.all(color: _borderColor),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.checklist, color: Colors.purple, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(ingName, style: const TextStyle(fontWeight: FontWeight.w500)),
+                    Text('${_formatDate(countedAt)} | ระบบ: $before → นับได้: $counted', style: TextStyle(fontSize: 12, color: _textSecondary)),
+                  ],
+                ),
+              ),
+              Text(
+                diff == 0 ? '✓' : '${isIncrease ? '+' : ''}${diff.toStringAsFixed(diff == diff.roundToDouble() ? 0 : 2)}',
+                style: TextStyle(fontWeight: FontWeight.bold, color: diffColor),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  String _formatDate(String isoString) {
+    if (isoString.isEmpty) return '-';
+    try {
+      final date = DateTime.parse(isoString).toLocal();
+      final buddhistYear = date.year + 543;
+      final hh = date.hour.toString().padLeft(2, '0');
+      final mm = date.minute.toString().padLeft(2, '0');
+      return '${date.day}/${date.month}/$buddhistYear $hh:$mm';
+    } catch (_) {
+      return isoString;
+    }
   }
 }

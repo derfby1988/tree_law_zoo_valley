@@ -105,18 +105,36 @@ class _IngredientTabState extends State<IngredientTab> {
     }
     if (_selectedWarehouse != 'ทั้งหมด') {
       list = list.where((p) {
-        final shelf = p['shelf'];
-        if (shelf == null) return false;
-        final wh = shelf['warehouse'];
-        return wh != null && wh['name'] == _selectedWarehouse;
+        // ✅ แยกชื่อคลัง ออกจากจำนวนวัตถุดิบ เช่น 'คลังใหญ่ (12)' → 'คลังใหญ่'
+        final warehouseName = _selectedWarehouse.split(' (').first;
+        final shelfId = p['shelf_id'];
+        if (shelfId == null) return false;
+        final shelf = _shelves.firstWhere(
+          (s) => s['id'] == shelfId,
+          orElse: () => {},
+        );
+        if (shelf.isEmpty) return false;
+        final warehouse = _warehouses.firstWhere(
+          (w) => w['id'] == shelf['warehouse_id'],
+          orElse: () => {},
+        );
+        return warehouse.isNotEmpty && warehouse['name'] == warehouseName;
       }).toList();
     }
     if (_selectedShelf != 'ทั้งหมด') {
       list = list.where((p) {
-        if (_selectedShelf == 'ยังไม่มีชั้นวาง') {
+        if (_selectedShelf.startsWith('ยังไม่มีชั้นวาง')) {
           return p['shelf_id'] == null;
         }
-        return false; // ยังไม่รองรับกรองตาม shelf code (ต้อง join)
+        // ✅ แยกรหัสชั้นวาง ออกจากจำนวนวัตถุดิบ เช่น 'A1 (12)' → 'A1'
+        final shelfCode = _selectedShelf.split(' (').first;
+        final shelfId = p['shelf_id'];
+        if (shelfId == null) return false;
+        final shelf = _shelves.firstWhere(
+          (s) => s['id'] == shelfId,
+          orElse: () => {},
+        );
+        return shelf.isNotEmpty && shelf['code'] == shelfCode;
       }).toList();
     }
     // Sorting
@@ -186,16 +204,58 @@ class _IngredientTabState extends State<IngredientTab> {
       ])));
     }
 
-    final warehouseOptions = ['ทั้งหมด', ..._warehouses.map((w) => w['name'] as String)];
-    final shelfOptions = ['ทั้งหมด', 'ยังไม่มีชั้นวาง', ..._shelves.map((s) => s['code'] as String)];
+    // ✅ สร้าง warehouseOptions พร้อมจำนวนวัตถุดิบ
+    final warehouseOptions = [
+      'ทั้งหมด',
+      ..._warehouses.map((w) {
+        // ✅ นับวัตถุดิบที่มี shelf และ shelf มี warehouse_id ตรงกับคลัง
+        final count = _ingredients.where((p) {
+          final shelfId = p['shelf_id'];
+          if (shelfId == null) return false;
+          final shelf = _shelves.firstWhere(
+            (s) => s['id'] == shelfId,
+            orElse: () => {},
+          );
+          return shelf.isNotEmpty && shelf['warehouse_id'] == w['id'];
+        }).length;
+        return '${w['name']} ($count)';
+      }),
+    ];
+    // ✅ กรองชั้นวางตามคลังที่เลือก
+    String? selectedWarehouseId;
+    if (_selectedWarehouse != 'ทั้งหมด') {
+      // แยกชื่อคลัง ออกจากจำนวนวัตถุดิบ เช่น 'คลังใหญ่ (12)' → 'คลังใหญ่'
+      final warehouseName = _selectedWarehouse.split(' (').first;
+      selectedWarehouseId = _warehouses.where((w) => w['name'] == warehouseName).firstOrNull?['id'];
+    }
+    final filteredShelves = selectedWarehouseId == null
+        ? _shelves
+        : _shelves.where((s) => s['warehouse_id'] == selectedWarehouseId).toList();
+    // ✅ สร้าง shelfOptions พร้อมจำนวนวัตถุดิบ
+    final shelfOptions = [
+      'ทั้งหมด',
+      'ยังไม่มีชั้นวาง (${_ingredients.where((p) => p['shelf_id'] == null).length})',
+      ...filteredShelves.map((s) {
+        final count = _ingredients.where((p) => p['shelf_id'] == s['id']).length;
+        return '${s['code']} ($count)';
+      }),
+    ];
+    // ✅ เก็บชั้นวางที่มีวัตถุดิบ เพื่อแสดงสีเขียว
+    final shelvesWithIngredients = filteredShelves
+        .where((s) => _ingredients.any((p) => p['shelf_id'] == s['id']))
+        .map((s) => s['code'] as String)
+        .toSet();
     final highlightedWarehouseOptions = _ingredients
         .where((p) => p['shelf']?['warehouse']?['name'] != null)
         .map((p) => p['shelf']['warehouse']['name'].toString())
         .toSet();
-    final highlightedShelfOptions = _ingredients
-        .where((p) => p['shelf']?['code'] != null)
-        .map((p) => p['shelf']['code'].toString())
-        .toSet();
+    // ✅ รวมชั้นวางที่มีวัตถุดิบ (สีเขียว)
+    final highlightedShelfOptions = {
+      ..._ingredients
+          .where((p) => p['shelf']?['code'] != null)
+          .map((p) => p['shelf']['code'].toString()),
+      ...shelvesWithIngredients,
+    };
 
     return SafeArea(
       child: RefreshIndicator(
@@ -214,7 +274,11 @@ class _IngredientTabState extends State<IngredientTab> {
                 searchController: _searchController,
                 selectedWarehouse: _selectedWarehouse,
                 selectedShelf: _selectedShelf,
-                onWarehouseChanged: (value) => setState(() { _selectedWarehouse = value!; _currentPage = 0; }),
+                onWarehouseChanged: (value) => setState(() {
+                  _selectedWarehouse = value!;
+                  _selectedShelf = 'ทั้งหมด'; // รีเซ็ตชั้นวางเมื่อเปลี่ยนคลัง
+                  _currentPage = 0;
+                }),
                 onShelfChanged: (value) => setState(() { _selectedShelf = value!; _currentPage = 0; }),
                 warehouseOptions: warehouseOptions,
                 shelfOptions: shelfOptions,
@@ -768,6 +832,7 @@ class _IngredientTabState extends State<IngredientTab> {
           initialCategories: _categories,
           initialProducts: _ingredients,  // ส่ง ingredients เป็น products
           assetAccounts: _assetAccounts,
+          
           revenueAccounts: _revenueAccounts,
           costAccounts: _costAccounts,
         ),
@@ -815,4 +880,5 @@ class _IngredientTabState extends State<IngredientTab> {
       SnackBar(content: Text('แก้ไขวัตถุดิบยังไม่พร้อมใช้งาน')),
     );
   }
+
 }

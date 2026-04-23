@@ -78,6 +78,12 @@ class _BulkActionsDialogState extends State<BulkActionsDialog> {
   Future<void> _loadShelves() async {
     if (_selectedWarehouseId == null) return;
     try {
+      // ✅ รีเซ็ต _shelves ก่อนโหลด
+      setState(() {
+        _shelves = [];
+        _selectedShelfId = null;
+      });
+      
       final shelves = await InventoryService.getShelves(
         warehouseId: _selectedWarehouseId!,
       );
@@ -349,10 +355,12 @@ class _BulkActionsDialogState extends State<BulkActionsDialog> {
                         labelText: 'ชั้นวาง',
                         border: OutlineInputBorder(),
                       ),
-                      items: _shelves.map((s) => DropdownMenuItem(
-                        value: s['id']?.toString(),
-                        child: Text(s['name']?.toString() ?? 'Unknown'),
-                      )).toList(),
+                      items: _shelves
+                          .where((s) => _selectedWarehouseId == null || s['warehouse_id'] == _selectedWarehouseId)
+                          .map((s) => DropdownMenuItem(
+                            value: s['id']?.toString(),
+                            child: Text('${s['code'] ?? '-'} - ${s['name']?.toString() ?? 'Unknown'}'),
+                          )).toList(),
                       onChanged: (value) {
                         setState(() => _selectedShelfId = value);
                       },

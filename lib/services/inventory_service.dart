@@ -256,7 +256,16 @@ class InventoryService {
     try {
       final response = await _client
           .from('inventory_recipes')
-          .select('id, name, updated_at, yield_quantity, yield_unit')
+          .select('''
+            id, name, updated_at, yield_quantity, yield_unit, recipe_category_id,
+            ingredients:inventory_recipe_ingredients(
+              id,
+              quantity,
+              unit_id,
+              unit:inventory_units(id, name, abbreviation),
+              product:inventory_products(id, name, quantity, unit:inventory_units(id, name, abbreviation))
+            )
+          ''')
           .eq('is_active', true)
           .order('updated_at', ascending: false)
           .order('name');
@@ -656,16 +665,34 @@ class InventoryService {
     required String shelfId,
   }) async {
     try {
+      debugPrint('🔄 Updating product $productId to shelf $shelfId');
+      
+      // ✅ ตรวจสอบว่า shelf มีอยู่จริง
+      final shelfCheck = await _client
+          .from('inventory_shelves')
+          .select('id')
+          .eq('id', shelfId)
+          .maybeSingle();
+      
+      if (shelfCheck == null) {
+        debugPrint('❌ Shelf $shelfId not found');
+        return false;
+      }
+      
       // Update product with new shelf_id only
       // Note: warehouse_id is determined by shelf relationship, not stored directly
-      await _client.from('inventory_products').update({
-        'shelf_id': shelfId,
-        'updated_at': DateTime.now().toIso8601String(),
-      }).eq('id', productId);
-      debugPrint('Product $productId moved to shelf $shelfId');
+      final response = await _client
+          .from('inventory_products')
+          .update({
+            'shelf_id': shelfId,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', productId);
+      
+      debugPrint('✅ Product $productId moved to shelf $shelfId successfully');
       return true;
     } catch (e) {
-      debugPrint('Error updating product shelf: $e');
+      debugPrint('❌ Error updating product shelf: $e');
       return false;
     }
   }
@@ -780,6 +807,92 @@ class InventoryService {
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
       debugPrint('Error loading ingredients: $e');
+      return [];
+    }
+  }
+
+  // =============================================
+  // Ingredient Count Records (ประวัติการตรวจนับวัตถุดิบ)
+  // =============================================
+
+  /// บันทึกตรวจนับวัตถุดิบ - รับ Map<ingredient_id, counted_quantity>
+  /// อัปเดต quantity ใน inventory_ingredients ด้วย
+  static Future<bool> saveIngredientCounts({
+    required Map<String, double> counts,
+    required List<Map<String, dynamic>> ingredientList,
+    String? notes,
+  }) async {
+    try {
+      final userId = _client.auth.currentUser?.id;
+
+      final records = <Map<String, dynamic>>[];
+      for (final entry in counts.entries) {
+        final ingId = entry.key;
+        final counted = entry.value;
+        // หา ingredient เดิมเพื่อเอา quantity_before
+        final ing = ingredientList.firstWhere(
+          (i) => i['id']?.toString() == ingId,
+          orElse: () => {},
+        );
+        if (ing.isEmpty) continue;
+        final before = (ing['quantity'] as num?)?.toDouble() ?? 0;
+
+        records.add({
+          'ingredient_id': ingId,
+          'quantity_before': before,
+          'quantity_counted': counted,
+          'counted_by': userId,
+          'notes': notes,
+        });
+      }
+
+      if (records.isEmpty) return false;
+
+      // บันทึกประวัติ
+      await _client.from('ingredient_count_records').insert(records);
+
+      // อัปเดต quantity ใน inventory_ingredients
+      for (final entry in counts.entries) {
+        await _client
+            .from('inventory_ingredients')
+            .update({'quantity': entry.value})
+            .eq('id', entry.key);
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('Error saving ingredient counts: $e');
+      return false;
+    }
+  }
+
+  /// ดึงประวัติการตรวจนับวัตถุดิบล่าสุด
+  static Future<List<Map<String, dynamic>>> getIngredientCountHistory({int limit = 50}) async {
+    try {
+      final response = await _client
+          .from('ingredient_count_records')
+          .select('*, inventory_ingredients(name, unit_id)')
+          .order('counted_at', ascending: false)
+          .limit(limit);
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error loading ingredient count history: $e');
+      return [];
+    }
+  }
+
+  /// ดึงประวัติการตรวจนับสต็อก (จาก inventory_adjustments type='count')
+  static Future<List<Map<String, dynamic>>> getStockCountHistory({int limit = 50}) async {
+    try {
+      final response = await _client
+          .from('inventory_adjustments')
+          .select('*, inventory_products(name)')
+          .eq('type', 'count')
+          .order('created_at', ascending: false)
+          .limit(limit);
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error loading stock count history: $e');
       return [];
     }
   }
@@ -1366,18 +1479,23 @@ class InventoryService {
     bool isActive = true,
   }) async {
     try {
-      await _client.from('inventory_shelves').insert({
+      debugPrint('🔄 Adding shelf: warehouseId=$warehouseId, code=$code');
+      
+      final result = await _client.from('inventory_shelves').insert({
         'warehouse_id': warehouseId,
         'code': code,
         'capacity': capacity,
         'zone_id': zoneId,
-        'display_order': DateTime.now().millisecondsSinceEpoch,
+        'display_order': DateTime.now().millisecondsSinceEpoch % 2147483647, // ✅ INT4 max
         'is_active': isActive,
         'updated_at': DateTime.now().toIso8601String(),
-      });
+      }).select();
+      
+      debugPrint('✅ Shelf added successfully: $result');
       return true;
-    } catch (e) {
-      debugPrint('Error adding shelf: $e');
+    } catch (e, stackTrace) {
+      debugPrint('❌ Error adding shelf: $e');
+      debugPrint('Stack trace: $stackTrace');
       return false;
     }
   }

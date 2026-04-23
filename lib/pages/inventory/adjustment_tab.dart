@@ -341,6 +341,8 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
                   _buildActionButton('ตัดสินค้าเสีย', _dangerColor, Icons.delete_forever, () => checkPermissionAndExecute(context, 'inventory_adjustment_damage', 'ตัดสินค้าเสีย', () => _showQuickAdjustDialog('damage', 'ตัดสินค้าเสีย', _dangerColor))),
                 if (PermissionService.canAccessActionSync('inventory_adjustment_count'))
                   _buildActionButton('ตรวจนับสต๊อก', _warningColor, Icons.inventory_2, () => checkPermissionAndExecute(context, 'inventory_adjustment_count', 'ตรวจนับสต๊อก', () => _showQuickAdjustDialog('count', 'ตรวจนับสต๊อก', _warningColor))),
+                if (PermissionService.canAccessActionSync('inventory_ingredients_count'))
+                  _buildActionButton('ตรวจนับวัตถุดิบ', Colors.purple, Icons.checklist, () => checkPermissionAndExecute(context, 'inventory_ingredients_count', 'ตรวจนับวัตถุดิบ', () => _showCountIngredientDialog())),
               ],
             ),
           ],
@@ -565,12 +567,8 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
       return shelf['warehouse_id'] == _selectedWarehouseForShelfFilter;
     }).toList();
 
-    // Only show shelves with products > 0, sorted by product count (most to least)
-    final shelvesWithProducts = filteredShelves.where((shelf) {
-      final shelfId = shelf['id'] as String?;
-      final productCount = _products.where((p) => p['shelf_id'] == shelfId).length;
-      return productCount > 0;
-    }).toList()
+    // ✅ แสดงทุกชั้นวางในคลัง เรียงตามจำนวนสินค้า (มากไปน้อย)
+    final shelvesWithProducts = [...filteredShelves]
       ..sort((a, b) {
         final countA = _products.where((p) => p['shelf_id'] == a['id']).length;
         final countB = _products.where((p) => p['shelf_id'] == b['id']).length;
@@ -650,7 +648,7 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
                       Icon(Icons.inventory_2_outlined, size: 48, color: _textSecondary.withValues(alpha: 0.55)),
                       const SizedBox(height: 12),
                       Text(
-                        'ไม่มีชั้นวางที่มีสินค้า',
+                        'คลังนี้ยังไม่มีชั้นวาง',
                         style: TextStyle(color: _textSecondary, fontSize: 14),
                       ),
                     ],
@@ -1771,7 +1769,66 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
   }
 
   void _showQuickAdjustDialog(String type, String title, Color color) {
+    // ✅ แสดง Loading Dialog ขณะเตรียมข้อมูล
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black26,
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 60,
+                  height: 60,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 4,
+                    valueColor: AlwaysStoppedAnimation<Color>(_warningColor),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'กำลังโหลดข้อมูล...',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey[800],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    // ✅ ปิด Loading Dialog และแสดง Dialog จริง
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      Navigator.pop(context);
+      _showQuickAdjustDialogContent(type, title, color);
+    });
+  }
+
+  void _showQuickAdjustDialogContent(String type, String title, Color color) {
     String? selectedProductId;
+    String? selectedWarehouseId;
+    String? selectedShelfId;
     final qtyController = TextEditingController();
     final reasonController = TextEditingController();
     bool isLoading = false;
@@ -1785,6 +1842,13 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
         builder: (context, setDialogState) {
           final product = selectedProductId != null ? _products.where((p) => p['id'] == selectedProductId).firstOrNull : null;
           final currentQty = (product?['quantity'] as num?)?.toDouble() ?? 0;
+          
+          // ✅ กรองสินค้าตามคลังและชั้นวาง
+          final filteredProducts = _products.where((p) {
+            if (selectedWarehouseId != null && p['warehouse_id'] != selectedWarehouseId) return false;
+            if (selectedShelfId != null && p['shelf_id'] != selectedShelfId) return false;
+            return true;
+          }).toList();
 
           return AlertDialog(
             title: Row(children: [Icon(Icons.edit, color: color), const SizedBox(width: 8), Expanded(child: Text(title))]),
@@ -1792,9 +1856,56 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // ✅ ตัวกรองคลัง
+                  DropdownButtonFormField<String?>(
+                    decoration: const InputDecoration(labelText: 'คลัง (ทั้งหมด)', border: OutlineInputBorder()),
+                    value: selectedWarehouseId,
+                    items: [
+                      const DropdownMenuItem(value: null, child: Text('ทั้งหมด')),
+                      ..._warehouses.map((w) => DropdownMenuItem(
+                        value: w['id'] as String,
+                        child: Text(w['name'] ?? '-'),
+                      )),
+                    ],
+                    onChanged: (value) {
+                      setDialogState(() {
+                        selectedWarehouseId = value;
+                        selectedShelfId = null; // รีเซ็ตชั้นวาง
+                        selectedProductId = null; // รีเซ็ตสินค้า
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  // ✅ ตัวกรองชั้นวาง
+                  DropdownButtonFormField<String?>(
+                    decoration: const InputDecoration(labelText: 'ชั้นวาง (ทั้งหมด)', border: OutlineInputBorder()),
+                    value: selectedShelfId,
+                    items: [
+                      const DropdownMenuItem(value: null, child: Text('ทั้งหมด')),
+                      ..._shelves
+                          .where((s) => selectedWarehouseId == null || s['warehouse_id'] == selectedWarehouseId)
+                          .map((s) => DropdownMenuItem(
+                            value: s['id'] as String,
+                            child: Text('${s['code']} - ${s['name']}'),
+                          )),
+                    ],
+                    onChanged: (value) {
+                      setDialogState(() {
+                        selectedShelfId = value;
+                        selectedProductId = null; // รีเซ็ตสินค้า
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  // ✅ เลือกสินค้า (กรองแล้ว)
                   DropdownButtonFormField<String>(
                     decoration: const InputDecoration(labelText: 'เลือกสินค้า', border: OutlineInputBorder()),
-                    items: _products.map((p) => DropdownMenuItem(value: p['id'] as String, child: Text(p['name'] ?? ''))).toList(),
+                    items: filteredProducts.map((p) => DropdownMenuItem(
+                      value: p['id'] as String,
+                      child: Text('${p['name']} (${(p['quantity'] as num?)?.toStringAsFixed(0) ?? '0'})'),
+                    )).toList(),
                     onChanged: (value) {
                       setDialogState(() => selectedProductId = value);
                     },
@@ -1945,5 +2056,184 @@ class _AdjustmentTabState extends State<AdjustmentTab> {
     } catch (_) {
       return isoString;
     }
+  }
+
+  // ✅ Dialog ตรวจนับวัตถุดิบ
+  Future<void> _showCountIngredientDialog() async {
+    // ✅ แสดง Loading Dialog ขณะรอโหลดข้อมูล
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        child: Center(
+          child: Container(
+            padding: EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black26,
+                  blurRadius: 10,
+                  offset: Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 60,
+                  height: 60,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 4,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.purple),
+                  ),
+                ),
+                SizedBox(height: 16),
+                Text(
+                  'กำลังโหลดวัตถุดิบ...',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey[800],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    // ดึงรายการวัตถุดิบ
+    List<Map<String, dynamic>> ingredients = [];
+    try {
+      ingredients = await InventoryService.getIngredients();
+    } catch (e) {
+      debugPrint('Error loading ingredients: $e');
+    }
+
+    // ✅ ปิด Loading Dialog
+    if (mounted) Navigator.pop(context);
+
+    if (!mounted) return;
+
+    final Map<String, double> countData = {};
+    bool isLoading = false;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.checklist, color: Colors.purple),
+              SizedBox(width: 8),
+              Text('ตรวจนับวัตถุดิบ'),
+            ],
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('จำนวนวัตถุดิบ: ${ingredients.length} รายการ', style: TextStyle(fontWeight: FontWeight.bold)),
+                  SizedBox(height: 16),
+                  if (ingredients.isEmpty)
+                    Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text('ยังไม่มีวัตถุดิบในระบบ', style: TextStyle(color: Colors.grey[600], fontStyle: FontStyle.italic)),
+                    )
+                  else
+                    ...ingredients.map((ing) {
+                      final ingId = ing['id']?.toString() ?? '';
+                      final ingName = ing['name']?.toString() ?? '-';
+                      final currentQty = (ing['quantity'] as num?)?.toDouble() ?? 0;
+                      final unit = ing['unit']?['abbreviation'] ?? ing['unit_abbreviation'] ?? '';
+                      
+                      return Container(
+                        margin: EdgeInsets.only(bottom: 12),
+                        padding: EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey[300]!),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(ingName, style: TextStyle(fontWeight: FontWeight.bold)),
+                            SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text('ระบบ: $currentQty $unit', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                                ),
+                                SizedBox(width: 8),
+                                Expanded(
+                                  child: TextField(
+                                    decoration: InputDecoration(
+                                      labelText: 'นับได้',
+                                      border: OutlineInputBorder(),
+                                      contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                    ),
+                                    keyboardType: TextInputType.number,
+                                    onChanged: (value) {
+                                      countData[ingId] = double.tryParse(value) ?? 0;
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isLoading ? null : () => Navigator.pop(context),
+              child: Text('ยกเลิก'),
+            ),
+            ElevatedButton.icon(
+              onPressed: isLoading ? null : () async {
+                if (countData.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('กรุณากรอกจำนวนที่นับได้อย่างน้อย 1 รายการ')),
+                  );
+                  return;
+                }
+                setDialogState(() => isLoading = true);
+                final ok = await InventoryService.saveIngredientCounts(
+                  counts: countData,
+                  ingredientList: ingredients,
+                );
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(ok ? 'บันทึกตรวจนับสำเร็จ (${countData.length} รายการ)' : 'บันทึกไม่สำเร็จ'),
+                      backgroundColor: ok ? Colors.green : Colors.red,
+                    ),
+                  );
+                }
+              },
+              icon: isLoading
+                  ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : Icon(Icons.save),
+              label: Text('บันทึก'),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.purple, foregroundColor: Colors.white),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

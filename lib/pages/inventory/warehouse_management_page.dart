@@ -700,6 +700,128 @@ class _WarehouseManagementPageState extends State<WarehouseManagementPage> {
     }
   }
 
+  // ✅ Dialog ตรวจนับวัตถุดิบ (ย้ายไปที่ adjustment_tab.dart แล้ว)
+  // ignore: unused_element
+  void _showCountIngredientDialog() {
+    final Map<String, dynamic> countData = {};
+    bool isLoading = false;
+    List<Map<String, dynamic>> ingredients = [];
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          // ดึงข้อมูลวัตถุดิบจาก _ingredients (ต้องเพิ่ม state นี้ใน _loadData)
+          // สำหรับตอนนี้ ใช้ placeholder
+          if (ingredients.isEmpty) {
+            ingredients = [
+              {'id': '1', 'name': 'ไข่ไก่', 'quantity': 10, 'unit': {'abbreviation': 'ฟอง'}},
+              {'id': '2', 'name': 'นำ้มันพืช', 'quantity': 5, 'unit': {'abbreviation': 'ลิตร'}},
+              {'id': '3', 'name': 'แป้งสาลี', 'quantity': 20, 'unit': {'abbreviation': 'กก.'}},
+            ];
+          }
+
+          return AlertDialog(
+            title: Row(
+              children: [
+                Icon(Icons.checklist, color: Colors.purple),
+                SizedBox(width: 8),
+                Text('ตรวจนับวัตถุดิบ'),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('จำนวนวัตถุดิบ: ${ingredients.length} รายการ', style: TextStyle(fontWeight: FontWeight.bold)),
+                  SizedBox(height: 16),
+                  ...ingredients.map((ing) {
+                    final ingId = ing['id'] as String;
+                    final ingName = ing['name'] as String? ?? '-';
+                    final currentQty = (ing['quantity'] as num?)?.toDouble() ?? 0;
+                    final unit = ing['unit']?['abbreviation'] ?? '';
+                    
+                    return Container(
+                      margin: EdgeInsets.only(bottom: 12),
+                      padding: EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey[300]!),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(ingName, style: TextStyle(fontWeight: FontWeight.bold)),
+                          SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('ระบบ: $currentQty $unit', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                                  ],
+                                ),
+                              ),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: TextField(
+                                  decoration: InputDecoration(
+                                    labelText: 'นับได้',
+                                    border: OutlineInputBorder(),
+                                    contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                  ),
+                                  keyboardType: TextInputType.number,
+                                  onChanged: (value) {
+                                    setDialogState(() {
+                                      countData[ingId] = double.tryParse(value) ?? 0;
+                                    });
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isLoading ? null : () => Navigator.pop(context),
+                child: Text('ยกเลิก'),
+              ),
+              ElevatedButton.icon(
+                onPressed: isLoading ? null : () async {
+                  setDialogState(() => isLoading = true);
+                  // TODO: บันทึกข้อมูลตรวจนับ
+                  await Future.delayed(Duration(milliseconds: 500));
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('บันทึกตรวจนับแล้ว'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                },
+                icon: isLoading
+                    ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : Icon(Icons.save),
+                label: Text('บันทึก'),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.purple, foregroundColor: Colors.white),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   Future<void> _confirmDeleteWarehouse(Map<String, dynamic> warehouse) async {
     final warehouseName = warehouse['name']?.toString() ?? '-';
     final confirmed = await showDialog<bool>(

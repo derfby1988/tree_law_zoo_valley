@@ -86,6 +86,7 @@ final List<Map<String, dynamic>> _systemActions = [
   {'id': 'inventory_adjustment_product_move_shelf', 'tab_id': 'inventory_adjustment', 'name': 'ย้ายสินค้าไปชั้นวางอื่น', 'icon': Icons.move_up},
   {'id': 'inventory_adjustment_product_move_warehouse', 'tab_id': 'inventory_adjustment', 'name': 'โอนสินค้าไปคลังอื่น', 'icon': Icons.warehouse},
   {'id': 'inventory_adjustment_approve', 'tab_id': 'inventory_adjustment', 'name': 'อนุมัติการปรับปรุง', 'icon': Icons.verified},
+  {'id': 'inventory_ingredients_count', 'tab_id': 'inventory_adjustment', 'name': 'ตรวจนับวัตถุดิบ', 'icon': Icons.checklist},
   {'id': 'inventory_reports_view', 'tab_id': 'inventory_reports', 'name': 'ดูรายงานคลังสินค้า', 'icon': Icons.insights},
   // Tab: สถานที่เก็บ (inventory_warehouse)
   {'id': 'inventory_warehouse_manage', 'tab_id': 'inventory_warehouse', 'name': 'จัดการคลัง/โซน', 'icon': Icons.account_tree},

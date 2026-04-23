@@ -442,32 +442,87 @@ class _RecipeTabState extends State<RecipeTab> {
                   ),
                 ),
                 SizedBox(height: 12),
-                Text('ส่วนผสม (${ingredients.length} รายการ)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                SizedBox(height: 8),
-                ...ingredients.map((ing) {
-                  final stock = _getIngStock(ing);
-                  final qty = _getIngQty(ing);
-                  final hasEnough = stock >= qty;
-                  return Container(
-                    margin: EdgeInsets.only(bottom: 4),
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: hasEnough ? Colors.green.withOpacity(0.05) : Colors.red.withOpacity(0.05),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: hasEnough ? Colors.green.withOpacity(0.2) : Colors.red.withOpacity(0.2)),
-                    ),
-                    child: Row(
+                // ✅ Filter เฉพาะวัตถุดิบที่ไม่พอ
+                Builder(
+                  builder: (context) {
+                    final insufficientIngs = ingredients.where((ing) {
+                      final stock = _getIngStock(ing);
+                      final qty = _getIngQty(ing);
+                      return stock < qty;
+                    }).toList();
+                    
+                    final sufficientIngs = ingredients.where((ing) {
+                      final stock = _getIngStock(ing);
+                      final qty = _getIngQty(ing);
+                      return stock >= qty;
+                    }).toList();
+                    
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(hasEnough ? Icons.check_circle_outline : Icons.warning_amber, size: 18, color: hasEnough ? Colors.green : Colors.red),
-                        SizedBox(width: 8),
-                        Expanded(child: Text(_getIngName(ing))),
-                        Text('${qty.toStringAsFixed(qty == qty.roundToDouble() ? 0 : 2)} ${_getIngUnit(ing)}', style: TextStyle(fontWeight: FontWeight.w500)),
-                        SizedBox(width: 12),
-                        Text('(คลัง: ${stock.toStringAsFixed(stock == stock.roundToDouble() ? 0 : 1)})', style: TextStyle(color: hasEnough ? Colors.grey[600] : Colors.red, fontSize: 12)),
+                        // ✅ แสดงวัตถุดิบที่พอ
+                        if (sufficientIngs.isNotEmpty) ...[
+                          Text('ส่วนผสม (${sufficientIngs.length} รายการ)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.green)),
+                          SizedBox(height: 8),
+                          ...sufficientIngs.map((ing) {
+                            final stock = _getIngStock(ing);
+                            final qty = _getIngQty(ing);
+                            return Container(
+                              margin: EdgeInsets.only(bottom: 4),
+                              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withOpacity(0.05),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: Colors.green.withOpacity(0.2)),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.check_circle_outline, size: 18, color: Colors.green),
+                                  SizedBox(width: 8),
+                                  Expanded(child: Text(_getIngName(ing))),
+                                  Text('${qty.toStringAsFixed(qty == qty.roundToDouble() ? 0 : 2)} ${_getIngUnit(ing)}', style: TextStyle(fontWeight: FontWeight.w500)),
+                                  SizedBox(width: 12),
+                                  Text('(คลัง: ${stock.toStringAsFixed(stock == stock.roundToDouble() ? 0 : 1)})', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                          SizedBox(height: 16),
+                        ],
+                        
+                        // ✅ แสดงวัตถุดิบที่ไม่พอ (ถ้ามี)
+                        if (insufficientIngs.isNotEmpty) ...[
+                          Text('วัตถุดิบที่จะถูกตัด (${insufficientIngs.length} รายการ)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.red)),
+                          SizedBox(height: 8),
+                          ...insufficientIngs.map((ing) {
+                            final stock = _getIngStock(ing);
+                            final qty = _getIngQty(ing);
+                            final short = qty - stock;
+                            return Container(
+                              margin: EdgeInsets.only(bottom: 4),
+                              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.red.withOpacity(0.05),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: Colors.red.withOpacity(0.2)),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.warning_amber, size: 18, color: Colors.red),
+                                  SizedBox(width: 8),
+                                  Expanded(child: Text(_getIngName(ing))),
+                                  Text('${qty.toStringAsFixed(qty == qty.roundToDouble() ? 0 : 2)} ${_getIngUnit(ing)}', style: TextStyle(fontWeight: FontWeight.w500, color: Colors.red)),
+                                  SizedBox(width: 12),
+                                  Text('(คลัง: ${stock.toStringAsFixed(stock == stock.roundToDouble() ? 0 : 1)}, ขาด: ${short.toStringAsFixed(short == short.roundToDouble() ? 0 : 1)})', style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold)),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ],
                       ],
-                    ),
-                  );
-                }).toList(),
+                    );
+                  },
+                ),
                 SizedBox(height: 12),
                 Row(
                   children: [
@@ -556,20 +611,75 @@ class _RecipeTabState extends State<RecipeTab> {
                     },
                   ),
                   SizedBox(height: 16),
-                  Text('วัตถุดิบที่จะถูกตัด:', style: TextStyle(fontWeight: FontWeight.bold)),
-                  SizedBox(height: 8),
-                  ...ingredients.map((ing) {
-                    final qty = _getIngQty(ing);
-                    final batchQty = int.tryParse(qtyController.text) ?? 1;
-                    final totalUse = qty * batchQty;
-                    return Padding(
-                      padding: EdgeInsets.only(bottom: 4),
-                      child: Row(children: [
-                        Expanded(child: Text(_getIngName(ing))),
-                        Text('-${totalUse.toStringAsFixed(2)} ${_getIngUnit(ing)}', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w500)),
-                      ]),
-                    );
-                  }).toList(),
+                  // ✅ แยกวัตถุดิบเป็น 2 กลุ่ม
+                  Builder(
+                    builder: (context) {
+                      final batchQty = int.tryParse(qtyController.text) ?? 1;
+                      final sufficientIngs = ingredients.where((ing) {
+                        final stock = _getIngStock(ing);
+                        final qty = _getIngQty(ing);
+                        return stock >= qty * batchQty;
+                      }).toList();
+                      
+                      final insufficientIngs = ingredients.where((ing) {
+                        final stock = _getIngStock(ing);
+                        final qty = _getIngQty(ing);
+                        return stock < qty * batchQty;
+                      }).toList();
+                      
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // ✅ วัตถุดิบที่พอ
+                          if (sufficientIngs.isNotEmpty) ...[
+                            Text('วัตถุดิบที่พอ (${sufficientIngs.length} รายการ):', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                            SizedBox(height: 8),
+                            ...sufficientIngs.map((ing) {
+                              final qty = _getIngQty(ing);
+                              final totalUse = qty * batchQty;
+                              return Padding(
+                                padding: EdgeInsets.only(bottom: 4),
+                                child: Row(children: [
+                                  Icon(Icons.check_circle_outline, size: 16, color: Colors.green),
+                                  SizedBox(width: 8),
+                                  Expanded(child: Text(_getIngName(ing))),
+                                  Text('-${totalUse.toStringAsFixed(totalUse == totalUse.roundToDouble() ? 0 : 2)} ${_getIngUnit(ing)}', style: TextStyle(color: Colors.green, fontWeight: FontWeight.w500)),
+                                ]),
+                              );
+                            }).toList(),
+                            SizedBox(height: 12),
+                          ],
+                          
+                          // ✅ วัตถุดิบที่ไม่พอ (จะถูกตัด)
+                          if (insufficientIngs.isNotEmpty) ...[
+                            Text('วัตถุดิบที่จะถูกตัด (${insufficientIngs.length} รายการ):', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+                            SizedBox(height: 8),
+                            ...insufficientIngs.map((ing) {
+                              final stock = _getIngStock(ing);
+                              final qty = _getIngQty(ing);
+                              final totalUse = qty * batchQty;
+                              final short = totalUse - stock;
+                              return Padding(
+                                padding: EdgeInsets.only(bottom: 4),
+                                child: Row(children: [
+                                  Icon(Icons.warning_amber, size: 16, color: Colors.red),
+                                  SizedBox(width: 8),
+                                  Expanded(child: Text(_getIngName(ing))),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text('-${totalUse.toStringAsFixed(totalUse == totalUse.roundToDouble() ? 0 : 2)} ${_getIngUnit(ing)}', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w500)),
+                                      Text('(ขาด: ${short.toStringAsFixed(short == short.roundToDouble() ? 0 : 2)})', style: TextStyle(color: Colors.red, fontSize: 11)),
+                                    ],
+                                  ),
+                                ]),
+                              );
+                            }).toList(),
+                          ],
+                        ],
+                      );
+                    },
+                  ),
                   Divider(),
                   Row(children: [
                     Expanded(child: Text('สินค้าที่จะได้:', style: TextStyle(fontWeight: FontWeight.bold))),
