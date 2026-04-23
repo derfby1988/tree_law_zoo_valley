@@ -27,6 +27,12 @@ class _OverviewTabState extends State<OverviewTab> {
   // ✅ ประวัติการตรวจนับ
   List<Map<String, dynamic>> _stockCountHistory = [];
   List<Map<String, dynamic>> _ingredientCountHistory = [];
+  // ✅ คลังและชั้นวาง สำหรับ Filter
+  List<Map<String, dynamic>> _warehouses = [];
+  List<Map<String, dynamic>> _shelves = [];
+  // ✅ รายการสินค้า+วัตถุดิบ (รวมกัน) สำหรับคำนวณสถิติ
+  List<Map<String, dynamic>> _products = [];
+  List<Map<String, dynamic>> _ingredients = [];
 
   Color get _surface => AppDesignSystem.surface;
   Color get _surfaceAlt => AppDesignSystem.background;
@@ -42,6 +48,7 @@ class _OverviewTabState extends State<OverviewTab> {
   @override
   void initState() {
     super.initState();
+    _searchController.addListener(() => setState(() {}));
     _loadData();
   }
 
@@ -52,11 +59,19 @@ class _OverviewTabState extends State<OverviewTab> {
         InventoryService.getOverviewStats(),
         InventoryService.getStockCountHistory(limit: 10),
         InventoryService.getIngredientCountHistory(limit: 10),
+        InventoryService.getWarehouses(),
+        InventoryService.getShelves(),
+        InventoryService.getProducts(),
+        InventoryService.getIngredients(),
       ]);
       setState(() {
         _stats = results[0] as Map<String, dynamic>;
         _stockCountHistory = results[1] as List<Map<String, dynamic>>;
         _ingredientCountHistory = results[2] as List<Map<String, dynamic>>;
+        _warehouses = results[3] as List<Map<String, dynamic>>;
+        _shelves = results[4] as List<Map<String, dynamic>>;
+        _products = results[5] as List<Map<String, dynamic>>;
+        _ingredients = results[6] as List<Map<String, dynamic>>;
         _isLoading = false;
       });
     } catch (e) {
@@ -170,41 +185,115 @@ class _OverviewTabState extends State<OverviewTab> {
 
   Widget _buildOverviewContent() {
     return SafeArea(
-      child: RefreshIndicator(
-        onRefresh: _loadData,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(AppDesignSystem.spacingLg),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              InventoryFilterWidget(
-                searchController: _searchController,
-                selectedWarehouse: _selectedWarehouse,
-                selectedShelf: _selectedShelf,
-                onWarehouseChanged: (value) => setState(() => _selectedWarehouse = value!),
-                onShelfChanged: (value) => setState(() => _selectedShelf = value!),
-              ),
-              const SizedBox(height: AppDesignSystem.spacingLg),
-              _buildSummaryCards(),
-              const SizedBox(height: AppDesignSystem.spacingLg),
-              _buildExpandableAlerts(),
-              const SizedBox(height: AppDesignSystem.spacingLg),
-              _buildMovementStatistics(),
-              const SizedBox(height: AppDesignSystem.spacingLg),
-              _buildCountHistorySection(),
-            ],
+      child: Column(
+        children: [
+          // ✅ โซนค้นหาและ filter - อยู่นอก scrollbar (fixed ด้านบน)
+          Padding(
+            padding: const EdgeInsets.all(AppDesignSystem.spacingLg),
+            child: InventoryFilterWidget(
+              searchController: _searchController,
+              searchHint: 'ค้นหาสินค้า หรือวัตถุดิบ',
+              selectedWarehouse: _selectedWarehouse,
+              selectedShelf: _selectedShelf,
+              onWarehouseChanged: (value) => setState(() {
+                _selectedWarehouse = value!;
+                _selectedShelf = 'ทั้งหมด';
+              }),
+              onShelfChanged: (value) => setState(() => _selectedShelf = value!),
+              warehouseOptions: [
+                'ทั้งหมด',
+                ..._warehouses.map((w) => w['name'] as String),
+              ],
+              shelfOptions: [
+                'ทั้งหมด',
+                ..._shelves
+                    .where((s) {
+                      if (_selectedWarehouse == 'ทั้งหมด') return true;
+                      final wh = _warehouses.firstWhere(
+                        (w) => w['name'] == _selectedWarehouse,
+                        orElse: () => {},
+                      );
+                      return wh.isNotEmpty && s['warehouse_id'] == wh['id'];
+                    })
+                    .map((s) => s['code'] as String),
+              ],
+            ),
           ),
-        ),
+          // ✅ เนื้อหา scroll ได้
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _loadData,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(AppDesignSystem.spacingLg).copyWith(top: 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildSummaryCards(),
+                    const SizedBox(height: AppDesignSystem.spacingLg),
+                    _buildExpandableAlerts(),
+                    const SizedBox(height: AppDesignSystem.spacingLg),
+                    _buildMovementStatistics(),
+                    const SizedBox(height: AppDesignSystem.spacingLg),
+                    _buildCountHistorySection(),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
+  // ✅ รวมสินค้า+วัตถุดิบ และกรองตามคลัง/ชั้นวาง/ค้นหา
+  List<Map<String, dynamic>> get _filteredItems {
+    final search = _searchController.text.trim().toLowerCase();
+    final combined = [..._products, ..._ingredients];
+    return combined.where((p) {
+      // ค้นหา
+      if (search.isNotEmpty) {
+        final name = (p['name'] ?? '').toString().toLowerCase();
+        if (!name.contains(search)) return false;
+      }
+      // คลัง
+      if (_selectedWarehouse != 'ทั้งหมด') {
+        final shelfId = p['shelf_id'];
+        if (shelfId == null) return false;
+        final shelf = _shelves.firstWhere((s) => s['id'] == shelfId, orElse: () => {});
+        if (shelf.isEmpty) return false;
+        final wh = _warehouses.firstWhere((w) => w['id'] == shelf['warehouse_id'], orElse: () => {});
+        if (wh.isEmpty || wh['name'] != _selectedWarehouse) return false;
+      }
+      // ชั้นวาง
+      if (_selectedShelf != 'ทั้งหมด') {
+        final shelfId = p['shelf_id'];
+        if (shelfId == null) return false;
+        final shelf = _shelves.firstWhere((s) => s['id'] == shelfId, orElse: () => {});
+        if (shelf.isEmpty || shelf['code'] != _selectedShelf) return false;
+      }
+      return true;
+    }).toList();
+  }
+
   Widget _buildSummaryCards() {
-    final total = _stats['total'] ?? 0;
-    final ready = _stats['ready'] ?? 0;
-    final low = _stats['low'] ?? 0;
-    final outOfStock = _stats['outOfStock'] ?? 0;
+    // ✅ คำนวณสถิติจากข้อมูลที่กรอง (สินค้า+วัตถุดิบ)
+    final items = _filteredItems;
+    final total = items.length;
+    final ready = items.where((p) {
+      final qty = (p['quantity'] as num?)?.toDouble() ?? 0;
+      final minQty = (p['min_quantity'] as num?)?.toDouble() ?? 0;
+      return qty > minQty;
+    }).length;
+    final low = items.where((p) {
+      final qty = (p['quantity'] as num?)?.toDouble() ?? 0;
+      final minQty = (p['min_quantity'] as num?)?.toDouble() ?? 0;
+      return qty > 0 && qty <= minQty;
+    }).length;
+    final outOfStock = items.where((p) {
+      final qty = (p['quantity'] as num?)?.toDouble() ?? 0;
+      return qty <= 0;
+    }).length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

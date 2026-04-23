@@ -391,6 +391,7 @@ class _ProductTabState extends State<ProductTab> {
               const SizedBox(height: AppDesignSystem.spacingLg),
               InventoryFilterWidget(
                 searchController: _searchController,
+                searchHint: 'ค้นหาสินค้า..',
                 selectedWarehouse: _selectedWarehouse,
                 selectedShelf: _selectedShelf,
                 onWarehouseChanged: (value) => setState(() {

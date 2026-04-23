@@ -29,7 +29,7 @@ class InventoryFilterWidget extends StatelessWidget {
     this.showNoShelfOption = false,
     this.highlightedWarehouseOptions = const {},
     this.highlightedShelfOptions = const {},
-    this.searchHint = 'ค้นหาสินค้า...',
+    this.searchHint = 'ค้นหาสินค้า',
   });
 
   @override
@@ -66,6 +66,7 @@ class InventoryFilterWidget extends StatelessWidget {
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppDesignSystem.radiusSm)),
               contentPadding: dropdownPadding,
             ),
+            menuMaxHeight: 320, // ✅ แสดง ~10 รายการ + scrollbar
             items: warehouses
                 .map(
                   (e) => DropdownMenuItem(
@@ -89,6 +90,7 @@ class InventoryFilterWidget extends StatelessWidget {
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppDesignSystem.radiusSm)),
               contentPadding: dropdownPadding,
             ),
+            menuMaxHeight: 320, // ✅ แสดง ~10 รายการ + scrollbar
             items: shelves
                 .map(
                   (e) => DropdownMenuItem(
