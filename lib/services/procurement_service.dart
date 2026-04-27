@@ -954,6 +954,45 @@ class ProcurementService {
               'status': qcStatus == 'fail' ? 'rejected' : 'pending',
               'created_by': receivedBy,
             });
+        
+        // ✅ Create batch record in inventory_item_batches (Phase 1)
+        // ดึงข้อมูล supplier และ cost จาก PO
+        final poResponse = await _client
+            .from('procurement_purchase_orders')
+            .select('supplier_name, supplier_id')
+            .eq('id', poId)
+            .single();
+        
+        final poLineResponse = await _client
+            .from('procurement_purchase_order_lines')
+            .select('unit_price')
+            .eq('id', poLineId)
+            .single();
+        
+        final supplierName = poResponse['supplier_name']?.toString();
+        final unitCost = (poLineResponse['unit_price'] as num?)?.toDouble();
+        
+        // สร้าง batch
+        final batchNum = batchNumber?.isNotEmpty == true 
+            ? batchNumber! 
+            : 'LOT${DateTime.now().toIso8601String().substring(0, 10).replaceAll('-', '')}-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}';
+        
+        await _client.from('inventory_item_batches').insert({
+          'item_type': 'product',
+          'product_id': productId,
+          'batch_number': batchNum,
+          'quantity': receivedQuantity,
+          'expiry_date': expiryDate?.toIso8601String().split('T')[0],
+          'received_date': DateTime.now().toIso8601String().split('T')[0],
+          'warehouse_id': warehouseId,
+          'shelf_id': shelfId,
+          'unit_cost': unitCost,
+          'supplier_name': supplierName,
+          'received_reference': 'PO:$poId',
+          'received_from_procurement_id': poLineId,
+          'notes': qcNotes,
+          'created_by': receivedBy,
+        });
       }
 
       return true;

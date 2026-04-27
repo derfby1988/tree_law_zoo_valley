@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/inventory_service.dart';
+import '../../utils/thai_date_utils.dart';
 
 class StockMovementPage extends StatefulWidget {
   const StockMovementPage({super.key});
@@ -64,16 +65,14 @@ class _StockMovementPageState extends State<StockMovementPage> {
   }
 
   String _fmtDate(DateTime? d) {
-    if (d == null) return '-';
-    return '${d.day}/${d.month}/${d.year + 543}';
+    return ThaiDateUtils.formatBuddhistDate(d, emptyText: '-');
   }
 
   String _fmtDateTime(String? isoStr) {
     if (isoStr == null) return '-';
     final d = DateTime.tryParse(isoStr);
     if (d == null) return '-';
-    final local = d.toLocal();
-    return '${local.day}/${local.month}/${local.year + 543} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+    return ThaiDateUtils.formatBuddhistDateTime(d.toLocal(), emptyText: '-');
   }
 
   Color _typeColor(String type) {
@@ -111,7 +110,7 @@ class _StockMovementPageState extends State<StockMovementPage> {
   }
 
   Future<void> _pickDate(bool isFrom) async {
-    final picked = await showDatePicker(
+    final picked = await ThaiDateUtils.showThaiDatePicker(
       context: context,
       initialDate: isFrom ? (_dateFrom ?? DateTime.now()) : (_dateTo ?? DateTime.now()),
       firstDate: DateTime(2020),

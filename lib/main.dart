@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'services/supabase_service.dart';
 import 'services/otp_service.dart';
@@ -66,6 +67,16 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: AppBusinessSettings.restaurantName,
       theme: AppDesignSystem.theme(),
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('th', 'TH'), // Thai
+        Locale('en', 'US'), // English
+      ],
+      locale: const Locale('th', 'TH'),
       home: const AuthStateObserver(
         child: MyHomePage(
           title: AppBusinessSettings.restaurantName,

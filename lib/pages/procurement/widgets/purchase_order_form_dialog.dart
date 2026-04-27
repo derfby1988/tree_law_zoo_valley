@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../utils/thai_date_utils.dart';
 
 /// Dialog helper สำหรับสร้าง/แก้ไขใบสั่งซื้อ สามารถใช้ซ้ำได้หลายแท็บ
 Future<Map<String, dynamic>?> showPurchaseOrderFormDialog({
@@ -78,7 +79,7 @@ Future<Map<String, dynamic>?> showPurchaseOrderFormDialog({
                                 const SizedBox(height: 10),
                                 InkWell(
                                   onTap: () async {
-                                    final picked = await showDatePicker(
+                                    final picked = await ThaiDateUtils.showThaiDatePicker(
                                       context: context,
                                       initialDate: expectedDate ?? DateTime.now(),
                                       firstDate: DateTime(2020),
@@ -96,7 +97,7 @@ Future<Map<String, dynamic>?> showPurchaseOrderFormDialog({
                                     child: Text(
                                       expectedDate == null
                                           ? 'ไม่ระบุ'
-                                          : '${expectedDate!.day}/${expectedDate!.month}/${expectedDate!.year + 543}',
+                                          : ThaiDateUtils.formatBuddhistDate(expectedDate),
                                     ),
                                   ),
                                 ),

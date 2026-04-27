@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/inventory_service.dart';
+import '../../utils/thai_date_utils.dart';
 
 class TaxRulesAdminPage extends StatefulWidget {
   const TaxRulesAdminPage({super.key});
@@ -74,9 +75,9 @@ class _TaxRulesAdminPageState extends State<TaxRulesAdminPage> {
 
   String _formatDate(dynamic value) {
     if (value == null) return '-';
-    final text = value.toString();
-    if (text.length >= 10) return text.substring(0, 10);
-    return text;
+    final parsed = DateTime.tryParse(value.toString());
+    if (parsed == null) return value.toString();
+    return ThaiDateUtils.formatBuddhistDate(parsed, emptyText: '-');
   }
 
   String _itemTypeLabel(String type) {
@@ -276,7 +277,7 @@ class _TaxRulesAdminPageState extends State<TaxRulesAdminPage> {
                       title: Text('มีผลตั้งแต่: ${_formatDate(effectiveFrom)}'),
                       trailing: const Icon(Icons.date_range),
                       onTap: () async {
-                        final picked = await showDatePicker(
+                        final picked = await ThaiDateUtils.showThaiDatePicker(
                           context: context,
                           initialDate: effectiveFrom,
                           firstDate: DateTime(2000),
@@ -302,7 +303,7 @@ class _TaxRulesAdminPageState extends State<TaxRulesAdminPage> {
                         ],
                       ),
                       onTap: () async {
-                        final picked = await showDatePicker(
+                        final picked = await ThaiDateUtils.showThaiDatePicker(
                           context: context,
                           initialDate: effectiveTo ?? effectiveFrom,
                           firstDate: DateTime(2000),

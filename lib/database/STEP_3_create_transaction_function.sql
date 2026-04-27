@@ -9,7 +9,8 @@ CREATE OR REPLACE FUNCTION produce_from_recipe(
   p_batch_quantity INT,
   p_ingredients JSONB,
   p_output_product_id UUID DEFAULT NULL,
-  p_user_name TEXT DEFAULT 'ระบบ'
+  p_user_name TEXT DEFAULT 'ระบบ',
+  p_expiry_date DATE DEFAULT NULL
 )
 RETURNS TABLE (
   success BOOLEAN,
@@ -28,6 +29,8 @@ DECLARE
   v_yield_quantity DOUBLE PRECISION;
   v_production_log_id UUID;
   v_error_message TEXT;
+  v_batch_number TEXT;
+  v_expiry_date DATE;
 BEGIN
   -- =============================================
   -- Step 1: Validate all ingredients have enough stock
@@ -109,7 +112,7 @@ BEGIN
   END LOOP;
 
   -- =============================================
-  -- Step 3: Add output product stock (if specified)
+  -- Step 3: Add output product stock and create batch (if specified)
   -- =============================================
   IF p_output_product_id IS NOT NULL THEN
     SELECT yield_quantity INTO v_yield_quantity
@@ -149,6 +152,38 @@ BEGIN
       p_user_name,
       'completed'
     );
+    
+    -- สร้าง batch สำหรับสินค้าที่ผลิต (ถ้ามีตาราง inventory_item_batches)
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'inventory_item_batches') THEN
+      -- สร้างเลข batch
+      v_batch_number := 'PROD-' || TO_CHAR(NOW(), 'YYYYMMDD') || '-' || FLOOR(RANDOM() * 10000)::TEXT;
+      -- ใช้ expiry_date ที่ส่งมา (ถ้ามี) ไม่มี = NULL (ไม่หมดอายุ)
+      v_expiry_date := p_expiry_date;
+      
+      INSERT INTO inventory_item_batches (
+        item_type,
+        product_id,
+        batch_number,
+        quantity,
+        expiry_date,
+        received_date,
+        manufactured_date,
+        notes,
+        created_by,
+        created_at
+      ) VALUES (
+        'product',
+        p_output_product_id,
+        v_batch_number,
+        v_yield_quantity,
+        v_expiry_date,  -- อาจเป็น NULL ได้
+        CURRENT_DATE,
+        CURRENT_DATE,
+        'ผลิตจากสูตร ID: ' || p_recipe_id::TEXT,
+        (SELECT id FROM auth.users WHERE raw_user_meta_data->>'name' = p_user_name LIMIT 1),
+        NOW()
+      );
+    END IF;
   END IF;
 
   -- =============================================

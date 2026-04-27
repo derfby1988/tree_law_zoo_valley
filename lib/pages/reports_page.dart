@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/inventory_service.dart';
+import '../utils/thai_date_utils.dart';
 
 class ReportsPage extends StatefulWidget {
   const ReportsPage({super.key});
@@ -162,7 +163,7 @@ class _LowStockAlertTabState extends State<_LowStockAlertTab> {
             );
           }
 
-          final p = _lowStockProducts[index - 1];
+          final p = _lowStockProducts[index - 2];
           final name = p['name'] ?? '-';
           final qty = (p['quantity'] as num?)?.toDouble() ?? 0;
           final minQty = (p['min_quantity'] as num?)?.toDouble() ?? 0;
@@ -262,12 +263,11 @@ class _SalesReportTabState extends State<_SalesReportTab> {
   }
 
   String _fmtDate(DateTime? d) {
-    if (d == null) return '-';
-    return '${d.day}/${d.month}/${d.year + 543}';
+    return ThaiDateUtils.formatBuddhistDate(d, emptyText: '-');
   }
 
   Future<void> _pickDate(bool isFrom) async {
-    final picked = await showDatePicker(
+    final picked = await ThaiDateUtils.showThaiDatePicker(
       context: context,
       initialDate: isFrom ? (_dateFrom ?? DateTime.now()) : (_dateTo ?? DateTime.now()),
       firstDate: DateTime(2020),

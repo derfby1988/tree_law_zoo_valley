@@ -10,6 +10,7 @@ import '../../services/inventory_service.dart';
 import '../../services/permission_service.dart';
 import '../../services/inventory_event_bus.dart';
 import '../../utils/permission_helpers.dart';
+import '../../utils/thai_date_utils.dart';
 import 'inventory_filter_widget.dart';
 import 'add_product_page.dart';
 import 'unit_management_page.dart';
@@ -574,10 +575,15 @@ class _RecipeTabState extends State<RecipeTab> {
     final maxBatch = _getMaxBatch(recipe);
     final ingredients = _getIngredients(recipe);
     bool isLoading = false;
+    
+    // วันหมดอายุ - ไม่กำหนดค่าเริ่มต้น (null = ไม่มีวันหมดอายุ)
+    DateTime? expiryDate;
 
     showDialog(
       context: context,
+      // ✅ Force rebuild dialog ด้วย Key ใหม่ทุกครั้ง
       builder: (context) => StatefulBuilder(
+        key: ValueKey('produce_dialog_${recipe['id']}_${DateTime.now().millisecondsSinceEpoch}'),
         builder: (context, setDialogState) => AlertDialog(
           title: Row(children: [Icon(Icons.play_arrow, color: Colors.green), SizedBox(width: 8), Expanded(child: Text('ผลิต: ${recipe['name']}'))]),
           content: SingleChildScrollView(
@@ -609,6 +615,75 @@ class _RecipeTabState extends State<RecipeTab> {
                       if (n > maxBatch) return 'วัตถุดิบไม่เพียงพอ (สูงสุด $maxBatch ชุด)';
                       return null;
                     },
+                  ),
+                  SizedBox(height: 16),
+                  // 📅 เลือกวันหมดอายุ (ไม่บังคับ)
+                  InkWell(
+                    onTap: () async {
+                      final picked = await ThaiDateUtils.showThaiDatePicker(
+                        context: context,
+                        initialDate: expiryDate ?? DateTime.now().add(Duration(days: 7)),
+                        firstDate: DateTime.now(),
+                        lastDate: DateTime.now().add(Duration(days: 365 * 2)),
+                      );
+                      if (picked != null) {
+                        setDialogState(() => expiryDate = picked);
+                      }
+                    },
+                    child: InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: 'วันหมดอายุของสินค้าที่ผลิต (ไม่บังคับ)',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.calendar_today, color: Colors.orange),
+                        suffixIcon: expiryDate != null
+                          ? IconButton(
+                              icon: Icon(Icons.clear, size: 20),
+                              onPressed: () => setDialogState(() => expiryDate = null),
+                            )
+                          : Icon(Icons.arrow_drop_down, color: Colors.grey),
+                      ),
+                      child: Text(
+                        ThaiDateUtils.formatBuddhistDate(expiryDate),
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: expiryDate != null ? Colors.black : Colors.grey,
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 12),
+                  // 🔘 ปุ่มลัดเลือกวันหมดอายุ
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: () => setDialogState(() => expiryDate = DateTime.now().add(Duration(days: 7))),
+                        icon: Icon(Icons.date_range, size: 14),
+                        label: Text('+7 วัน', style: TextStyle(fontSize: 11)),
+                        style: OutlinedButton.styleFrom(
+                          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          minimumSize: Size(60, 32),
+                        ),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () => setDialogState(() => expiryDate = DateTime.now().add(Duration(days: 30))),
+                        icon: Icon(Icons.date_range, size: 14),
+                        label: Text('+30 วัน', style: TextStyle(fontSize: 11)),
+                        style: OutlinedButton.styleFrom(
+                          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          minimumSize: Size(60, 32),
+                        ),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () => setDialogState(() => expiryDate = null),
+                        icon: Icon(Icons.clear, size: 14),
+                        label: Text('ไม่กำหนด', style: TextStyle(fontSize: 11)),
+                        style: OutlinedButton.styleFrom(
+                          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          minimumSize: Size(60, 32),
+                        ),
+                      ),
+                    ],
                   ),
                   SizedBox(height: 16),
                   // ✅ แยกวัตถุดิบเป็น 2 กลุ่ม
@@ -706,6 +781,7 @@ class _RecipeTabState extends State<RecipeTab> {
                   batchQuantity: batchQty,
                   ingredients: ingData,
                   yieldQuantity: batchQty * _getYield(recipe),
+                  expiryDate: expiryDate,
                 );
                 if (context.mounted) {
                   Navigator.pop(context);

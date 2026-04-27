@@ -10,6 +10,7 @@ import 'inventory_filter_widget.dart';
 import 'add_product_page.dart';
 import 'unit_management_page.dart';
 import 'category_management_page.dart';
+import 'batch_management_page.dart';
 import '../../services/account_chart_service.dart';
 
 class IngredientTab extends StatefulWidget {
@@ -817,8 +818,22 @@ class _IngredientTabState extends State<IngredientTab> {
           Expanded(child: Text('${qty.toStringAsFixed(qty == qty.roundToDouble() ? 0 : 1)}', style: TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
           Container(width: 8, height: 8, decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle)),
           SizedBox(width: 8),
+          IconButton(icon: Icon(Icons.layers, size: 20, color: Colors.blue), onPressed: () => _showBatchManagement(ingredient), padding: EdgeInsets.zero, constraints: BoxConstraints(), tooltip: 'ดู Batch'),
           IconButton(icon: Icon(Icons.edit, size: 20), onPressed: () => checkPermissionAndExecute(context, 'inventory_ingredients_edit', 'แก้ไขวัตถุดิบ', () => _showEditIngredientDialog(ingredient)), padding: EdgeInsets.zero, constraints: BoxConstraints()),
         ],
+      ),
+    );
+  }
+
+  void _showBatchManagement(Map<String, dynamic> ingredient) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => BatchManagementPage(
+          itemType: 'ingredient',
+          itemId: ingredient['id']?.toString() ?? '',
+          itemName: ingredient['name']?.toString() ?? '-',
+        ),
       ),
     );
   }

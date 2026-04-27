@@ -3,6 +3,7 @@ import '../../../services/procurement_service.dart';
 import '../../../services/inventory_service.dart';
 import '../../../services/permission_service.dart';
 import '../../../theme/app_design_system.dart';
+import '../../../utils/thai_date_utils.dart';
 
 class ReceiveGoodsEnhancedDialog extends StatefulWidget {
   final String poLineId;
@@ -353,11 +354,11 @@ class _ReceiveGoodsEnhancedDialogState extends State<ReceiveGoodsEnhancedDialog>
                     title: Text(
                       _expiryDate == null
                           ? 'วันหมดอายุ (ถ้ามี)'
-                          : 'วันหมดอายุ: ${_expiryDate!.day}/${_expiryDate!.month}/${_expiryDate!.year + 543}',
+                          : 'วันหมดอายุ: ${ThaiDateUtils.formatBuddhistDate(_expiryDate)}',
                     ),
                     trailing: const Icon(Icons.calendar_today),
                     onTap: () async {
-                      final date = await showDatePicker(
+                      final date = await ThaiDateUtils.showThaiDatePicker(
                         context: context,
                         initialDate: _expiryDate ?? DateTime.now().add(const Duration(days: 365)),
                         firstDate: DateTime.now(),

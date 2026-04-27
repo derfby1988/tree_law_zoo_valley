@@ -183,6 +183,149 @@ class _OverviewTabState extends State<OverviewTab> {
     );
   }
 
+  // ✅ คำนวณจำนวนสินค้า/วัตถุดิบต่อคลัง + เรียงลำดับ
+  List<Map<String, dynamic>> get _sortedWarehouses {
+    final combined = [..._products, ..._ingredients];
+    final List<Map<String, dynamic>> whWithCounts = [];
+    for (final wh in _warehouses) {
+      final whName = wh['name'] as String? ?? '';
+      final whId = wh['id'] as String?;
+      if (whId == null || whName.isEmpty) continue;
+      // หา shelf ที่อยู่ในคลังนี้
+      final shelfIds = _shelves
+          .where((s) => s['warehouse_id'] == whId)
+          .map((s) => s['id'] as String)
+          .toSet();
+      int prodCount = 0;
+      int ingCount = 0;
+      for (final p in combined) {
+        if (shelfIds.contains(p['shelf_id'])) {
+          if (_products.contains(p)) {
+            prodCount++;
+          } else {
+            ingCount++;
+          }
+        }
+      }
+      whWithCounts.add({
+        'warehouse': wh,
+        'name': whName,
+        'totalCount': prodCount + ingCount,
+        'productCount': prodCount,
+        'ingredientCount': ingCount,
+      });
+    }
+    // เรียงจากมากไปน้อย
+    whWithCounts.sort((a, b) => (b['totalCount'] as int).compareTo(a['totalCount'] as int));
+    return whWithCounts.map((e) => e['warehouse'] as Map<String, dynamic>).toList();
+  }
+
+  // ✅ คำนวณจำนวนสินค้า/วัตถุดิบต่อชั้นวาง + เรียงลำดับ
+  List<Map<String, dynamic>> get _sortedShelves {
+    final combined = [..._products, ..._ingredients];
+    final filteredShelves = _selectedWarehouse == 'ทั้งหมด'
+        ? _shelves
+        : _shelves.where((s) {
+            final wh = _warehouses.firstWhere(
+              (w) => w['name'] == _selectedWarehouse,
+              orElse: () => {},
+            );
+            return wh.isNotEmpty && s['warehouse_id'] == wh['id'];
+          }).toList();
+    final List<Map<String, dynamic>> shWithCounts = [];
+    for (final sh in filteredShelves) {
+      final shCode = sh['code'] as String? ?? '';
+      final shId = sh['id'] as String?;
+      if (shId == null || shCode.isEmpty) continue;
+      int prodCount = 0;
+      int ingCount = 0;
+      for (final p in combined) {
+        if (p['shelf_id'] == shId) {
+          if (_products.contains(p)) {
+            prodCount++;
+          } else {
+            ingCount++;
+          }
+        }
+      }
+      shWithCounts.add({
+        'shelf': sh,
+        'code': shCode,
+        'totalCount': prodCount + ingCount,
+        'productCount': prodCount,
+        'ingredientCount': ingCount,
+      });
+    }
+    // เรียงจากมากไปน้อย
+    shWithCounts.sort((a, b) => (b['totalCount'] as int).compareTo(a['totalCount'] as int));
+    return shWithCounts.map((e) => e['shelf'] as Map<String, dynamic>).toList();
+  }
+
+  // ✅ Map จำนวนสินค้า/วัตถุดิบต่อคลัง
+  Map<String, DropdownCountInfo> get _warehouseCounts {
+    final combined = [..._products, ..._ingredients];
+    final map = <String, DropdownCountInfo>{};
+    for (final wh in _warehouses) {
+      final whName = wh['name'] as String? ?? '';
+      final whId = wh['id'] as String?;
+      if (whId == null || whName.isEmpty) continue;
+      final shelfIds = _shelves
+          .where((s) => s['warehouse_id'] == whId)
+          .map((s) => s['id'] as String)
+          .toSet();
+      int prodCount = 0;
+      int ingCount = 0;
+      for (final p in combined) {
+        if (shelfIds.contains(p['shelf_id'])) {
+          if (_products.contains(p)) {
+            prodCount++;
+          } else {
+            ingCount++;
+          }
+        }
+      }
+      if (prodCount > 0 || ingCount > 0) {
+        map[whName] = DropdownCountInfo(productCount: prodCount, ingredientCount: ingCount);
+      }
+    }
+    return map;
+  }
+
+  // ✅ Map จำนวนสินค้า/วัตถุดิบต่อชั้นวาง
+  Map<String, DropdownCountInfo> get _shelfCounts {
+    final combined = [..._products, ..._ingredients];
+    final map = <String, DropdownCountInfo>{};
+    final filteredShelves = _selectedWarehouse == 'ทั้งหมด'
+        ? _shelves
+        : _shelves.where((s) {
+            final wh = _warehouses.firstWhere(
+              (w) => w['name'] == _selectedWarehouse,
+              orElse: () => {},
+            );
+            return wh.isNotEmpty && s['warehouse_id'] == wh['id'];
+          }).toList();
+    for (final sh in filteredShelves) {
+      final shCode = sh['code'] as String? ?? '';
+      final shId = sh['id'] as String?;
+      if (shId == null || shCode.isEmpty) continue;
+      int prodCount = 0;
+      int ingCount = 0;
+      for (final p in combined) {
+        if (p['shelf_id'] == shId) {
+          if (_products.contains(p)) {
+            prodCount++;
+          } else {
+            ingCount++;
+          }
+        }
+      }
+      if (prodCount > 0 || ingCount > 0) {
+        map[shCode] = DropdownCountInfo(productCount: prodCount, ingredientCount: ingCount);
+      }
+    }
+    return map;
+  }
+
   Widget _buildOverviewContent() {
     return SafeArea(
       child: Column(
@@ -202,21 +345,14 @@ class _OverviewTabState extends State<OverviewTab> {
               onShelfChanged: (value) => setState(() => _selectedShelf = value!),
               warehouseOptions: [
                 'ทั้งหมด',
-                ..._warehouses.map((w) => w['name'] as String),
+                ..._sortedWarehouses.map((w) => w['name'] as String),
               ],
               shelfOptions: [
                 'ทั้งหมด',
-                ..._shelves
-                    .where((s) {
-                      if (_selectedWarehouse == 'ทั้งหมด') return true;
-                      final wh = _warehouses.firstWhere(
-                        (w) => w['name'] == _selectedWarehouse,
-                        orElse: () => {},
-                      );
-                      return wh.isNotEmpty && s['warehouse_id'] == wh['id'];
-                    })
-                    .map((s) => s['code'] as String),
+                ..._sortedShelves.map((s) => s['code'] as String),
               ],
+              warehouseCounts: _warehouseCounts,
+              shelfCounts: _shelfCounts,
             ),
           ),
           // ✅ เนื้อหา scroll ได้
@@ -298,7 +434,7 @@ class _OverviewTabState extends State<OverviewTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('ภาพรวมคลังสินค้า', style: Theme.of(context).textTheme.titleMedium),
+        Text('ภาพรวมคลังสินค้า & วัตถุดิบ', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: AppDesignSystem.spacingMd),
         Row(
           children: [
@@ -364,7 +500,7 @@ class _OverviewTabState extends State<OverviewTab> {
         _buildAlertExpansionTile(
           title: 'วัตถุดิบใกล้หมดอายุ',
           icon: Icons.access_time,
-          color: _dangerColor,
+          color: _warningColor,
           count: expiringSoon.length,
           child: _buildExpiringContent(expiringSoon),
           trailing: _buildAlertActionButton(expiringSoon, expiryFocus: true),
@@ -639,7 +775,7 @@ class _OverviewTabState extends State<OverviewTab> {
         ),
         const SizedBox(height: AppDesignSystem.spacingMd),
         _buildAlertExpansionTile(
-          title: 'ประวัติตรวจนับสต็อกสินค้า',
+          title: 'สต็อกสินค้า',
           icon: Icons.inventory_2,
           color: Colors.orange,
           count: _stockCountHistory.length,
@@ -647,7 +783,7 @@ class _OverviewTabState extends State<OverviewTab> {
         ),
         const SizedBox(height: AppDesignSystem.spacingSm),
         _buildAlertExpansionTile(
-          title: 'ประวัติตรวจนับวัตถุดิบ',
+          title: 'วัตถุดิบ',
           icon: Icons.checklist,
           color: Colors.purple,
           count: _ingredientCountHistory.length,

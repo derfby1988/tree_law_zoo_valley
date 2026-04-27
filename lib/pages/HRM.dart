@@ -5,6 +5,7 @@ import '../services/approval_hierarchy_service.dart';
 import '../services/supabase_service.dart';
 import '../services/user_group_service.dart';
 import '../utils/permission_helpers.dart';
+import '../utils/thai_date_utils.dart';
 import '../widgets/glass_dialog.dart';
 import '../widgets/glass_button.dart';
 import 'user_permissions_page.dart';
@@ -1252,7 +1253,7 @@ class _HRMPageState extends State<HRMPage> {
                       label: 'วันที่เริ่มมีผล',
                       value: startAt,
                       onTap: () async {
-                        final picked = await showDatePicker(
+                        final picked = await ThaiDateUtils.showThaiDatePicker(
                           context: context,
                           initialDate: startAt ?? DateTime.now(),
                           firstDate: DateTime(2020),
@@ -1268,7 +1269,7 @@ class _HRMPageState extends State<HRMPage> {
                       label: 'วันที่สิ้นสุด (ถ้ามี)',
                       value: endAt,
                       onTap: () async {
-                        final picked = await showDatePicker(
+                        final picked = await ThaiDateUtils.showThaiDatePicker(
                           context: context,
                           initialDate: endAt ?? DateTime.now(),
                           firstDate: DateTime(2020),

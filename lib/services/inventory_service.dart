@@ -1936,6 +1936,7 @@ class InventoryService {
     required double yieldQuantity,
     String? outputProductId,
     String? userName,
+    DateTime? expiryDate,
   }) async {
     try {
       // ✅ Step 1: Validate stock BEFORE production
@@ -1966,6 +1967,7 @@ class InventoryService {
         'p_ingredients': ingredients,
         'p_output_product_id': outputProductId,
         'p_user_name': userName ?? 'ระบบ',
+        'p_expiry_date': expiryDate?.toIso8601String().split('T')[0],
       });
 
       final result = response as Map<String, dynamic>;
@@ -1979,6 +1981,204 @@ class InventoryService {
       debugPrint('Error producing from recipe: $e');
       return {
         'success': false,
+        'message': 'เกิดข้อผิดพลาด: ${e.toString()}',
+      };
+    }
+  }
+
+  /// ✅ Produce from recipe with FEFO batch consumption
+  /// ใช้ batch tracking แบบ FEFO (First Expired First Out) สำหรับวัตถุดิบ
+  static Future<Map<String, dynamic>> produceFromRecipeWithFEFO({
+    required String recipeId,
+    required int batchQuantity,
+    required List<Map<String, dynamic>> ingredients,
+    required double yieldQuantity,
+    String? outputProductId,
+    String? userName,
+    String? notes,
+  }) async {
+    final userId = _client.auth.currentUser?.id;
+    final productionLogId = DateTime.now().millisecondsSinceEpoch.toString();
+    
+    try {
+      // เก็บผลการ consume แต่ละ ingredient
+      final consumeResults = <Map<String, dynamic>>[];
+      
+      // Consume แต่ละ ingredient ด้วย FEFO
+      for (final ingredient in ingredients) {
+        final ingredientId = ingredient['product_id'] as String? ?? ingredient['id'] as String?;
+        final requiredQty = (ingredient['quantity_needed'] as num?)?.toDouble() ?? 
+                           (ingredient['quantity'] as num?)?.toDouble() ?? 0;
+        
+        if (ingredientId == null || requiredQty <= 0) continue;
+        
+        // ใช้ FEFO consume
+        final result = await consumeByFEFO(
+          itemType: 'ingredient',
+          itemId: ingredientId,
+          quantityNeeded: requiredQty,
+          referenceId: productionLogId as String?,
+          referenceType: 'production',
+          notes: 'ใช้ในการผลิต: $recipeId',
+        );
+        
+        if (result.isEmpty) {
+          // Rollback ถ้า consume ไม่สำเร็จ
+          // TODO: Implement rollback
+          return {
+            'success': false,
+            'message': 'สต็อกไม่พอสำหรับวัตถุดิบ: ${ingredient['name'] ?? ingredientId}',
+          };
+        }
+        
+        consumeResults.add({
+          'ingredient_id': ingredientId,
+          'ingredient_name': ingredient['name'] ?? '-',
+          'required_quantity': requiredQty,
+          'consumed_batches': result,
+        });
+      }
+      
+      // สร้าง production log
+      final logResponse = await _client
+          .from('inventory_production_logs')
+          .insert({
+            'recipe_id': recipeId,
+            'batch_quantity': batchQuantity,
+            'yield_quantity': yieldQuantity,
+            'user_id': userId,
+            'user_name': userName ?? 'ระบบ',
+            'notes': notes ?? 'ผลิตด้วย FEFO batch tracking',
+          })
+          .select('id')
+          .single();
+      
+      // อัปเดต quantity ของสินค้าที่ผลิต (ถ้ามี output_product_id)
+      if (outputProductId != null) {
+        // ดึง quantity เดิม
+        final productResponse = await _client
+            .from('inventory_products')
+            .select('quantity')
+            .eq('id', outputProductId)
+            .single();
+        
+        final currentQty = (productResponse['quantity'] as num?)?.toDouble() ?? 0;
+        final newQty = currentQty + yieldQuantity;
+        
+        await _client.from('inventory_products').update({
+          'quantity': newQty,
+          'updated_at': DateTime.now().toIso8601String(),
+        }).eq('id', outputProductId);
+        
+        // สร้าง batch ใหม่สำหรับสินค้าที่ผลิต
+        await createBatch(
+          itemType: 'product',
+          itemId: outputProductId,
+          batchNumber: 'PROD-${DateTime.now().toIso8601String().substring(0, 10).replaceAll('-', '')}',
+          quantity: yieldQuantity,
+          expiryDate: DateTime.now().add(const Duration(days: 7)), // สินค้าผลิตหมดอายุ 7 วัน
+          unitCost: 0, // จะคำนวณจากต้นทุนวัตถุดิบ
+          notes: 'ผลิตจากสูตร: $recipeId',
+        );
+      }
+      
+      return {
+        'success': true,
+        'message': 'ผลิตสำเร็จ',
+        'production_log_id': logResponse['id'],
+        'consume_results': consumeResults,
+      };
+    } catch (e) {
+      debugPrint('Error producing from recipe with FEFO: $e');
+      return {
+        'success': false,
+        'message': 'เกิดข้อผิดพลาด: ${e.toString()}',
+      };
+    }
+  }
+
+  /// ✅ Validate if recipe can be produced with batch-tracked stock
+  /// ตรวจสอบสต็อกรวมจากทุก batch (ไม่สนใจ expiry สำหรับ validation)
+  static Future<Map<String, dynamic>> checkRecipeCanProduceWithBatches({
+    required String recipeId,
+    required int batchQuantity,
+  }) async {
+    try {
+      // ดึงสูตรและวัตถุดิบ
+      final recipeResponse = await _client
+          .from('inventory_recipes')
+          .select('''
+            *,
+            ingredients:inventory_recipe_ingredients(
+              quantity,
+              product:inventory_products(id, name, quantity, unit:inventory_units(name, abbreviation))
+            )
+          ''')
+          .eq('id', recipeId)
+          .single();
+      
+      final ingredients = recipeResponse['ingredients'] as List? ?? [];
+      final missingIngredients = <Map<String, dynamic>>[];
+      final availableIngredients = <Map<String, dynamic>>[];
+      
+      for (final ing in ingredients) {
+        final product = ing['product'] as Map<String, dynamic>?;
+        if (product == null) continue;
+        
+        final productId = product['id'] as String?;
+        final productName = product['name'] as String? ?? '-';
+        final recipeQtyPerYield = (ing['quantity'] as num?)?.toDouble() ?? 0;
+        final recipeYieldQty = (recipeResponse['yield_quantity'] as num?)?.toDouble() ?? 1;
+        
+        // คำนวณจำนวนที่ต้องใช้
+        final requiredQty = recipeQtyPerYield * batchQuantity;
+        
+        // ดึงสต็อกรวมจากทุก batch (เฉพาะ batch ที่ยังไม่หมดอายุ)
+        final batches = await getBatchesForFEFO(
+          itemType: 'ingredient',
+          itemId: productId!,
+        );
+        
+        final totalAvailable = batches.fold<double>(
+          0,
+          (sum, b) => sum + ((b['quantity'] as num?)?.toDouble() ?? 0),
+        );
+        
+        if (totalAvailable < requiredQty) {
+          missingIngredients.add({
+            'product_id': productId,
+            'product_name': productName,
+            'needed': requiredQty,
+            'current': totalAvailable,
+            'shortage': requiredQty - totalAvailable,
+          });
+        } else {
+          availableIngredients.add({
+            'product_id': productId,
+            'product_name': productName,
+            'needed': requiredQty,
+            'available': totalAvailable,
+            'batches': batches,
+          });
+        }
+      }
+      
+      final canProduce = missingIngredients.isEmpty;
+      
+      return {
+        'can_produce': canProduce,
+        'recipe_name': recipeResponse['name'] ?? '-',
+        'batch_quantity': batchQuantity,
+        'missing_ingredients': missingIngredients,
+        'available_ingredients': availableIngredients,
+        'message': canProduce 
+            ? 'สามารถผลิตได้' 
+            : 'ขาดวัตถุดิบ ${missingIngredients.length} รายการ',
+      };
+    } catch (e) {
+      debugPrint('Error checking recipe with batches: $e');
+      return {
+        'can_produce': false,
         'message': 'เกิดข้อผิดพลาด: ${e.toString()}',
       };
     }
@@ -4335,139 +4535,37 @@ class InventoryService {
   }
 
   // =============================================
-  // Batch Expiry Tracking
+  // Batch Expiry Tracking (using inventory_item_batches)
   // =============================================
 
-  /// ดึงข้อมูลล็อตสินค้า (batches)
-  static Future<List<Map<String, dynamic>>> getBatches({
-    String? productId,
-    String? warehouseId,
-    bool? expiredOnly,
-  }) async {
-    try {
-      var query = _client
-          .from('inventory_batches')
-          .select('*');
-
-      if (productId != null) {
-        query = query.eq('product_id', productId);
-      }
-      if (warehouseId != null) {
-        query = query.eq('warehouse_id', warehouseId);
-      }
-
-      final response = await (query as dynamic).order('expiry_date', ascending: true);
-      var batches = List<Map<String, dynamic>>.from(response);
-
-      // Filter expired if requested
-      if (expiredOnly == true) {
-        final now = DateTime.now();
-        batches = batches.where((b) {
-          final expiryDate = b['expiry_date']?.toString();
-          if (expiryDate == null) return false;
-          return DateTime.parse(expiryDate).isBefore(now);
-        }).toList();
-      }
-
-      return batches;
-    } catch (e) {
-      debugPrint('InventoryService.getBatches error: $e');
-      return [];
-    }
-  }
-
-  /// สร้างล็อตสินค้าใหม่
-  static Future<bool> createBatch({
-    required String productId,
-    required String batchNumber,
-    required double quantity,
-    required DateTime expiryDate,
-    String? warehouseId,
-    String? shelfId,
-    String? notes,
-    String? createdBy,
-  }) async {
-    try {
-      await _client
-          .from('inventory_batches')
-          .insert({
-            'product_id': productId,
-            'batch_number': batchNumber,
-            'quantity': quantity,
-            'expiry_date': expiryDate.toIso8601String(),
-            'warehouse_id': warehouseId,
-            'shelf_id': shelfId,
-            'notes': notes,
-            'created_by': createdBy,
-            'created_at': DateTime.now().toIso8601String(),
-            'is_expired': false,
-          });
-
-      return true;
-    } catch (e) {
-      debugPrint('InventoryService.createBatch error: $e');
-      return false;
-    }
-  }
-
-  /// ดึงล็อตที่ใกล้หมดอายุ (Expiring soon)
-  static Future<List<Map<String, dynamic>>> getExpiringBatches({
-    int daysUntilExpiry = 7,
-  }) async {
-    try {
-      final now = DateTime.now();
-      final expiryThreshold = now.add(Duration(days: daysUntilExpiry));
-
-      final response = await _client
-          .from('inventory_batches')
-          .select('*, product:inventory_products(name, code)')
-          .gte('expiry_date', now.toIso8601String())
-          .lte('expiry_date', expiryThreshold.toIso8601String())
-          .eq('is_expired', false)
-          .order('expiry_date', ascending: true);
-
-      return List<Map<String, dynamic>>.from(response);
-    } catch (e) {
-      debugPrint('InventoryService.getExpiringBatches error: $e');
-      return [];
-    }
-  }
-
-  /// ดึงล็อตที่หมดอายุแล้ว
-  static Future<List<Map<String, dynamic>>> getExpiredBatches() async {
-    try {
-      final now = DateTime.now();
-
-      final response = await _client
-          .from('inventory_batches')
-          .select('*, product:inventory_products(name, code)')
-          .lt('expiry_date', now.toIso8601String())
-          .eq('is_expired', false)
-          .order('expiry_date', ascending: true);
-
-      return List<Map<String, dynamic>>.from(response);
-    } catch (e) {
-      debugPrint('InventoryService.getExpiredBatches error: $e');
-      return [];
-    }
-  }
-
-  /// อัปเดตสถานะหมดอายุของล็อต
+  /// Mark batch ว่าหมดอายุ/ทิ้ง
   static Future<bool> markBatchAsExpired({
     required String batchId,
-    String? disposedBy,
-    String? disposalNotes,
+    bool disposed = false,
+    String? notes,
   }) async {
     try {
+      final userId = _client.auth.currentUser?.id;
+      
       await _client
-          .from('inventory_batches')
+          .from('inventory_item_batches')
           .update({
             'is_expired': true,
-            'disposed_by': disposedBy,
-            'disposal_notes': disposalNotes,
-            'disposed_at': DateTime.now().toIso8601String(),
+            'is_disposed': disposed,
+            'disposed_by': disposed ? userId : null,
+            'disposed_at': disposed ? DateTime.now().toIso8601String() : null,
+            'updated_at': DateTime.now().toIso8601String(),
           })
           .eq('id', batchId);
+
+      // บันทึก log
+      await _client.from('inventory_batch_logs').insert({
+        'batch_id': batchId,
+        'action_type': disposed ? 'dispose' : 'expiry_change',
+        'notes': notes,
+        'performed_by': userId,
+        'performed_at': DateTime.now().toIso8601String(),
+      });
 
       return true;
     } catch (e) {
@@ -4503,17 +4601,21 @@ class InventoryService {
     }
   }
 
-  /// ลดจำนวนล็อต (เมื่อขายหรือใช้)
+  /// ลดจำนวน batch (สำหรับ consumption)
   static Future<bool> reduceBatchQuantity({
     required String batchId,
     required double quantityToReduce,
     String? reason,
     String? usedBy,
+    String? referenceId,
+    String? referenceType,
   }) async {
     try {
+      final userId = usedBy ?? _client.auth.currentUser?.id;
+      
       // ดึงจำนวนปัจจุบัน
       final response = await _client
-          .from('inventory_batches')
+          .from('inventory_item_batches')
           .select('quantity')
           .eq('id', batchId)
           .single();
@@ -4523,11 +4625,10 @@ class InventoryService {
 
       // อัปเดต
       await _client
-          .from('inventory_batches')
+          .from('inventory_item_batches')
           .update({
             'quantity': newQty,
-            'last_used_at': DateTime.now().toIso8601String(),
-            'last_used_by': usedBy,
+            'updated_at': DateTime.now().toIso8601String(),
           })
           .eq('id', batchId);
 
@@ -4536,11 +4637,14 @@ class InventoryService {
           .from('inventory_batch_logs')
           .insert({
             'batch_id': batchId,
-            'action': 'reduce',
-            'quantity_change': -quantityToReduce,
-            'reason': reason,
-            'performed_by': usedBy,
-            'created_at': DateTime.now().toIso8601String(),
+            'action_type': 'consume',
+            'quantity_before': currentQty,
+            'quantity_after': newQty,
+            'reference_id': referenceId,
+            'reference_type': referenceType,
+            'notes': reason,
+            'performed_by': userId,
+            'performed_at': DateTime.now().toIso8601String(),
           });
 
       return true;
@@ -4925,4 +5029,510 @@ class InventoryService {
       return false;
     }
   }
+
+  // =============================================
+  // BATCH TRACKING SYSTEM (Phase 1)
+  // รองรับการจัดการ batch สำหรับ Products และ Ingredients
+  // =============================================
+
+  /// สร้าง batch ใหม่
+  static Future<String?> createBatch({
+    required String itemType, // 'product' | 'ingredient'
+    required String itemId,
+    required String batchNumber,
+    required double quantity,
+    required DateTime expiryDate,
+    String? warehouseId,
+    String? shelfId,
+    double? unitCost,
+    String? supplierName,
+    String? receivedReference,
+    String? notes,
+  }) async {
+    try {
+      final userId = _client.auth.currentUser?.id;
+
+      final response = await _client
+          .from('inventory_item_batches')
+          .insert({
+            'item_type': itemType,
+            'product_id': itemType == 'product' ? itemId : null,
+            'ingredient_id': itemType == 'ingredient' ? itemId : null,
+            'batch_number': batchNumber.isEmpty
+                ? 'LOT${DateTime.now().toIso8601String().substring(0, 10).replaceAll('-', '')}-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}'
+                : batchNumber,
+            'quantity': quantity,
+            'expiry_date': expiryDate.toIso8601String().split('T')[0],
+            'received_date': DateTime.now().toIso8601String().split('T')[0],
+            'warehouse_id': warehouseId,
+            'shelf_id': shelfId,
+            'unit_cost': unitCost,
+            'supplier_name': supplierName,
+            'received_reference': receivedReference,
+            'notes': notes,
+            'created_by': userId,
+          })
+          .select('id')
+          .single();
+
+      // บันทึก log
+      final batchId = response['id'] as String;
+      await _client.from('inventory_batch_logs').insert({
+        'batch_id': batchId,
+        'action_type': 'receive',
+        'quantity_before': 0,
+        'quantity_after': quantity,
+        'performed_by': userId,
+        'notes': 'รับเข้าระบบ: $receivedReference',
+      });
+
+      return batchId;
+    } catch (e) {
+      debugPrint('Error creating batch: $e');
+      return null;
+    }
+  }
+
+  /// ดึง batch ทั้งหมดของ item (product หรือ ingredient)
+  static Future<List<Map<String, dynamic>>> getBatches({
+    String? productId,
+    String? ingredientId,
+    String? itemType,
+    bool? isActive,
+    String? warehouseId,
+    String? shelfId,
+    bool orderByExpiry = true,
+  }) async {
+    try {
+      dynamic query = _client.from('inventory_item_batches').select('''
+          *,
+          warehouse:inventory_warehouses(id, name),
+          shelf:inventory_shelves(id, code)
+        ''');
+
+      if (productId != null) {
+        query = query.eq('product_id', productId);
+      }
+      if (ingredientId != null) {
+        query = query.eq('ingredient_id', ingredientId);
+      }
+      if (itemType != null) {
+        query = query.eq('item_type', itemType);
+      }
+      if (isActive != null) {
+        query = query.eq('is_active', isActive);
+      }
+      if (warehouseId != null) {
+        query = query.eq('warehouse_id', warehouseId);
+      }
+      if (shelfId != null) {
+        query = query.eq('shelf_id', shelfId);
+      }
+
+      if (orderByExpiry) {
+        query = query.order('expiry_date', ascending: true);
+      } else {
+        query = query.order('created_at', ascending: false);
+      }
+
+      final response = await query;
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error loading batches: $e');
+      return [];
+    }
+  }
+
+  /// ดึง batch ที่ยังไม่หมดอายุ เรียงตาม FEFO (สำหรับ consumption)
+  static Future<List<Map<String, dynamic>>> getBatchesForFEFO({
+    required String itemType,
+    required String itemId,
+    String? warehouseId,
+    String? shelfId,
+  }) async {
+    try {
+      dynamic query = _client
+          .from('inventory_item_batches')
+          .select('*, warehouse:inventory_warehouses(id, name), shelf:inventory_shelves(id, code)')
+          .eq(itemType == 'product' ? 'product_id' : 'ingredient_id', itemId)
+          .eq('item_type', itemType)
+          .eq('is_active', true)
+          .gt('quantity', 0)
+          .gte('expiry_date', DateTime.now().toIso8601String().split('T')[0])
+          .order('expiry_date', ascending: true)
+          .order('received_date', ascending: true);
+
+      if (warehouseId != null) {
+        query = query.eq('warehouse_id', warehouseId);
+      }
+      if (shelfId != null) {
+        query = query.eq('shelf_id', shelfId);
+      }
+
+      final response = await query;
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error loading batches for FEFO: $e');
+      return [];
+    }
+  }
+
+  /// ดึง batch ใกล้หมดอายุ
+  static Future<List<Map<String, dynamic>>> getExpiringBatches({
+    int daysThreshold = 7,
+    String? itemType,
+    String? warehouseId,
+  }) async {
+    try {
+      final thresholdDate = DateTime.now().add(Duration(days: daysThreshold));
+
+      dynamic query = _client
+          .from('inventory_item_batches')
+          .select('''
+            *,
+            warehouse:inventory_warehouses(id, name),
+            shelf:inventory_shelves(id, code)
+          ''')
+          .eq('is_active', true)
+          .eq('is_expired', false)
+          .gt('quantity', 0)
+          .lte('expiry_date', thresholdDate.toIso8601String().split('T')[0])
+          .gte('expiry_date', DateTime.now().toIso8601String().split('T')[0])
+          .order('expiry_date', ascending: true);
+
+      if (itemType != null) {
+        query = query.eq('item_type', itemType);
+      }
+      if (warehouseId != null) {
+        query = query.eq('warehouse_id', warehouseId);
+      }
+
+      final response = await query;
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error loading expiring batches: $e');
+      return [];
+    }
+  }
+
+  /// ดึง batch ที่หมดอายุแล้ว
+  static Future<List<Map<String, dynamic>>> getExpiredBatches({
+    String? itemType,
+    String? warehouseId,
+    bool includeDisposed = false,
+  }) async {
+    try {
+      dynamic query = _client
+          .from('inventory_item_batches')
+          .select('''
+            *,
+            warehouse:inventory_warehouses(id, name),
+            shelf:inventory_shelves(id, code)
+          ''')
+          .eq('is_active', true)
+          .lt('expiry_date', DateTime.now().toIso8601String().split('T')[0])
+          .order('expiry_date', ascending: true);
+
+      if (!includeDisposed) {
+        query = query.eq('is_disposed', false);
+      }
+      if (itemType != null) {
+        query = query.eq('item_type', itemType);
+      }
+      if (warehouseId != null) {
+        query = query.eq('warehouse_id', warehouseId);
+      }
+
+      final response = await query;
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error loading expired batches: $e');
+      return [];
+    }
+  }
+
+  /// FEFO Consume - ใช้ batch ที่หมดอายุก่อน
+  static Future<List<Map<String, dynamic>>> consumeByFEFO({
+    required String itemType,
+    required String itemId,
+    required double quantityNeeded,
+    String? referenceId,
+    String? referenceType,
+    String? notes,
+  }) async {
+    final results = <Map<String, dynamic>>[];
+
+    try {
+      final userId = _client.auth.currentUser?.id;
+
+      // ดึง batch เรียงตาม expiry_date
+      final batches = await getBatchesForFEFO(
+        itemType: itemType,
+        itemId: itemId,
+      );
+
+      double remaining = quantityNeeded;
+
+      for (final batch in batches) {
+        if (remaining <= 0) break;
+
+        final batchQty = (batch['quantity'] as num).toDouble();
+        final take = remaining < batchQty ? remaining : batchQty;
+
+        // ลดจำนวน
+        final success = await reduceBatchQuantity(
+          batchId: batch['id'] as String,
+          quantityToReduce: take,
+          reason: notes,
+          referenceId: referenceId,
+          referenceType: referenceType,
+        );
+
+        if (success) {
+          results.add({
+            'batch_id': batch['id'],
+            'batch_number': batch['batch_number'],
+            'consumed_quantity': take,
+            'remaining_after': batchQty - take,
+          });
+          remaining -= take;
+        }
+      }
+
+      if (remaining > 0) {
+        debugPrint('Warning: Could not consume full amount, remaining: $remaining');
+      }
+
+      return results;
+    } catch (e) {
+      debugPrint('Error in FEFO consume: $e');
+      return results;
+    }
+  }
+
+  /// ปรับจำนวน batch จากการตรวจนับ (สำหรับวัตถุดิบ - FEFO)
+  static Future<bool> adjustBatchQuantitiesFromCount({
+    required String itemType,
+    required String itemId,
+    required double countedTotal,
+    String? notes,
+  }) async {
+    try {
+      final userId = _client.auth.currentUser?.id;
+
+      // ดึง batch ทั้งหมด
+      final batches = await getBatches(
+        productId: itemType == 'product' ? itemId : null,
+        ingredientId: itemType == 'ingredient' ? itemId : null,
+        itemType: itemType,
+        isActive: true,
+        orderByExpiry: false,
+      );
+
+      final systemTotal = batches.fold<double>(
+        0,
+        (sum, b) => sum + ((b['quantity'] as num?)?.toDouble() ?? 0),
+      );
+
+      final diff = countedTotal - systemTotal;
+
+      if (diff == 0) return true;
+
+      // เรียง batch ตาม received_date
+      batches.sort((a, b) {
+        final aDate = DateTime.parse(a['received_date'] ?? a['created_at']);
+        final bDate = DateTime.parse(b['received_date'] ?? b['created_at']);
+        return aDate.compareTo(bDate);
+      });
+
+      if (diff > 0) {
+        // นับได้มากกว่า -> เพิ่ม batch แรก (ของที่รับก่อน)
+        if (batches.isNotEmpty) {
+          final firstBatch = batches.first;
+          final currentQty = (firstBatch['quantity'] as num).toDouble();
+          final newQty = currentQty + diff;
+
+          await _client.from('inventory_item_batches').update({
+            'quantity': newQty,
+            'updated_at': DateTime.now().toIso8601String(),
+          }).eq('id', firstBatch['id']);
+
+          await _client.from('inventory_batch_logs').insert({
+            'batch_id': firstBatch['id'],
+            'action_type': 'adjust_count',
+            'quantity_before': currentQty,
+            'quantity_after': newQty,
+            'performed_by': userId,
+            'notes': '${notes ?? ''} (นับรวม +$diff)',
+          });
+        }
+      } else {
+        // นับได้น้อยกว่า -> ลดจาก batch ล่าสุดก่อน (ของรับทีหลัง)
+        double remaining = diff.abs();
+
+        for (final batch in batches.reversed) {
+          if (remaining <= 0) break;
+
+          final batchQty = (batch['quantity'] as num).toDouble();
+          final reduceBy = remaining < batchQty ? remaining : batchQty;
+          final newQty = batchQty - reduceBy;
+
+          await _client.from('inventory_item_batches').update({
+            'quantity': newQty,
+            'updated_at': DateTime.now().toIso8601String(),
+          }).eq('id', batch['id']);
+
+          await _client.from('inventory_batch_logs').insert({
+            'batch_id': batch['id'],
+            'action_type': 'adjust_count',
+            'quantity_before': batchQty,
+            'quantity_after': newQty,
+            'performed_by': userId,
+            'notes': '${notes ?? ''} (นับรวม -$reduceBy)',
+          });
+
+          remaining -= reduceBy;
+        }
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('Error adjusting batch quantities: $e');
+      return false;
+    }
+  }
+
+  /// อัปเดตวันหมดอายุ batch
+  static Future<bool> updateBatchExpiry({
+    required String batchId,
+    required DateTime newExpiryDate,
+    String? reason,
+  }) async {
+    try {
+      final userId = _client.auth.currentUser?.id;
+
+      // ดึงข้อมูลเดิม
+      final batchResponse = await _client
+          .from('inventory_item_batches')
+          .select('expiry_date')
+          .eq('id', batchId)
+          .single();
+
+      final oldExpiry = batchResponse['expiry_date'] as String;
+
+      // อัปเดต
+      await _client.from('inventory_item_batches').update({
+        'expiry_date': newExpiryDate.toIso8601String().split('T')[0],
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', batchId);
+
+      // บันทึก log
+      await _client.from('inventory_batch_logs').insert({
+        'batch_id': batchId,
+        'action_type': 'expiry_change',
+        'quantity_before': 0,
+        'quantity_after': 0,
+        'performed_by': userId,
+        'notes': 'เปลี่ยนวันหมดอายุ: $oldExpiry -> ${newExpiryDate.toIso8601String().split('T')[0]} ${reason != null ? '($reason)' : ''}',
+      });
+
+      return true;
+    } catch (e) {
+      debugPrint('Error updating batch expiry: $e');
+      return false;
+    }
+  }
+
+  /// ดึงประวัติการเคลื่อนไหวของ batch
+  static Future<List<Map<String, dynamic>>> getBatchLogs({
+    required String batchId,
+    int limit = 50,
+  }) async {
+    try {
+      final response = await _client
+          .from('inventory_batch_logs')
+          .select('*, performed_by:auth.users(id, email)')
+          .eq('batch_id', batchId)
+          .order('performed_at', ascending: false)
+          .limit(limit);
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error loading batch logs: $e');
+      return [];
+    }
+  }
+
+  /// ดึงสรุปสต็อก (รวม products และ ingredients)
+  static Future<List<Map<String, dynamic>>> getStockSummary({
+    String? itemType,
+    String? categoryId,
+    String? warehouseId,
+  }) async {
+    try {
+      // ใช้ view inventory_stock_summary
+      var query = _client.from('inventory_stock_summary').select('*');
+
+      if (itemType != null) {
+        query = query.eq('item_type', itemType);
+      }
+      if (categoryId != null) {
+        query = query.eq('category_id', categoryId);
+      }
+
+      final response = await query;
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error loading stock summary: $e');
+      return [];
+    }
+  }
+
+  /// ดึง batch รายละเอียดเต็ม (พร้อมข้อมูล warehouse, shelf)
+  static Future<List<Map<String, dynamic>>> getBatchDetails({
+    String? batchId,
+    String? productId,
+    String? ingredientId,
+    String? itemType,
+  }) async {
+    try {
+      if (batchId != null) {
+        // กรณีดึงรายละเอียด batch เดียว
+        final response = await _client
+            .from('inventory_batch_details')
+            .select('*')
+            .eq('id', batchId)
+            .single();
+        return [response as Map<String, dynamic>];
+      }
+
+      // กรณีดึงหลาย batch
+      dynamic query = _client.from('inventory_batch_details').select('*');
+
+      if (productId != null) {
+        query = query.eq('product_id', productId);
+      }
+      if (ingredientId != null) {
+        query = query.eq('ingredient_id', ingredientId);
+      }
+      if (itemType != null) {
+        query = query.eq('item_type', itemType);
+      }
+
+      final response = await query;
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error loading batch details: $e');
+      return [];
+    }
+  }
+
+  /// สร้างเลข batch อัตโนมัติ
+  static String generateBatchNumber() {
+    final now = DateTime.now();
+    final dateStr = '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
+    final random = now.millisecondsSinceEpoch % 10000;
+    return 'LOT$dateStr-$random';
+  }
 }
+

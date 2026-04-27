@@ -3,6 +3,7 @@ import 'package:shimmer/shimmer.dart';
 import '../../services/inventory_service.dart';
 import '../../services/account_chart_service.dart';
 import '../../utils/permission_helpers.dart';
+import '../../utils/thai_date_utils.dart';
 import '../../theme/app_design_system.dart';
 import 'inventory_filter_widget.dart';
 import 'product_action_buttons_card.dart';
@@ -13,6 +14,7 @@ import '../procurement/receive_tab.dart';
 import 'category_management_page.dart';
 import 'add_product_page.dart';
 import 'unit_management_page.dart';
+import 'batch_management_page.dart';
 
 class ProductTab extends StatefulWidget {
   const ProductTab({super.key});
@@ -807,8 +809,22 @@ class _ProductTabState extends State<ProductTab> {
           Expanded(child: Text('${qty.toStringAsFixed(qty == qty.roundToDouble() ? 0 : 1)}', style: TextStyle(fontWeight: FontWeight.bold, color: _textPrimary), textAlign: TextAlign.center)),
           Container(width: 8, height: 8, decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle)),
           const SizedBox(width: 8),
+          IconButton(icon: Icon(Icons.layers, size: 20, color: _primaryColor), onPressed: () => _showBatchManagement(product), padding: EdgeInsets.zero, constraints: const BoxConstraints(), tooltip: 'ดู Batch'),
           IconButton(icon: Icon(Icons.edit, size: 20, color: _secondaryColor), onPressed: () => checkPermissionAndExecute(context, 'inventory_products_edit', 'แก้ไขสินค้า', () => _showEditProductDialog(product)), padding: EdgeInsets.zero, constraints: const BoxConstraints()),
         ],
+      ),
+    );
+  }
+
+  void _showBatchManagement(Map<String, dynamic> product) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => BatchManagementPage(
+          itemType: 'product',
+          itemId: product['id']?.toString() ?? '',
+          itemName: product['name']?.toString() ?? '-',
+        ),
       ),
     );
   }
@@ -1169,6 +1185,7 @@ class _ProductTabState extends State<ProductTab> {
     final formKey = GlobalKey<FormState>();
     final qtyController = TextEditingController(text: '1');
     bool isLoading = false;
+    DateTime? expiryDate; // 📅 วันหมดอายุ (ไม่บังคับ)
 
     showDialog(
       context: context,
@@ -1288,6 +1305,77 @@ class _ProductTabState extends State<ProductTab> {
                             if (n > maxBatch) return 'วัตถุดิบไม่เพียงพอ (สูงสุด $maxBatch ชุด)';
                             return null;
                           },
+                        ),
+                      if (selectedRecipe != null) const SizedBox(height: 16),
+
+                      // 📅 เลือกวันหมดอายุ (ไม่บังคับ) - แสดงเฉพาะเมื่อเลือกสูตร
+                      if (selectedRecipe != null)
+                        InkWell(
+                          onTap: () async {
+                            final picked = await ThaiDateUtils.showThaiDatePicker(
+                              context: context,
+                              initialDate: expiryDate ?? DateTime.now().add(const Duration(days: 7)),
+                              firstDate: DateTime.now(),
+                              lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
+                            );
+                            if (picked != null) {
+                              setDialogState(() => expiryDate = picked);
+                            }
+                          },
+                          child: InputDecorator(
+                            decoration: InputDecoration(
+                              labelText: 'วันหมดอายุของสินค้าที่ผลิต (ไม่บังคับ)',
+                              border: const OutlineInputBorder(),
+                              prefixIcon: const Icon(Icons.calendar_today, color: Colors.orange),
+                              suffixIcon: expiryDate != null
+                                  ? IconButton(
+                                      icon: const Icon(Icons.clear, size: 20),
+                                      onPressed: () => setDialogState(() => expiryDate = null),
+                                    )
+                                  : const Icon(Icons.arrow_drop_down, color: Colors.grey),
+                            ),
+                            child: Text(
+                              ThaiDateUtils.formatBuddhistDate(expiryDate),
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: expiryDate != null ? Colors.black : Colors.grey,
+                              ),
+                            ),
+                          ),
+                        ),
+                      if (selectedRecipe != null) const SizedBox(height: 8),
+                      if (selectedRecipe != null)
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed: () => setDialogState(() => expiryDate = DateTime.now().add(const Duration(days: 7))),
+                              icon: const Icon(Icons.date_range, size: 14),
+                              label: const Text('+7 วัน', style: TextStyle(fontSize: 11)),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                minimumSize: const Size(60, 32),
+                              ),
+                            ),
+                            OutlinedButton.icon(
+                              onPressed: () => setDialogState(() => expiryDate = DateTime.now().add(const Duration(days: 30))),
+                              icon: const Icon(Icons.date_range, size: 14),
+                              label: const Text('+30 วัน', style: TextStyle(fontSize: 11)),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                minimumSize: const Size(60, 32),
+                              ),
+                            ),
+                            OutlinedButton.icon(
+                              onPressed: () => setDialogState(() => expiryDate = null),
+                              icon: const Icon(Icons.clear, size: 14),
+                              label: const Text('ไม่กำหนด', style: TextStyle(fontSize: 11)),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                minimumSize: const Size(60, 32),
+                              ),
+                            ),
+                          ],
                         ),
                       if (selectedRecipe != null) const SizedBox(height: 16),
 
@@ -1484,6 +1572,7 @@ class _ProductTabState extends State<ProductTab> {
                       batchQuantity: batchQty,
                       ingredients: ingData,
                       yieldQuantity: (batchQty * _getYield(selectedRecipe!)).toDouble(),
+                      expiryDate: expiryDate,
                     );
 
                     if (context.mounted) {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../config/business_settings.dart';
 import '../theme/app_design_system.dart';
+import '../utils/thai_date_utils.dart';
 
 class PosReceiptPreviewWidget extends StatelessWidget {
   final String orderNumber;
@@ -98,7 +99,7 @@ class PosReceiptPreviewWidget extends StatelessWidget {
                     _receiptRow('ประเภท:', _getOrderTypeLabel(orderType)),
                     if (tableNumber != null) _receiptRow('โต๊ะ:', tableNumber!),
                     if (customerName != null) _receiptRow('ลูกค้า:', customerName!),
-                    _receiptRow('เวลา:', _formatDateTime(createdAt)),
+                    _receiptRow('เวลา:', ThaiDateUtils.formatBuddhistDateTime(createdAt)),
                     const SizedBox(height: 12),
                     Divider(color: AppDesignSystem.border),
                     const SizedBox(height: 12),
@@ -318,7 +319,4 @@ class PosReceiptPreviewWidget extends StatelessWidget {
     }
   }
 
-  String _formatDateTime(DateTime dateTime) {
-    return '${dateTime.day}/${dateTime.month}/${dateTime.year} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
-  }
 }

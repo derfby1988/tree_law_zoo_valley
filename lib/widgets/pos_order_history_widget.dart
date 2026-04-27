@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/inventory_service.dart';
 import '../services/pos_refund_service.dart';
 import '../theme/app_design_system.dart';
+import '../utils/thai_date_utils.dart';
 
 class PosOrderHistoryWidget extends StatefulWidget {
   final VoidCallback onBackToPos;
@@ -276,7 +277,7 @@ class _PosOrderHistoryWidgetState extends State<PosOrderHistoryWidget> {
             Text('โต๊ะ: $tableNumber  ลูกค้า: $customerName',
                 style: TextStyle(fontSize: 11, color: _textSecondary), overflow: TextOverflow.ellipsis),
             if (createdAt != null)
-              Text(_formatThaiDateTime(createdAt), style: TextStyle(fontSize: 10, color: _textSecondary)),
+              Text(ThaiDateUtils.formatThaiDateTimeShort(createdAt), style: TextStyle(fontSize: 10, color: _textSecondary)),
             const SizedBox(height: 6),
             Row(
               children: [
@@ -747,15 +748,6 @@ class _PosOrderHistoryWidgetState extends State<PosOrderHistoryWidget> {
     } catch (_) {
       return null;
     }
-  }
-
-  String _formatThaiDateTime(DateTime date) {
-    const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-    final d = date.day.toString().padLeft(2, '0');
-    final m = months[date.month - 1];
-    final y = (date.year + 543).toString().substring(2);
-    final t = '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-    return '$d $m $y $t น.';
   }
 
   String _displayName(User? user) {
