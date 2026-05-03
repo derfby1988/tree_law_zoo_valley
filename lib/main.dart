@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'utils/buddhist_localizations.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'services/supabase_service.dart';
 import 'services/otp_service.dart';
@@ -68,6 +69,7 @@ class MyApp extends StatelessWidget {
       title: AppBusinessSettings.restaurantName,
       theme: AppDesignSystem.theme(),
       localizationsDelegates: const [
+        BuddhistMaterialLocalizationsDelegate(),
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
@@ -382,31 +384,9 @@ class _MyHomePageState extends State<MyHomePage> {
                                     builder: (context, constraints) {
                                       // 📱 ใช้ MediaQuery แทน constraints เพื่อขนาดจริงของหน้าจอ
                                       final screenWidth = MediaQuery.of(context).size.width - (outerPadding * 2);
-                                      int crossAxisCount;
-                                      double spacing;
-                                      double aspectRatio;
-
-                                      if (screenWidth < 600) {
-                                        // 📱 มือถือเล็ก: 1 คอลัมน์
-                                        crossAxisCount = 1;
-                                        spacing = 15;
-                                        aspectRatio = 1.5;
-                                      } else if (screenWidth < 800) {
-                                        // 📱 มือถือใหญ่/แท็บเล็ตเล็ก: 2 คอลัมน์
-                                        crossAxisCount = 2;
-                                        spacing = 20;
-                                        aspectRatio = 1.2;
-                                      } else if (screenWidth < 1200) {
-                                        // 💻 แท็บเล็ตใหญ่: 3 คอลัมน์
-                                        crossAxisCount = 3;
-                                        spacing = 25;
-                                        aspectRatio = 1.1;
-                                      } else {
-                                        // 🖥️ เดสก์ท็อป: 4 คอลัมน์
-                                        crossAxisCount = 4;
-                                        spacing = 30;
-                                        aspectRatio = 1.0;
-                                      }
+                                      const crossAxisCount = 2;
+                                      final double spacing = screenWidth < 600 ? 12 : 18;
+                                      final double aspectRatio = screenWidth < 600 ? 1.25 : 1.15;
 
                                       print('🔥 Responsive Grid: screenWidth=$screenWidth, columns=$crossAxisCount, spacing=$spacing');
 
@@ -477,31 +457,9 @@ class _MyHomePageState extends State<MyHomePage> {
                                     builder: (context, constraints) {
                                       // 📱 ใช้ MediaQuery แทน constraints เพื่อขนาดจริงของหน้าจอ
                                       final screenWidth = MediaQuery.of(context).size.width - (outerPadding * 2);
-                                      int crossAxisCount;
-                                      double spacing;
-                                      double aspectRatio;
-
-                                      if (screenWidth < 600) {
-                                        // 📱 มือถือเล็ก: 1 คอลัมน์
-                                        crossAxisCount = 1;
-                                        spacing = 15;
-                                        aspectRatio = 1.5;
-                                      } else if (screenWidth < 800) {
-                                        // 📱 มือถือใหญ่/แท็บเล็ตเล็ก: 2 คอลัมน์
-                                        crossAxisCount = 2;
-                                        spacing = 20;
-                                        aspectRatio = 1.2;
-                                      } else if (screenWidth < 1200) {
-                                        // 💻 แท็บเล็ตใหญ่: 3 คอลัมน์
-                                        crossAxisCount = 3;
-                                        spacing = 25;
-                                        aspectRatio = 1.1;
-                                      } else {
-                                        // 🖥️ เดสก์ท็อป: 4 คอลัมน์
-                                        crossAxisCount = 4;
-                                        spacing = 30;
-                                        aspectRatio = 1.0;
-                                      }
+                                      const crossAxisCount = 2;
+                                      final double spacing = screenWidth < 600 ? 12 : 18;
+                                      final double aspectRatio = screenWidth < 600 ? 1.25 : 1.15;
 
                                       print('🔥 Responsive Grid: screenWidth=$screenWidth, columns=$crossAxisCount, spacing=$spacing');
 
@@ -772,28 +730,29 @@ class _MyHomePageState extends State<MyHomePage> {
           borderRadius: BorderRadius.circular(15),
           onTap: isAllowed ? () => _handleMenuTap(title) : null,
           child: Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(12),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
                   icon,
-                  size: 40,
+                  size: 32,
                   color: isAllowed 
                       ? (widget.isGuestMode && !guestAllowed 
                           ? Colors.grey 
                           : Colors.blue[600])
                       : Colors.grey,
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 6),
                 FittedBox(
                   fit: BoxFit.scaleDown,
                   child: Text(
                     title,
                     textAlign: TextAlign.center,
-                    maxLines: 1,
+                    maxLines: 2,
+                    softWrap: true,
                     style: TextStyle(
-                      fontSize: 14,
+                      fontSize: 12,
                       fontWeight: FontWeight.w600,
                       color: isAllowed 
                           ? (widget.isGuestMode && !guestAllowed 

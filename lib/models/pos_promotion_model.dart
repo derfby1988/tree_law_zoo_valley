@@ -4,6 +4,7 @@ class PosPromotion {
   final String? description;
   final String promotionType; // 'bundle', 'seasonal', 'buy_x_get_y'
   final String? discountId;
+  final List<String> applicableUserGroupIds;
   final bool isActive;
   final DateTime? startAt;
   final DateTime? endAt;
@@ -16,12 +17,19 @@ class PosPromotion {
     this.description,
     required this.promotionType,
     this.discountId,
+    this.applicableUserGroupIds = const [],
     this.isActive = true,
     this.startAt,
     this.endAt,
     required this.createdAt,
     required this.updatedAt,
   });
+
+  static List<String> _stringList(dynamic value) {
+    if (value == null) return [];
+    if (value is List) return value.where((e) => e != null).map((e) => e.toString()).toList();
+    return [];
+  }
 
   factory PosPromotion.fromMap(Map<String, dynamic> map) {
     return PosPromotion(
@@ -30,6 +38,7 @@ class PosPromotion {
       description: map['description'],
       promotionType: map['promotion_type'] ?? 'bundle',
       discountId: map['discount_id'],
+      applicableUserGroupIds: _stringList(map['applicable_user_group_ids']),
       isActive: map['is_active'] ?? true,
       startAt: map['start_at'] != null ? DateTime.parse(map['start_at']) : null,
       endAt: map['end_at'] != null ? DateTime.parse(map['end_at']) : null,
@@ -45,6 +54,7 @@ class PosPromotion {
       'description': description,
       'promotion_type': promotionType,
       'discount_id': discountId,
+      'applicable_user_group_ids': applicableUserGroupIds,
       'is_active': isActive,
       'start_at': startAt?.toIso8601String(),
       'end_at': endAt?.toIso8601String(),

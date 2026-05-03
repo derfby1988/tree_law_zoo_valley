@@ -28,6 +28,22 @@ class PosPromotionService {
     }
   }
 
+  static Future<List<PosPromotion>> getAllPromotions() async {
+    try {
+      final response = await _client
+          .from('pos_promotions')
+          .select()
+          .order('created_at', ascending: false);
+
+      return (response as List)
+          .map((item) => PosPromotion.fromMap(Map<String, dynamic>.from(item)))
+          .toList();
+    } catch (e) {
+      debugPrint('Error getAllPromotions: $e');
+      return [];
+    }
+  }
+
   static Future<List<PosPromotion>> getPromotionsByType(String promotionType) async {
     try {
       final response = await _client
@@ -66,6 +82,8 @@ class PosPromotionService {
     String? description,
     required String promotionType,
     String? discountId,
+    List<String> applicableUserGroupIds = const [],
+    bool isActive = true,
     DateTime? startAt,
     DateTime? endAt,
   }) async {
@@ -75,9 +93,10 @@ class PosPromotionService {
         'description': description,
         'promotion_type': promotionType,
         'discount_id': discountId,
+        'applicable_user_group_ids': applicableUserGroupIds,
         'start_at': startAt?.toIso8601String(),
         'end_at': endAt?.toIso8601String(),
-        'is_active': true,
+        'is_active': isActive,
       };
 
       final response = await _client
@@ -99,6 +118,7 @@ class PosPromotionService {
     String? description,
     String? promotionType,
     String? discountId,
+    List<String>? applicableUserGroupIds,
     bool? isActive,
     DateTime? startAt,
     DateTime? endAt,
@@ -109,6 +129,7 @@ class PosPromotionService {
       if (description != null) payload['description'] = description;
       if (promotionType != null) payload['promotion_type'] = promotionType;
       if (discountId != null) payload['discount_id'] = discountId;
+      if (applicableUserGroupIds != null) payload['applicable_user_group_ids'] = applicableUserGroupIds;
       if (isActive != null) payload['is_active'] = isActive;
       if (startAt != null) payload['start_at'] = startAt.toIso8601String();
       if (endAt != null) payload['end_at'] = endAt.toIso8601String();
@@ -189,6 +210,32 @@ class PosPromotionService {
       return true;
     } catch (e) {
       debugPrint('Error removePromotionItem: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> removePromotionItemsByPromotionId(String promotionId) async {
+    try {
+      await _client
+          .from('pos_promotion_items')
+          .delete()
+          .eq('promotion_id', promotionId);
+      return true;
+    } catch (e) {
+      debugPrint('Error removePromotionItemsByPromotionId: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> deletePromotion(String id) async {
+    try {
+      await _client
+          .from('pos_promotions')
+          .delete()
+          .eq('id', id);
+      return true;
+    } catch (e) {
+      debugPrint('Error deletePromotion: $e');
       return false;
     }
   }

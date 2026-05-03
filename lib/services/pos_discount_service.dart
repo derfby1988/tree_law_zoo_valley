@@ -28,6 +28,22 @@ class PosDiscountService {
     }
   }
 
+  static Future<List<PosDiscount>> getAllDiscounts() async {
+    try {
+      final response = await _client
+          .from('pos_discounts')
+          .select()
+          .order('created_at', ascending: false);
+
+      return (response as List)
+          .map((item) => PosDiscount.fromMap(Map<String, dynamic>.from(item)))
+          .toList();
+    } catch (e) {
+      debugPrint('Error getAllDiscounts: $e');
+      return [];
+    }
+  }
+
   static Future<List<PosDiscount>> getDiscountsByScope(String scope) async {
     try {
       final response = await _client
@@ -70,6 +86,23 @@ class PosDiscountService {
     double? maxDiscount,
     double? minAmount,
     bool stackable = false,
+    bool isActive = true,
+    int priority = 0,
+    List<String> applicableCategoryIds = const [],
+    List<String> applicableProductIds = const [],
+    String? customerGroupId,
+    String? couponCode,
+    int? usageLimit,
+    int? usageLimitPerCustomer,
+    int? usageLimitPerDay,
+    int usageLimitPerOrder = 1,
+    String targetingMode = 'manual',
+    Map<String, dynamic> targetingRule = const {},
+    bool requireInStock = false,
+    bool requireSufficientIngredients = false,
+    bool includePendingProcurement = false,
+    String lifecycleStatus = 'active',
+    List<String> applicableChannels = const [],
     DateTime? startAt,
     DateTime? endAt,
   }) async {
@@ -83,9 +116,25 @@ class PosDiscountService {
         'max_discount': maxDiscount,
         'min_amount': minAmount,
         'stackable': stackable,
+        'priority': priority,
+        'applicable_category_ids': applicableCategoryIds,
+        'applicable_product_ids': applicableProductIds,
+        'customer_group_id': customerGroupId,
+        'coupon_code': couponCode,
+        'usage_limit': usageLimit,
+        'usage_limit_per_customer': usageLimitPerCustomer,
+        'usage_limit_per_day': usageLimitPerDay,
+        'usage_limit_per_order': usageLimitPerOrder,
+        'targeting_mode': targetingMode,
+        'targeting_rule': targetingRule,
+        'require_in_stock': requireInStock,
+        'require_sufficient_ingredients': requireSufficientIngredients,
+        'include_pending_procurement': includePendingProcurement,
+        'lifecycle_status': lifecycleStatus,
+        'applicable_channels': applicableChannels,
         'start_at': startAt?.toIso8601String(),
         'end_at': endAt?.toIso8601String(),
-        'is_active': true,
+        'is_active': isActive,
       };
 
       final response = await _client
@@ -112,6 +161,22 @@ class PosDiscountService {
     double? minAmount,
     bool? stackable,
     bool? isActive,
+    int? priority,
+    List<String>? applicableCategoryIds,
+    List<String>? applicableProductIds,
+    String? customerGroupId,
+    String? couponCode,
+    int? usageLimit,
+    int? usageLimitPerCustomer,
+    int? usageLimitPerDay,
+    int? usageLimitPerOrder,
+    String? targetingMode,
+    Map<String, dynamic>? targetingRule,
+    bool? requireInStock,
+    bool? requireSufficientIngredients,
+    bool? includePendingProcurement,
+    String? lifecycleStatus,
+    List<String>? applicableChannels,
     DateTime? startAt,
     DateTime? endAt,
   }) async {
@@ -126,6 +191,22 @@ class PosDiscountService {
       if (minAmount != null) payload['min_amount'] = minAmount;
       if (stackable != null) payload['stackable'] = stackable;
       if (isActive != null) payload['is_active'] = isActive;
+      if (priority != null) payload['priority'] = priority;
+      if (applicableCategoryIds != null) payload['applicable_category_ids'] = applicableCategoryIds;
+      if (applicableProductIds != null) payload['applicable_product_ids'] = applicableProductIds;
+      if (customerGroupId != null) payload['customer_group_id'] = customerGroupId;
+      if (couponCode != null) payload['coupon_code'] = couponCode;
+      if (usageLimit != null) payload['usage_limit'] = usageLimit;
+      if (usageLimitPerCustomer != null) payload['usage_limit_per_customer'] = usageLimitPerCustomer;
+      if (usageLimitPerDay != null) payload['usage_limit_per_day'] = usageLimitPerDay;
+      if (usageLimitPerOrder != null) payload['usage_limit_per_order'] = usageLimitPerOrder;
+      if (targetingMode != null) payload['targeting_mode'] = targetingMode;
+      if (targetingRule != null) payload['targeting_rule'] = targetingRule;
+      if (requireInStock != null) payload['require_in_stock'] = requireInStock;
+      if (requireSufficientIngredients != null) payload['require_sufficient_ingredients'] = requireSufficientIngredients;
+      if (includePendingProcurement != null) payload['include_pending_procurement'] = includePendingProcurement;
+      if (lifecycleStatus != null) payload['lifecycle_status'] = lifecycleStatus;
+      if (applicableChannels != null) payload['applicable_channels'] = applicableChannels;
       if (startAt != null) payload['start_at'] = startAt.toIso8601String();
       if (endAt != null) payload['end_at'] = endAt.toIso8601String();
 
@@ -206,6 +287,19 @@ class PosDiscountService {
       return true;
     } catch (e) {
       debugPrint('Error removeDiscountFromOrder: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> deleteDiscount(String id) async {
+    try {
+      await _client
+          .from('pos_discounts')
+          .delete()
+          .eq('id', id);
+      return true;
+    } catch (e) {
+      debugPrint('Error deleteDiscount: $e');
       return false;
     }
   }

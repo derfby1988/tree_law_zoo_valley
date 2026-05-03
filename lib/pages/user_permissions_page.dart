@@ -23,6 +23,7 @@ final List<Map<String, dynamic>> _systemPages = [
   {'id': 'pos', 'name': 'ขาย/POS', 'button': 'POS', 'icon': Icons.point_of_sale},
   {'id': 'stock_movement', 'name': 'Stock Movement', 'button': 'Movement', 'icon': Icons.swap_vert},
   {'id': 'table_management', 'name': 'จัดการโต๊ะและร้าน', 'button': 'โต๊ะ', 'icon': Icons.table_restaurant},
+  {'id': 'coupon_promotion', 'name': 'จัดการคูปอง & โปรโมชั่น', 'button': 'คูปอง', 'icon': Icons.local_offer},
 ];
 
 /// รายการ Tab ทั้งหมดในแต่ละหน้า
@@ -63,6 +64,10 @@ final List<Map<String, dynamic>> _systemTabs = [
   {'id': 'user_permissions_main', 'page_id': 'user_permissions', 'name': 'กำหนดสิทธิ์', 'icon': Icons.security},
   // กลุ่มผู้ใช้ (user_groups)
   {'id': 'user_groups_main', 'page_id': 'user_groups', 'name': 'จัดการกลุ่ม', 'icon': Icons.group_work},
+  // จัดการคูปอง & โปรโมชั่น (coupon_promotion)
+  {'id': 'coupon_promotion_coupons', 'page_id': 'coupon_promotion', 'name': 'จัดการคูปอง', 'icon': Icons.local_offer},
+  {'id': 'coupon_promotion_promotions', 'page_id': 'coupon_promotion', 'name': 'จัดการโปรโมชั่น', 'icon': Icons.celebration},
+  {'id': 'coupon_promotion_analytics', 'page_id': 'coupon_promotion', 'name': 'วิเคราะห์การใช้งาน', 'icon': Icons.analytics},
 ];
 
 /// รายการ Action/ปุ่มทั้งหมดในแต่ละ Tab
@@ -169,6 +174,24 @@ final List<Map<String, dynamic>> _systemActions = [
   // Tab: Audit Trail (procurement_audit)
   {'id': 'procurement_audit_view', 'tab_id': 'procurement_audit', 'name': 'ดู Audit Trail', 'icon': Icons.visibility},
   {'id': 'procurement_audit_export', 'tab_id': 'procurement_audit', 'name': 'ส่งออก Audit Trail', 'icon': Icons.file_download},
+  // Tab: จัดการคูปอง (coupon_promotion_coupons)
+  {'id': 'coupon_promotion_coupons_add', 'tab_id': 'coupon_promotion_coupons', 'name': 'เพิ่มคูปอง', 'icon': Icons.add_circle},
+  {'id': 'coupon_promotion_coupons_edit', 'tab_id': 'coupon_promotion_coupons', 'name': 'แก้ไขคูปอง', 'icon': Icons.edit},
+  {'id': 'coupon_promotion_coupons_delete', 'tab_id': 'coupon_promotion_coupons', 'name': 'ลบคูปอง', 'icon': Icons.delete},
+  {'id': 'coupon_promotion_coupons_activate', 'tab_id': 'coupon_promotion_coupons', 'name': 'เปิด/ปิดคูปอง', 'icon': Icons.toggle_on},
+  {'id': 'coupon_promotion_coupons_archive', 'tab_id': 'coupon_promotion_coupons', 'name': 'เก็บถาวรคูปอง', 'icon': Icons.archive},
+  {'id': 'coupon_promotion_coupons_duplicate', 'tab_id': 'coupon_promotion_coupons', 'name': 'ทำสำเนาคูปอง', 'icon': Icons.copy},
+  // Tab: จัดการโปรโมชั่น (coupon_promotion_promotions)
+  {'id': 'coupon_promotion_promotions_add', 'tab_id': 'coupon_promotion_promotions', 'name': 'เพิ่มโปรโมชั่น', 'icon': Icons.add_circle},
+  {'id': 'coupon_promotion_promotions_edit', 'tab_id': 'coupon_promotion_promotions', 'name': 'แก้ไขโปรโมชั่น', 'icon': Icons.edit},
+  {'id': 'coupon_promotion_promotions_delete', 'tab_id': 'coupon_promotion_promotions', 'name': 'ลบโปรโมชั่น', 'icon': Icons.delete},
+  {'id': 'coupon_promotion_promotions_activate', 'tab_id': 'coupon_promotion_promotions', 'name': 'เปิด/ปิดโปรโมชั่น', 'icon': Icons.toggle_on},
+  {'id': 'coupon_promotion_promotions_archive', 'tab_id': 'coupon_promotion_promotions', 'name': 'เก็บถาวรโปรโมชั่น', 'icon': Icons.archive},
+  {'id': 'coupon_promotion_promotions_duplicate', 'tab_id': 'coupon_promotion_promotions', 'name': 'ทำสำเนาโปรโมชั่น', 'icon': Icons.copy},
+  // Tab: วิเคราะห์การใช้งาน (coupon_promotion_analytics)
+  {'id': 'coupon_promotion_analytics_view', 'tab_id': 'coupon_promotion_analytics', 'name': 'ดูรายงานการใช้งาน', 'icon': Icons.visibility},
+  {'id': 'coupon_promotion_analytics_view_detail', 'tab_id': 'coupon_promotion_analytics', 'name': 'ดูรายละเอียดออเดอร์', 'icon': Icons.receipt_long},
+  {'id': 'coupon_promotion_analytics_export', 'tab_id': 'coupon_promotion_analytics', 'name': 'ส่งออกรายงาน', 'icon': Icons.file_download},
 ];
 
 class UserPermissionsPage extends StatefulWidget {
