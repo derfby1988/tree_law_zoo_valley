@@ -6,6 +6,8 @@ import '../services/pos_held_order_service.dart';
 import '../models/pos_held_order_model.dart';
 import '../services/pos_payment_split_service.dart';
 import '../services/pos_shift_service.dart';
+import '../services/table_management_service.dart';
+import '../services/supabase_service.dart';
 import '../models/pos_shift_model.dart';
 import '../utils/permission_helpers.dart';
 import '../theme/app_design_system.dart';
@@ -63,7 +65,9 @@ class _PosPageState extends State<PosPage> {
   String? _selectedTableId;
   String? _selectedTableSessionId;
   String? _selectedTableNumber;
+  String? _selectedZoneId;
   String? _selectedZoneName;
+  double _zoneServiceCharge = 0; // ค่าบริการจากโซนที่ลูกค้านั่ง
   String? _selectedCustomerUserId;
   String? _selectedCustomerName;
   String? _selectedCustomerPhone;
@@ -131,6 +135,33 @@ class _PosPageState extends State<PosPage> {
     });
     _loadData();
     PosPrinterService.initOnPosOpen();
+    // โหลดโซนล่าสุดของพนักงาน (ถ้าไม่มีโซนเริ่มต้น)
+    _loadLastPosZone();
+  }
+
+  /// โหลดโซน POS ล่าสุดของพนักงาน
+  Future<void> _loadLastPosZone() async {
+    // ถ้ามีโซนเริ่มต้นจาก widget ให้ใช้ค่านั้น ไม่ต้องโหลดจาก DB
+    if (widget.initialZoneName != null && widget.initialZoneName!.isNotEmpty) {
+      return;
+    }
+    
+    final currentUser = Supabase.instance.client.auth.currentUser;
+    if (currentUser == null) return;
+
+    try {
+      final lastZoneData = await SupabaseService.getLastPosZone(currentUser.id);
+      if (lastZoneData != null && lastZoneData['zone'] != null) {
+        final zone = lastZoneData['zone'] as Map<String, dynamic>;
+        setState(() {
+          _selectedZoneId = lastZoneData['zone_id']?.toString();
+          _selectedZoneName = zone['name']?.toString();
+          _zoneServiceCharge = (zone['service_charge'] ?? 0).toDouble();
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading last POS zone: $e');
+    }
   }
 
   Widget _gradientIcon(IconData icon, {double size = 18}) {
@@ -192,9 +223,35 @@ class _PosPageState extends State<PosPage> {
         _currentShift = currentShift;
         _isLoading = false;
       });
+      // โหลดค่าบริการจากโซน (ถ้ามีโต๊ะที่เลือก)
+      await _loadZoneServiceCharge();
     } catch (e) {
       debugPrint('Error loading POS data: $e');
       setState(() => _isLoading = false);
+    }
+  }
+
+  /// โหลดค่าบริการจากโซนของโต๊ะที่เลือก
+  Future<void> _loadZoneServiceCharge() async {
+    if (_selectedTableId == null) {
+      setState(() => _zoneServiceCharge = 0);
+      return;
+    }
+    try {
+      final tableData = await TableManagementService.getTableWithZone(_selectedTableId!);
+      if (tableData != null && tableData['zone'] != null) {
+        final zoneData = tableData['zone'] as Map<String, dynamic>;
+        final serviceCharge = (zoneData['service_charge'] ?? 0).toDouble();
+        setState(() {
+          _zoneServiceCharge = serviceCharge;
+          _selectedZoneName = zoneData['name']?.toString();
+        });
+      } else {
+        setState(() => _zoneServiceCharge = 0);
+      }
+    } catch (e) {
+      debugPrint('Error loading zone service charge: $e');
+      setState(() => _zoneServiceCharge = 0);
     }
   }
 
@@ -452,8 +509,11 @@ class _PosPageState extends State<PosPage> {
     return total;
   }
 
-  double get _discount => 0; // TODO: implement discount logic
-  double get _preTaxTotal => _subtotal - _discount;
+  /// ส่วนลดจากระบบสมาชิก (ยังไม่ implement)
+  double get _discount => 0;
+  
+  /// ยอดรวมหลังหักส่วนลดทั้งหมด (รวมส่วนลดจากระบบ + ส่วนลดเพิ่มเติม)
+  double get _preTaxTotal => _subtotal - _discount - _totalDiscountAmount;
 
   /// คำนวณภาษีจาก tax rule จริงต่อสินค้า
   double get _taxAmount {
@@ -480,7 +540,15 @@ class _PosPageState extends State<PosPage> {
   double get _serviceAmount => _preTaxTotal * _serviceRate;
   double get _netTotal => _preTaxTotal + _taxAmount + _serviceAmount;
 
-  double get _serviceRate => AppBusinessSettings.defaultServiceRate;
+  /// ดึงอัตราค่าบริการจากโซนที่ลูกค้านั่ง (ถ้ามี) หรือใช้ default
+  double get _serviceRate {
+    // ถ้าเป็น dine-in และมีค่าบริการจากโซน ให้ใช้ค่านั้น
+    if (_orderType == 'dine_in' && _zoneServiceCharge > 0) {
+      return _zoneServiceCharge / 100; // แปลงจาก % เป็นทศนิยม
+    }
+    // ถ้าไม่มี ใช้ default 0%
+    return 0.0;
+  }
 
   List<Map<String, dynamic>> get _filteredProducts {
     var list = _products;
@@ -745,13 +813,24 @@ class _PosPageState extends State<PosPage> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _headerChip(Icons.table_restaurant, _orderType == 'dine_in' ? 'โต๊ะ $tableLabel' : 'โต๊ะ -'),
-                    const SizedBox(width: 8),
-                    _headerChip(Icons.receipt_long, orderTypeLabel),
+                    // โซน/ร้าน (แสดงก่อน)
                     if (_selectedZoneName != null) ...[
+                      InkWell(
+                        onTap: _showTablePickerDialog,
+                        borderRadius: BorderRadius.circular(6),
+                        child: _headerChip(Icons.store, _selectedZoneName!),
+                      ),
                       const SizedBox(width: 8),
-                      _headerChip(Icons.place, _selectedZoneName!),
                     ],
+                    // โต๊ะ
+                    InkWell(
+                      onTap: _showTablePickerDialog,
+                      borderRadius: BorderRadius.circular(6),
+                      child: _headerChip(Icons.table_restaurant, _orderType == 'dine_in' ? 'โต๊ะ $tableLabel' : 'โต๊ะ -'),
+                    ),
+                    const SizedBox(width: 8),
+                    // ประเภทออเดอร์
+                    _headerChip(Icons.receipt_long, orderTypeLabel),
                     if (customerLabel != null) ...[
                       const SizedBox(width: 8),
                       _headerChip(Icons.person_pin, customerLabel),
@@ -832,6 +911,291 @@ class _PosPageState extends State<PosPage> {
     if (closed != null && mounted) {
       setState(() => _currentShift = null);
     }
+  }
+
+  // =============================================
+  // Table Picker Dialog
+  // =============================================
+  Future<void> _showTablePickerDialog() async {
+    final zonesWithTables = await TableManagementService.getZonesWithTables();
+    if (!mounted) return;
+
+    // เริ่มจากโซนล่าสุดที่เลือกไว้ (ถ้ามี)
+    String? selectedZoneId = _selectedZoneId;
+    String? savingTableId; // เก็บ tableId ที่กำลังบันทึก
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          // Step 1: เลือกโซน
+          if (selectedZoneId == null) {
+            return AlertDialog(
+              title: const Row(
+                children: [
+                  Icon(Icons.store, color: Colors.green),
+                  SizedBox(width: 8),
+                  Text('เลือกโซน/ร้าน'),
+                ],
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                height: 400,
+                child: zonesWithTables.isEmpty
+                    ? const Center(child: Text('ไม่มีร้าน/โซนที่เปิดใช้งาน'))
+                    : GridView.builder(
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          childAspectRatio: 2.5,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                        ),
+                        itemCount: zonesWithTables.length,
+                        itemBuilder: (context, index) {
+                          final zone = zonesWithTables[index];
+                          final tables = zone['tables'] as List<dynamic>? ?? [];
+                          final availableCount = tables.where((t) => t['status'] == 'available').length;
+
+                          return InkWell(
+                            onTap: () {
+                              setDialogState(() {
+                                selectedZoneId = zone['id']?.toString();
+                              });
+                            },
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: _bgColor,
+                                border: Border.all(color: _borderColor, width: 1),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(Icons.store, size: 18, color: _accentGreen),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          zone['name'] ?? 'ไม่มีชื่อ',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.bold,
+                                            color: _textPrimary,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    children: [
+                                      Icon(Icons.table_restaurant, size: 14, color: _textSecondary),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        '$availableCount โต๊ะว่าง',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: _textSecondary,
+                                        ),
+                                      ),
+                                      if ((zone['service_charge'] ?? 0) > 0) ...[
+                                        const SizedBox(width: 8),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: Colors.orange.withValues(alpha: 0.1),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Text(
+                                            '+${zone['service_charge']}%',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: Colors.orange[700],
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('ยกเลิก'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    setState(() {
+                      _orderType = 'walk_in';
+                      _selectedTableId = null;
+                      _selectedTableNumber = null;
+                      _selectedZoneId = null;
+                      _selectedZoneName = null;
+                      _zoneServiceCharge = 0;
+                    });
+                  },
+                  child: const Text('ไม่ใช้โต๊ะ (Walk-in)'),
+                ),
+              ],
+            );
+          }
+
+          // Step 2: เลือกโต๊ะในโซน
+          final selectedZone = zonesWithTables.firstWhere(
+            (z) => z['id']?.toString() == selectedZoneId,
+            orElse: () => {},
+          );
+          final tables = selectedZone['tables'] as List<dynamic>? ?? [];
+          final availableTables = tables.where((t) => t['status'] == 'available').toList();
+
+          return AlertDialog(
+            title: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () {
+                    setDialogState(() {
+                      selectedZoneId = null;
+                    });
+                  },
+                ),
+                const SizedBox(width: 4),
+                Icon(Icons.table_restaurant, color: _accentGreen),
+                const SizedBox(width: 8),
+                Text('โต๊ะ ${selectedZone['name'] ?? ''}'),
+              ],
+            ),
+            content: SizedBox(
+              width: double.maxFinite,
+              height: 400,
+              child: availableTables.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.table_restaurant_outlined, size: 48, color: _textSecondary),
+                          const SizedBox(height: 16),
+                          Text(
+                            'ไม่มีโต๊ะว่างในโซนนี้',
+                            style: TextStyle(color: _textSecondary),
+                          ),
+                        ],
+                      ),
+                    )
+                  : Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: availableTables.map((table) {
+                        final tableId = table['id']?.toString() ?? '';
+                        final tableName = table['name']?.toString() ?? 'โต๊ะ';
+                        final capacity = (table['capacity'] ?? 0) as int;
+                        final isSelected = _selectedTableId == tableId;
+
+                        final isSavingThisTable = savingTableId == tableId;
+
+                        return InkWell(
+                          onTap: () async {
+                            setDialogState(() {
+                              savingTableId = tableId; // แสดง loading
+                            });
+                            
+                            // บันทึกโซนล่าสุดของพนักงานก่อน
+                            final currentUser = Supabase.instance.client.auth.currentUser;
+                            if (currentUser != null && selectedZoneId != null) {
+                              await SupabaseService.saveLastPosZone(currentUser.id, selectedZoneId!);
+                            }
+                            
+                            if (!ctx.mounted) return;
+                            Navigator.pop(ctx);
+                            
+                            setState(() {
+                              _orderType = 'dine_in';
+                              _selectedTableId = tableId;
+                              _selectedTableNumber = tableName;
+                              _selectedZoneId = selectedZoneId;
+                              _selectedZoneName = selectedZone['name']?.toString();
+                            });
+                            _loadZoneServiceCharge();
+                          },
+                          child: Container(
+                            width: 90,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: isSelected ? _accentGreen.withValues(alpha: 0.15) : _bgColor,
+                              border: Border.all(
+                                color: isSelected ? _accentGreen : _borderColor,
+                                width: isSelected ? 2 : 1,
+                              ),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (isSavingThisTable)
+                                  SizedBox(
+                                    width: 28,
+                                    height: 28,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: _accentGreen,
+                                    ),
+                                  )
+                                else
+                                  Icon(
+                                    Icons.table_restaurant,
+                                    color: isSelected ? _accentGreen : _textSecondary,
+                                    size: 28,
+                                  ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  tableName,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: isSelected ? _accentGreen : _textPrimary,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                                if (capacity > 0 && !isSavingThisTable)
+                                  Text(
+                                    '$capacity ที่นั่ง',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: _textSecondary,
+                                    ),
+                                  )
+                                else if (isSavingThisTable)
+                                  Text(
+                                    'กำลังบันทึก...',
+                                    style: TextStyle(
+                                      fontSize: 9,
+                                      color: _accentGreen,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   // =============================================
@@ -978,7 +1342,7 @@ class _PosPageState extends State<PosPage> {
             ),
             const SizedBox(height: 4),
             _infoRow('ภาษี ${_avgTaxRate.toStringAsFixed(1)}%', _taxAmount),
-            _infoRow('ค่าบริการ ${(AppBusinessSettings.defaultServiceRate * 100).toStringAsFixed(0)}%', _serviceAmount),
+            _infoRow('ค่าบริการ ${(_serviceRate * 100).toStringAsFixed(0)}%', _serviceAmount),
           ],
         ),
       ),
@@ -1574,9 +1938,10 @@ class _PosPageState extends State<PosPage> {
                     // Summary
                     _dialogRow('ยอดรวม', '฿${_subtotal.toStringAsFixed(2)}'),
                     _dialogRow('พนักงานรับผิดชอบ', _displayNameFromUser(_selectedResponsibleStaff)),
-                    if (_discount > 0) _dialogRow('ส่วนลด', '-฿${_discount.toStringAsFixed(2)}'),
+                    if (_discount > 0) _dialogRow('ส่วนลดสมาชิก', '-฿${_discount.toStringAsFixed(2)}'),
+                    if (_totalDiscountAmount > 0) _dialogRow('ส่วนลดเพิ่มเติม', '-฿${_totalDiscountAmount.toStringAsFixed(2)}'),
                     _dialogRow('ภาษี ${_avgTaxRate.toStringAsFixed(1)}%', '฿${_taxAmount.toStringAsFixed(2)}'),
-                    _dialogRow('ค่าบริการ ${(AppBusinessSettings.defaultServiceRate * 100).toStringAsFixed(0)}%', '฿${_serviceAmount.toStringAsFixed(2)}'),
+                    _dialogRow('ค่าบริการ ${(_serviceRate * 100).toStringAsFixed(0)}%', '฿${_serviceAmount.toStringAsFixed(2)}'),
                     const Divider(),
                     _dialogRow('ยอดสุทธิ', '฿${_netTotal.toStringAsFixed(2)}', bold: true),
                     const SizedBox(height: 16),
@@ -1748,6 +2113,13 @@ class _PosPageState extends State<PosPage> {
     final user = Supabase.instance.client.auth.currentUser;
     final userName = _displayNameFromAuthUser(user);
 
+    // แปลงข้อมูลสินค้าให้ตรงกับรูปแบบที่ใบเสร็จคาดหวัง
+    final cartItemsForPrint = _cartItems.map((item) => {
+      'product_name': item['product']['name'] ?? 'สินค้า',
+      'quantity': item['qty'] ?? 1,
+      'unit_price': (item['product']['price'] ?? 0).toDouble(),
+    }).toList();
+
     showDialog(
       context: context,
       builder: (context) => PosReceiptPreviewWidget(
@@ -1756,7 +2128,7 @@ class _PosPageState extends State<PosPage> {
         tableNumber: _selectedTableNumber,
         customerName: _selectedCustomer?['display_name'] ?? _selectedCustomerName,
         cashierName: userName,
-        items: _cartItems,
+        items: cartItemsForPrint,
         subtotal: _subtotal,
         discountAmount: _discount + _totalDiscountAmount,
         taxAmount: _taxAmount,
@@ -2168,6 +2540,9 @@ class _PosPageState extends State<PosPage> {
         _selectedCustomerName = heldOrder.customerName;
       }
     });
+
+    // โหลดค่าบริการจากโซนของโต๊ะที่ restore
+    await _loadZoneServiceCharge();
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

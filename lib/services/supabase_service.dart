@@ -204,4 +204,45 @@ class SupabaseService {
       rethrow;
     }
   }
+
+  // =============================================
+  // Last POS Zone Management (จดจำโซนล่าสุดของพนักงาน)
+  // =============================================
+  
+  /// ดึงโซน POS ล่าสุดของผู้ใช้
+  static Future<Map<String, dynamic>?> getLastPosZone(String userId) async {
+    try {
+      final response = await client
+          .from('users')
+          .select('last_pos_zone_id, zone:restaurant_zones(*)')
+          .eq('id', userId)
+          .maybeSingle();
+      
+      if (response == null || response['last_pos_zone_id'] == null) {
+        return null;
+      }
+      
+      return {
+        'zone_id': response['last_pos_zone_id'],
+        'zone': response['zone'],
+      };
+    } catch (e) {
+      debugPrint('Error getting last POS zone: $e');
+      return null;
+    }
+  }
+
+  /// บันทึกโซน POS ล่าสุดของผู้ใช้
+  static Future<bool> saveLastPosZone(String userId, String zoneId) async {
+    try {
+      await client
+          .from('users')
+          .update({'last_pos_zone_id': zoneId})
+          .eq('id', userId);
+      return true;
+    } catch (e) {
+      debugPrint('Error saving last POS zone: $e');
+      return false;
+    }
+  }
 }

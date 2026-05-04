@@ -49,41 +49,120 @@ class _TableManagementPageState extends State<TableManagementPage> {
     final descCtrl = TextEditingController(text: existing?['description'] ?? '');
     final openCtrl = TextEditingController(text: existing?['open_time'] ?? '');
     final closeCtrl = TextEditingController(text: existing?['close_time'] ?? '');
+    final serviceChargeCtrl = TextEditingController(
+      text: existing != null && existing['service_charge'] != null 
+          ? existing['service_charge'].toString() 
+          : '0',
+    );
+    bool hasServiceCharge = existing != null && (existing['service_charge'] ?? 0) > 0;
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(existing == null ? 'เพิ่มร้าน/โซน' : 'แก้ไขร้าน/โซน'),
-        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'ชื่อร้าน *', border: OutlineInputBorder())),
-          const SizedBox(height: 10),
-          TextField(controller: descCtrl, decoration: const InputDecoration(labelText: 'คำอธิบาย', border: OutlineInputBorder()), maxLines: 2),
-          const SizedBox(height: 10),
-          Row(children: [
-            Expanded(child: TextField(controller: openCtrl, decoration: const InputDecoration(labelText: 'เปิด (10:00)', border: OutlineInputBorder()))),
-            const SizedBox(width: 8),
-            Expanded(child: TextField(controller: closeCtrl, decoration: const InputDecoration(labelText: 'ปิด (20:00)', border: OutlineInputBorder()))),
-          ]),
-        ])),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('ยกเลิก')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: _pageBgEnd, foregroundColor: Colors.white),
-            onPressed: () async {
-              if (nameCtrl.text.trim().isEmpty) return;
-              Navigator.pop(ctx);
-              if (existing == null) {
-                await TableManagementService.addZone(name: nameCtrl.text.trim(), description: descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(), openTime: openCtrl.text.trim().isEmpty ? null : openCtrl.text.trim(), closeTime: closeCtrl.text.trim().isEmpty ? null : closeCtrl.text.trim());
-              } else {
-                await TableManagementService.updateZone(id: existing['id'], name: nameCtrl.text.trim(), description: descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(), openTime: openCtrl.text.trim().isEmpty ? null : openCtrl.text.trim(), closeTime: closeCtrl.text.trim().isEmpty ? null : closeCtrl.text.trim());
-              }
-              _loadZones();
-            },
-            child: const Text('บันทึก'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(existing == null ? 'เพิ่มร้าน/โซน' : 'แก้ไขร้าน/โซน'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'ชื่อร้าน *', border: OutlineInputBorder())),
+                const SizedBox(height: 10),
+                TextField(controller: descCtrl, decoration: const InputDecoration(labelText: 'คำอธิบาย', border: OutlineInputBorder()), maxLines: 2),
+                const SizedBox(height: 10),
+                Row(children: [
+                  Expanded(child: TextField(controller: openCtrl, decoration: const InputDecoration(labelText: 'เปิด (10:00)', border: OutlineInputBorder()))),
+                  const SizedBox(width: 8),
+                  Expanded(child: TextField(controller: closeCtrl, decoration: const InputDecoration(labelText: 'ปิด (20:00)', border: OutlineInputBorder()))),
+                ]),
+                const SizedBox(height: 16),
+                // Service Charge Toggle
+                Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: _borderColor),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('คิดค่าบริการ', style: TextStyle(fontSize: 14, color: _textPrimary)),
+                            Text(hasServiceCharge ? 'เปิดใช้งาน' : 'ปิดใช้งาน', 
+                              style: TextStyle(fontSize: 12, color: _textSecondary)),
+                          ],
+                        ),
+                      ),
+                      Switch(
+                        value: hasServiceCharge,
+                        onChanged: (value) {
+                          setDialogState(() {
+                            hasServiceCharge = value;
+                            if (!value) {
+                              serviceChargeCtrl.text = '0';
+                            }
+                          });
+                        },
+                        activeColor: _pageBgEnd,
+                      ),
+                    ],
+                  ),
+                ),
+                // Service Charge Percentage Input
+                if (hasServiceCharge) ...[
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: serviceChargeCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'ค่าบริการ (%)',
+                      border: OutlineInputBorder(),
+                      suffixText: '%',
+                      helperText: 'ระบุเปอร์เซ็นต์ เช่น 5, 10, 15',
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
-        ],
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('ยกเลิก')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: _pageBgEnd, foregroundColor: Colors.white),
+              onPressed: () async {
+                if (nameCtrl.text.trim().isEmpty) return;
+                
+                // Parse service charge
+                final serviceChargeValue = double.tryParse(serviceChargeCtrl.text.trim()) ?? 0;
+                
+                Navigator.pop(ctx);
+                if (existing == null) {
+                  await TableManagementService.addZone(
+                    name: nameCtrl.text.trim(), 
+                    description: descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(), 
+                    openTime: openCtrl.text.trim().isEmpty ? null : openCtrl.text.trim(), 
+                    closeTime: closeCtrl.text.trim().isEmpty ? null : closeCtrl.text.trim(),
+                    serviceCharge: hasServiceCharge ? serviceChargeValue : 0,
+                  );
+                } else {
+                  await TableManagementService.updateZone(
+                    id: existing['id'], 
+                    name: nameCtrl.text.trim(), 
+                    description: descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(), 
+                    openTime: openCtrl.text.trim().isEmpty ? null : openCtrl.text.trim(), 
+                    closeTime: closeCtrl.text.trim().isEmpty ? null : closeCtrl.text.trim(),
+                    serviceCharge: hasServiceCharge ? serviceChargeValue : 0,
+                  );
+                }
+                _loadZones();
+              },
+              child: const Text('บันทึก'),
+            ),
+          ],
+        ),
       ),
     );
-
   }
 
 

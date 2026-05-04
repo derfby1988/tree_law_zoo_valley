@@ -68,6 +68,7 @@ final List<Map<String, dynamic>> _systemTabs = [
   {'id': 'coupon_promotion_coupons', 'page_id': 'coupon_promotion', 'name': 'จัดการคูปอง', 'icon': Icons.local_offer},
   {'id': 'coupon_promotion_promotions', 'page_id': 'coupon_promotion', 'name': 'จัดการโปรโมชั่น', 'icon': Icons.celebration},
   {'id': 'coupon_promotion_analytics', 'page_id': 'coupon_promotion', 'name': 'วิเคราะห์การใช้งาน', 'icon': Icons.analytics},
+  {'id': 'coupon_promotion_main', 'page_id': 'coupon_promotion', 'name': 'จัดการคูปองและโปรโมชั่น (Admin)', 'icon': Icons.local_offer},
 ];
 
 /// รายการ Action/ปุ่มทั้งหมดในแต่ละ Tab
@@ -192,6 +193,13 @@ final List<Map<String, dynamic>> _systemActions = [
   {'id': 'coupon_promotion_analytics_view', 'tab_id': 'coupon_promotion_analytics', 'name': 'ดูรายงานการใช้งาน', 'icon': Icons.visibility},
   {'id': 'coupon_promotion_analytics_view_detail', 'tab_id': 'coupon_promotion_analytics', 'name': 'ดูรายละเอียดออเดอร์', 'icon': Icons.receipt_long},
   {'id': 'coupon_promotion_analytics_export', 'tab_id': 'coupon_promotion_analytics', 'name': 'ส่งออกรายงาน', 'icon': Icons.file_download},
+  // Tab: จัดการคูปองและโปรโมชั่น (coupon_promotion_main)
+  {'id': 'coupon_promotion_add_coupon', 'tab_id': 'coupon_promotion_main', 'name': 'เพิ่มคูปอง (FAB)', 'icon': Icons.add_circle},
+  {'id': 'coupon_promotion_add_promotion', 'tab_id': 'coupon_promotion_main', 'name': 'เพิ่มโปรโมชั่น (FAB)', 'icon': Icons.add_circle},
+  {'id': 'coupon_promotion_edit_coupon', 'tab_id': 'coupon_promotion_main', 'name': 'แก้ไขคูปอง', 'icon': Icons.edit},
+  {'id': 'coupon_promotion_delete_coupon', 'tab_id': 'coupon_promotion_main', 'name': 'ลบคูปอง', 'icon': Icons.delete},
+  {'id': 'coupon_promotion_edit_promotion', 'tab_id': 'coupon_promotion_main', 'name': 'แก้ไขโปรโมชั่น', 'icon': Icons.edit},
+  {'id': 'coupon_promotion_delete_promotion', 'tab_id': 'coupon_promotion_main', 'name': 'ลบโปรโมชั่น', 'icon': Icons.delete},
 ];
 
 class UserPermissionsPage extends StatefulWidget {

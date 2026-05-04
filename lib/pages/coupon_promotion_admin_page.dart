@@ -8,6 +8,8 @@ import '../models/pos_discount_model.dart';
 import '../models/pos_promotion_model.dart';
 import '../models/user_group_model.dart';
 import '../utils/date_picker_helper.dart';
+import '../utils/permission_helpers.dart';
+import 'promotion_form_page.dart';
 
 class CouponPromotionAdminPage extends StatefulWidget {
   const CouponPromotionAdminPage({super.key});
@@ -148,9 +150,19 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
       floatingActionButton: FloatingActionButton(
         onPressed: () {
           if (_selectedTabIndex == 0) {
-            _showAddCouponDialog();
+            checkPermissionAndExecute(
+              context,
+              'coupon_promotion_add_coupon',
+              'เพิ่มคูปอง',
+              () => _showAddCouponDialog(),
+            );
           } else {
-            _showAddPromotionDialog();
+            checkPermissionAndExecute(
+              context,
+              'coupon_promotion_add_promotion',
+              'เพิ่มโปรโมชั่น',
+              () => _showAddPromotionDialog(),
+            );
           }
         },
         backgroundColor: AppDesignSystem.primary,
@@ -241,11 +253,21 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
             _buildCouponAdminCard(
               coupon: coupon,
               discountText: discountText,
-              onEdit: () => _showEditCouponDialog(coupon),
-              onDelete: () => _showDeleteConfirmDialog(
-                title: 'ลบคูปอง',
-                message: 'คุณแน่ใจหรือว่าต้องการลบคูปอง "${coupon.name}"',
-                onConfirm: () => _deleteCoupon(coupon.id),
+              onEdit: () => checkPermissionAndExecute(
+                context,
+                'coupon_promotion_edit_coupon',
+                'แก้ไขคูปอง',
+                () => _showEditCouponDialog(coupon),
+              ),
+              onDelete: () => checkPermissionAndExecute(
+                context,
+                'coupon_promotion_delete_coupon',
+                'ลบคูปอง',
+                () => _showDeleteConfirmDialog(
+                  title: 'ลบคูปอง',
+                  message: 'คุณแน่ใจหรือว่าต้องการลบคูปอง "${coupon.name}"',
+                  onConfirm: () => _deleteCoupon(coupon.id),
+                ),
               ),
             ),
             const SizedBox(height: 12),
@@ -286,11 +308,21 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
           children: [
             _buildPromotionAdminCard(
               promotion: promotion,
-              onEdit: () => _showEditPromotionDialog(promotion),
-              onDelete: () => _showDeleteConfirmDialog(
-                title: 'ลบโปรโมชั่น',
-                message: 'คุณแน่ใจหรือว่าต้องการลบโปรโมชั่น "${promotion.name}"',
-                onConfirm: () => _deletePromotion(promotion.id),
+              onEdit: () => checkPermissionAndExecute(
+                context,
+                'coupon_promotion_edit_promotion',
+                'แก้ไขโปรโมชั่น',
+                () => _showEditPromotionDialog(promotion),
+              ),
+              onDelete: () => checkPermissionAndExecute(
+                context,
+                'coupon_promotion_delete_promotion',
+                'ลบโปรโมชั่น',
+                () => _showDeleteConfirmDialog(
+                  title: 'ลบโปรโมชั่น',
+                  message: 'คุณแน่ใจหรือว่าต้องการลบโปรโมชั่น "${promotion.name}"',
+                  onConfirm: () => _deletePromotion(promotion.id),
+                ),
               ),
             ),
             const SizedBox(height: 12),
@@ -1303,11 +1335,29 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
   }
 
   void _showAddPromotionDialog() {
-    _showPromotionDialog(title: 'เพิ่มโปรโมชั่นใหม่');
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const PromotionFormPage(),
+      ),
+    ).then((result) {
+      if (result == true) {
+        _loadData();
+      }
+    });
   }
 
   void _showEditPromotionDialog(PosPromotion promotion) {
-    _showPromotionDialog(title: 'แก้ไขโปรโมชั่น', existing: promotion);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PromotionFormPage(promotionId: promotion.id),
+      ),
+    ).then((result) {
+      if (result == true) {
+        _loadData();
+      }
+    });
   }
 
   Future<List<Map<String, dynamic>>> _loadPromotionItemsForDialog(String promotionId) async {
@@ -1398,11 +1448,13 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
 
           return AlertDialog(
             title: Text(title),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+            content: ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'ชื่อโปรโมชั่น *', border: OutlineInputBorder())),
                     const SizedBox(height: 12),
                     TextField(controller: descCtrl, decoration: const InputDecoration(labelText: 'คำอธิบาย', border: OutlineInputBorder()), maxLines: 2),
@@ -1416,7 +1468,14 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
                         DropdownMenuItem(value: 'seasonal', child: Text('ตามฤดูกาล (Seasonal)')),
                         DropdownMenuItem(value: 'buy_x_get_y', child: Text('ซื้อ X แถม Y')),
                       ],
-                      onChanged: (v) => ds(() { promotionType = v ?? 'bundle'; items.clear(); searchResults = []; }),
+                      onChanged: (v) {
+                        final newType = v ?? 'bundle';
+                        Future.microtask(() => ds(() {
+                          promotionType = newType;
+                          items.clear();
+                          searchResults = [];
+                        }));
+                      },
                     ),
                     const SizedBox(height: 12),
                     // Discount linker
@@ -1442,7 +1501,7 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
                           );
                         }),
                       ],
-                      onChanged: (v) => ds(() => selectedDiscountId = v),
+                      onChanged: (v) => Future.microtask(() => ds(() => selectedDiscountId = v)),
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
@@ -1476,19 +1535,21 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
                         }),
                       ],
                       onChanged: (value) {
-                        if (value == '__select_all__') {
-                          ds(() => selectedUserGroupIds = _userGroups.map((g) => g.id).toList());
-                        } else if (value == '__clear_all__') {
-                          ds(() => selectedUserGroupIds.clear());
-                        } else if (value != null && value.isNotEmpty) {
+                        Future.microtask(() {
                           ds(() {
-                            if (selectedUserGroupIds.contains(value)) {
-                              selectedUserGroupIds.remove(value);
-                            } else {
-                              selectedUserGroupIds.add(value);
+                            if (value == '__select_all__') {
+                              selectedUserGroupIds = _userGroups.map((g) => g.id).toList();
+                            } else if (value == '__clear_all__') {
+                              selectedUserGroupIds.clear();
+                            } else if (value != null && value.isNotEmpty) {
+                              if (selectedUserGroupIds.contains(value)) {
+                                selectedUserGroupIds.remove(value);
+                              } else {
+                                selectedUserGroupIds.add(value);
+                              }
                             }
                           });
-                        }
+                        });
                       },
                     ),
                     if (selectedUserGroupIds.isNotEmpty) ...[
@@ -1574,7 +1635,7 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
                               isDense: true,
                               prefixIcon: Icon(Icons.search, size: 18),
                             ),
-                            onChanged: searchProducts,
+                            onChanged: (v) => Future.microtask(() => searchProducts(v)),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -1667,7 +1728,8 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
                 ],
               ),
             ),
-            actions: [
+          ),
+          actions: [
               TextButton(onPressed: () => Navigator.pop(context), child: const Text('ยกเลิก')),
               ElevatedButton(
                 onPressed: () {

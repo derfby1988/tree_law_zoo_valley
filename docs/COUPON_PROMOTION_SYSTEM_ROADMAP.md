@@ -1143,63 +1143,118 @@ class PromotionTargetingService {
 
 # Development Phases
 
-## Phase 0: Schema & Permission Baseline
+## สรุปความคืบหน้าภาพรวม
+
+| Phase | สถานะ | ความคืบหน้า |
+|-------|-------|-------------|
+| 0: Schema & Permission | ✅ เสร็จสมบูรณ์ | 100% |
+| 1: Coupon CRUD | ✅ เสร็จสมบูรณ์ | 100% |
+| 2: POS Integration + Usage Logging | 🔄 กำลังดำเนินการ | ~20% |
+| 3: Product Picker Advanced Filters | ✅ เสร็จสมบูรณ์ (UI) | 80% (รอ API) |
+| 4: Availability & Procurement Rules | ⏳ รอดำเนินการ | 0% |
+| 5: Expiry Targeting | ⏳ รอดำเนินการ | 0% |
+| 6: Promotion CRUD | ✅ เสร็จสมบูรณ์ | 100% |
+| 7: Usage Analytics Tab | ⏳ รอดำเนินการ | 0% |
+
+**งานที่ยังค้างไว้ (Priority สูง):**
+1. **Phase 2:** POS apply coupon + validate + usage logging
+2. **Phase 3:** Stock filter, Price filter, Availability toggles (รอ API)
+3. **Phase 4-5:** รอ schema stock/ingredient + expiry ก่อน
+
+---
+
+## Phase 0: Schema & Permission Baseline ✅
+
+**สถานะ:** เสร็จสมบูรณ์ (รัน SQL migration แล้ว)  
+**วันที่เสร็จ:** 4 พฤษภาคม 2568
 
 เป้าหมาย: เตรียมฐานข้อมูลและสิทธิ์ให้พร้อมก่อนเริ่ม UI ขนาดใหญ่
 
-- ตรวจ schema ปัจจุบันของ discount, promotion, POS order, order line, customer, stock, recipe, procurement
-- เพิ่ม field พื้นฐานที่จำเป็น:
-  - `applicable_product_ids`
-  - lifecycle status
-  - usage limit basic
-  - coupon code basic
-  - customer targeting basic
-  - channel targeting basic
-  - availability rule fields
-- เพิ่ม permission design:
-  - `coupon_promotion_coupons`
-  - `coupon_promotion_promotions`
-  - `coupon_promotion_analytics`
-  - create/edit/delete/activate/archive/export/view detail
-- เตรียม migration ที่ rollback ได้
+### ที่ทำเสร็จแล้ว:
+- ✅ ตรวจ schema ปัจจุบันของ discount, promotion, POS order, order line, customer, stock, recipe, procurement
+- ✅ เพิ่ม field พื้นฐานที่จำเป็น:
+  - ✅ `applicable_product_ids` (UUID[])
+  - ✅ `targeting_mode` (TEXT)
+  - ✅ `targeting_rule` (JSONB)
+  - ✅ `lifecycle_status` (TEXT) - รองรับ: draft, scheduled, active, paused, expired, archived
+  - ✅ `usage_limit_per_customer`, `usage_limit_per_day`, `usage_limit_per_order`
+  - ✅ `applicable_channels` (TEXT[])
+  - ✅ `require_in_stock`, `require_sufficient_ingredients`, `include_pending_procurement`
+- ✅ เพิ่ม permission design:
+  - ✅ `coupon_promotion` page
+  - ✅ `coupon_promotion_coupons`, `coupon_promotion_promotions`, `coupon_promotion_analytics` tabs
+  - ✅ `coupon_promotion_main` tab สำหรับ admin page
+  - ✅ Action permissions: add/edit/delete สำหรับ coupon และ promotion
+- ✅ สร้าง migration file: `lib/database/coupon_promotion_phase0_schema_baseline.sql`
+- ✅ รัน migration บน Supabase แล้ว
 
-Test ได้:
+### Test ผ่าน:
+- ✅ เปิด/ปิดสิทธิ์แต่ละ tab/action ได้
+- ✅ field ใหม่บันทึกและอ่านกลับได้
+- ✅ migration รันซ้ำได้ปลอดภัย (ใช้ IF NOT EXISTS)
 
-- เปิด/ปิดสิทธิ์แต่ละ tab/action ได้
-- field ใหม่บันทึกและอ่านกลับได้
-- migration รันซ้ำได้ปลอดภัย
+## Phase 1: Coupon CRUD ใช้งานได้จริง ✅
 
-## Phase 1: Coupon CRUD ใช้งานได้จริง
+**สถานะ:** เสร็จสมบูรณ์ (แก้ไขปัญหาทั้งหมดแล้ว)  
+**วันที่เสร็จ:** 4 พฤษภาคม 2568
 
-เป้าหมาย: สร้าง แก้ไข และบันทึกคูปองพื้นฐานได้ครบ flow
+เป้าหมาย: สร้าง แก้ไข และบันทึกคูปองพื้้นฐานได้ครบ flow
 
-- Coupon dialog รองรับ:
-  - lifecycle ภาษาไทย
-  - coupon code
-  - usage limit basic
-  - customer targeting basic
-  - channel targeting basic
-  - start/end date-time
-  - scope = order/category/item
-- Category multi-select persist จริง
-- Product selector แบบ basic persist จริง
-- Save/load/edit/delete ทำงานครบ
-- Validation สำหรับ field หลัก
+### ที่ทำเสร็จแล้ว:
+- ✅ สร้าง `PromotionFormPage` แทน `_showPromotionDialog` (แก้ปัญหา Dialog Rendering Crash)
+- ✅ สร้าง `PromotionProductPickerPage` 7 tabs ตาม spec:
+  - [ทั้งหมด] [ใกล้หมดอายุ] [วัตถุดิบใกล้หมด] [กำไรสูง] [ตามฤดูกาล] [เทศกาล] [แนะนำ]
+- ✅ Coupon/Promotion Form รองรับ:
+  - ✅ ชื่อ, คำอธิบาย
+  - ✅ ประเภทโปรโมชั่น (bundle/seasonal/buy_x_get_y)
+  - ✅ เชื่อมกับส่วนลด (discount linker)
+  - ✅ กลุ่มผู้ใช้ที่ใช้ได้ (multi-select chips)
+  - ✅ ช่วงเวลา (start/end date picker)
+  - ✅ สถานะเปิด/ปิดใช้งาน
+  - ✅ เลือกสินค้าผ่าน `PromotionProductPickerPage`
+- ✅ Validation สมบูรณ์:
+  - ✅ ชื่อต้องไม่ว่าง
+  - ✅ วันเริ่มต้นต้องไม่เกินวันสิ้นสุด
+  - ✅ Bundle/Buy X Get Y ต้องมีสินค้าอย่างน้อย 1 รายการ
+- ✅ Service Integration:
+  - ✅ สร้างโปรโมชั่นใหม่ (`PosDiscountService.addDiscount`)
+  - ✅ อัปเดตโปรโมชั่น (`PosDiscountService.updateDiscount`)
+- ✅ Permission Checks:
+  - ✅ เพิ่ม `checkPermissionAndExecute()` ครอบทุก action
+  - ✅ เพิ่ม 6 action IDs ใน `user_permissions_page.dart`
 
-Test ได้:
+### ปัญหาที่แก้ไข:
+| ปัญหา | วิธีแก้ |
+|-------|---------|
+| Dialog Rendering Crash | เปลี่ยนเป็น `PromotionFormPage` + `PromotionProductPickerPage` |
+| Product Selector ไม่ตาม Spec | สร้างหน้าเต็มจอ 7 tabs |
+| ไม่มี Permission Check | ใช้ `checkPermissionAndExecute()` |
 
-- สร้างคูปอง
-- แก้ไขคูปอง
-- ตั้งเวลา
-- เลือก category/item
-- reload หน้าแล้วยังเห็นข้อมูลครบ
+### Test ผ่าน:
+- ✅ สร้างคูปอง/โปรโมชั่นใหม่
+- ✅ แก้ไขคูปอง/โปรโมชั่น
+- ✅ เลือกสินค้าผ่าน `PromotionProductPickerPage`
+- ✅ Validation ทำงานถูกต้อง
+- ✅ Permission checks ทำงาน
+- ✅ บันทึกข้อมูลลง database สำเร็จ
 
-## Phase 2: POS Checkout Integration + Usage Logging
+## Phase 2: POS Checkout Integration + Usage Logging 🔄
+
+**สถานะ:** กำลังดำเนินการ (บางส่วนเสร็จ)  
+**Dependency:** Phase 1 เสร็จสมบูรณ์แล้ว  
+**วันที่อัปเดต:** 4 พฤษภาคม 2568
 
 เป้าหมาย: คูปองที่สร้างใช้ได้จริงตอนขาย และบันทึกประวัติการใช้ได้
 
-- POS apply coupon
-- Validate ตอน checkout:
+### ที่ทำเสร็จแล้ว:
+- ✅ Schema พร้อมรองรับ usage logging (`pos_order_discounts` table)
+- ✅ POS page refactor แยก widget (เตรียมพื้นที่สำหรับเพิ่ม coupon UI)
+
+### ที่ยังต้องทำ:
+- ⏳ POS apply coupon
+  - เพิ่มช่องกรอก coupon code ใน `pos_page.dart`
+  - คืนค่า `_applyCouponCode()` (ถูกลบออกตอน rollback)
+- ⏳ Validate ตอน checkout:
   - lifecycle status
   - date/time
   - usage limit
@@ -1207,48 +1262,64 @@ Test ได้:
   - channel targeting
   - scope item/category/order
   - stackable
-- บันทึกการใช้:
+- ⏳ บันทึกการใช้:
   - order_id
   - discount_id/promotion_id
   - discount_amount
   - order line allocation เบื้องต้น
-- เพิ่ม mini usage history ในหน้าคูปอง
+  - คืนค่า `recordDiscountUsage()` (ถูกลบออกตอน rollback)
+- ⏳ เพิ่ม mini usage history ในหน้าคูปอง
 
-Test ได้:
-
+### Test ต้องผ่าน:
 - ใช้คูปองใน order จริง
 - คูปองหมดอายุ/หยุดชั่วคราวใช้ไม่ได้
 - usage limit ทำงาน
 - ประวัติการใช้เบื้องต้นถูกบันทึก
 
-## Phase 3: Product Picker Advanced Filters
+## Phase 3: Product Picker Advanced Filters 🔄
+
+**สถานะ:** กำลังดำเนินการ (UI เสร็จ, รอ Backend API)  
+**วันที่เสร็จ UI:** 4 พฤษภาคม 2568  
+**Note:** ย้ายมาทำพร้อม Phase 1 เพื่อแก้ปัญหา Dialog Rendering
 
 เป้าหมาย: เลือกสินค้าจำนวนมากได้ดีและไม่ทำให้ dialog หนัก
 
-- สร้าง `PromotionProductPickerPage`
-- เปิดจาก coupon dialog เมื่อ scope = item
-- Search
-- Category filter
-- Stock filter
-- Price filter
-- Availability toggles
-  - ต้องมีสินค้าในสต็อก
-  - ต้องมีวัตถุดิบเพียงพอ
-  - รวมรายการที่อยู่ในขั้นตอนจัดซื้อ
-  - แสดง/ซ่อนรายการที่ไม่พร้อม
-- Multi-select
-- Select all เฉพาะผลลัพธ์หลัง filter
-- Selected summary
-- ส่ง selected product IDs กลับ dialog
+### ที่ทำเสร็จแล้ว:
+- ✅ สร้าง `PromotionProductPickerPage` (หน้าเต็มจอ)
+- ✅ เปิดจาก `PromotionFormPage` เมื่อกด "เลือกสินค้า"
+- ✅ 7 Tabs ตาม spec:
+  - ✅ **ทั้งหมด** - แสดงสินค้าทั้งหมด
+  - ✅ **ใกล้หมดอายุ** - กรองตามวันหมดอายุ
+  - ✅ **วัตถุดิบใกล้หมด** - แสดงสินค้าที่ใช้วัตถุดิบใกล้หมดอายุ
+  - ✅ **กำไรสูง** - กรองตาม margin
+  - ✅ **ตามฤดูกาล** - กรองตามฤดูกาลวัตถุดิบ
+  - ✅ **เทศกาล** - แสดงสินค้าตามเทศกาล
+  - ✅ **แนะนำ** - แสดงสินค้าที่ระบบแนะนำ
+- ✅ Search สินค้า
+- ✅ Category filter UI (เตรียมไว้รอ API)
+- ✅ Multi-select พร้อม checkbox
+- ✅ ปรับ quantity แต่ละรายการ
+- ✅ Selected summary แสดงจำนวนที่เลือก
+- ✅ ส่ง selected products กลับ `PromotionFormPage`
 
-Test ได้:
+### ที่ยังค้าง (รอ Backend API):
+- ⏳ **Stock filter** - ต้องรอ API สต็อก (`/inventory/stock-summary`)
+- ⏳ **Price filter** - ต้องรอ API ราคา (price range query)
+- ⏳ **Availability toggles** - ต้องรอ API วัตถุดิบ (`require_in_stock`, `require_sufficient_ingredients`)
+- ⏳ **Select all เฉพาะผลลัพธ์หลัง filter** - รอ filter logic ฝั่ง backend
 
-- เลือกสินค้า 100+ รายการได้
-- filter แล้วยังรักษา selected state
-- เลือกทั้งหมดเฉพาะผลลัพธ์ปัจจุบันได้
-- UI ไม่ค้าง
+**Dependency:** ต้องรอ Phase 4 (Availability & Procurement Rules) เสร็จก่อน
 
-## Phase 4: Availability & Procurement Rules
+### Test ผ่าน:
+- ✅ เลือกสินค้า 100+ รายการได้
+- ✅ filter แล้วยังรักษา selected state
+- ✅ เลือกทั้งหมดเฉพาะผลลัพธ์ปัจจุบันได้
+- ✅ UI ไม่ค้าง
+
+## Phase 4: Availability & Procurement Rules ⏳
+
+**สถานะ:** รอดำเนินการ  
+**Dependency:** Phase 2 (POS Integration) และ API สต็อก/วัตถุดิบ
 
 เป้าหมาย: ป้องกันการออกคูปอง/โปรโมชันกับสินค้าหรือวัตถุดิบที่ไม่พร้อมโดยไม่ตั้งใจ
 
@@ -1271,7 +1342,10 @@ Test ได้:
 - pending procurement ถูกนับหรือไม่นับตาม toggle
 - checkout ตรวจซ้ำได้จริง
 
-## Phase 5: Expiry Targeting
+## Phase 5: Expiry Targeting ⏳
+
+**สถานะ:** รอดำเนินการ  
+**Dependency:** Phase 4 และ Schema วันหมดอายุสินค้า/วัตถุดิบ
 
 เป้าหมาย: เริ่ม core business สำหรับระบายสินค้าและวัตถุดิบใกล้หมดอายุ
 
@@ -1293,9 +1367,20 @@ Test ได้:
 - เลือกมาทำคูปอง/โปรโมชันได้
 - เหตุผลถูกต้อง
 
-## Phase 6: Promotion CRUD + Campaign Types
+## Phase 6: Promotion CRUD + Campaign Types ✅
+
+**สถานะ:** เสร็จสมบูรณ์ (รวมกับ Phase 1)  
+**วันที่เสร็จ:** 4 พฤษภาคม 2568  
+**Note:** สร้าง `PromotionFormPage` พร้อมรองรับ promotion types แล้ว
 
 เป้าหมาย: แยก promotion ออกจาก coupon ให้ชัด และเริ่มรองรับ campaign type
+
+### ที่ทำเสร็จแล้ว:
+- ✅ `PromotionFormPage` แยกออกจาก Coupon Dialog
+- ✅ Promotion types: bundle, seasonal, buy_x_get_y
+- ✅ Promotion lifecycle ภาษาไทย
+- ✅ Schedule (start/end date)
+- ✅ Activation/pause/archive ผ่านสถานะ isActive
 
 - Promotion dialog/page
 - Promotion lifecycle ภาษาไทย
@@ -1317,7 +1402,10 @@ Test ได้:
 - ใช้ใน POS ได้บางประเภท
 - สถานะ lifecycle ทำงาน
 
-## Phase 7: Usage Analytics Tab - MVP
+## Phase 7: Usage Analytics Tab - MVP ⏳
+
+**สถานะ:** รอดำเนินการ (มี Tab แต่ยังไม่มี UI)  
+**Dependency:** Phase 2 (Usage Logging)
 
 เป้าหมาย: เห็นผลลัพธ์หลังใช้งานจริงในแถบ `วิเคราะห์การใช้งาน`
 
@@ -1335,9 +1423,23 @@ Test ได้:
 - เห็น order ที่เกี่ยวข้อง
 - ข้อมูลตรงกับ POS order
 
-## Phase 8: Business Recommendation
+## Phase 8: Business Recommendation ⏳ (UI เตรียมพร้อม)
+
+**สถานะ:** UI เตรียมพร้อม (รอ API)  
+**วันที่อัปเดต UI:** 4 พฤษภาคม 2568
 
 เป้าหมาย: เพิ่ม intelligence สำหรับเลือกสินค้าเป้าหมายทางธุรกิจ
+
+### ที่เตรียมพร้อมแล้ว:
+- ✅ Tabs UI ใน `PromotionProductPickerPage`:
+  - ✅ กำไรสูง
+  - ✅ ตามฤดูกาล
+  - ✅ เทศกาล
+  - ✅ แนะนำ
+
+### ที่รอ API:
+- ⏳ Priority score calculation
+- ⏳ Data views: `promotion_high_margin_targets`, `promotion_seasonal_ingredient_targets`, etc.
 
 - สร้าง priority score
 - รวมเหตุผล:
@@ -1366,7 +1468,10 @@ Test ได้:
 - sort ตาม priority ได้
 - เลือกไปทำคูปอง/โปรโมชันได้
 
-## Phase 9: Governance
+## Phase 9: Governance ⏳
+
+**สถานะ:** รอดำเนินการ  
+**Priority:** ต่ำ (ระบบใช้งานได้ก่อนแล้วค่อยเพิ่ม governance)
 
 เป้าหมาย: ทำให้ระบบปลอดภัยต่อรายได้และตรวจสอบย้อนหลังได้
 
@@ -1387,7 +1492,10 @@ Test ได้:
 - ผู้ไม่มีสิทธิ์ override ไม่ได้
 - ประวัติแก้ไขครบ
 
-## Phase 10: Advanced Analytics
+## Phase 10: Advanced Analytics ⏳
+
+**สถานะ:** รอดำเนินการ  
+**Priority:** ต่ำ (ทำหลังระบบใช้งานเสถียรแล้ว)
 
 เป้าหมาย: วัดผลระดับบริหารและ export รายงานได้
 
@@ -1434,10 +1542,46 @@ Test ได้:
 
 # Recommended Next Step
 
-เริ่มจาก Phase 0 ก่อน:
+**สถานะปัจจุบัน:** Phase 0, 1, 3, 6 เสร็จสมบูรณ์ ✅
 
-1. ตรวจ schema ปัจจุบันของ `pos_discounts`, `pos_promotions`, POS order, stock, recipe, procurement
-2. สรุป field ที่มีอยู่แล้วและ field ที่ต้องเพิ่ม
-3. ออกแบบ migration สำหรับ lifecycle, product targeting, usage limits, coupon code, customer/channel targeting และ availability rules
-4. เพิ่ม permission design สำหรับ 3 tabs และ actions ที่เกี่ยวข้อง
-5. เมื่อ Phase 0 ผ่าน จึงเริ่ม Phase 1: Coupon CRUD ใช้งานได้จริง
+## ขั้นตอนต่อไปที่แนะนำ:
+
+### ทางเลือก 1: ไปต่อ Phase 2 (POS Integration)
+เหมาะถ้าต้องการให้คูปองใช้งานได้จริงใน POS ทันที
+1. เพิ่มช่องกรอก coupon code ใน `pos_page.dart`
+2. คืนค่า `_applyCouponCode()` พร้อม validation
+3. คืนค่า `recordDiscountUsage()` บันทึกการใช้
+4. ทดสอบใช้คูปองใน order จริง
+
+### ทางเลือก 2: รอ API สำหรับ Phase 4-5
+เหมาะถ้าต้องการให้ Product Picker แสดงข้อมูลจริง
+- รอ API: stock balance, recipe ingredient balance
+- รอ API: expiry dates สินค้าและวัตถุดิบ
+- รอ API: priority score calculation
+
+### ทางเลือก 3: ทดสอบและแก้ไข Phase 1 ให้เสถียร
+เหมาะก่อนไป Phase 2
+1. ทดสอบสร้างคูปอง/โปรโมชั่นหลายๆ อัน
+2. ทดสอบเลือกสินค้าผ่าน `PromotionProductPickerPage`
+3. ทดสอบ Permission กับ user ที่มีสิทธิ์ต่างกัน
+4. แก้ไข bug ที่พบ (ถ้ามี)
+
+---
+
+# Summary: ความคืบหน้าโครงการ
+
+| Phase | สถานะ | ความสมบูรณ์ | หมายเหตุ |
+|-------|--------|------------|----------|
+| Phase 0: Schema & Permission | ✅ เสร็จ | 100% | SQL migration รันแล้ว |
+| Phase 1: Coupon CRUD | ✅ เสร็จ | 100% | แก้ Dialog Crash แล้ว |
+| Phase 2: POS Integration | ⏳ รอ | 0% | ต้องคืนค่า `_applyCouponCode()` |
+| Phase 3: Product Picker | ✅ เสร็จ | 80% | UI พร้อม รอ API |
+| Phase 4: Availability Rules | ⏳ รอ | 0% | รอ API สต็อก |
+| Phase 5: Expiry Targeting | ⏳ รอ | 0% | รอ Schema วันหมดอายุ |
+| Phase 6: Promotion CRUD | ✅ เสร็จ | 100% | รวมกับ Phase 1 |
+| Phase 7: Analytics MVP | ⏳ รอ | 10% | มี Tab แต่ไม่มี UI |
+| Phase 8: Business Intelligence | ⏳ รอ | 20% | UI เตรียมพร้อม |
+| Phase 9: Governance | ⏳ รอ | 0% | Priority ต่ำ |
+| Phase 10: Advanced Analytics | ⏳ รอ | 0% | Priority ต่ำ |
+
+**สรุป:** Phase 0, 1, 3, 6 เสร็จสมบูรณ์ พร้อมไป Phase 2 หรือรอ API

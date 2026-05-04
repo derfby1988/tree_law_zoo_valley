@@ -36,11 +36,27 @@ class TableManagementService {
     }
   }
 
+  /// ดึงข้อมูลโซนตาม ID
+  static Future<Map<String, dynamic>?> getZoneById(String zoneId) async {
+    try {
+      final response = await _client
+          .from('restaurant_zones')
+          .select('*')
+          .eq('id', zoneId)
+          .single();
+      return response;
+    } catch (e) {
+      debugPrint('Error getZoneById: $e');
+      return null;
+    }
+  }
+
   static Future<Map<String, dynamic>?> addZone({
     required String name,
     String? description,
     String? openTime,
     String? closeTime,
+    double serviceCharge = 0,
   }) async {
     try {
       final response = await _client.from('restaurant_zones').insert({
@@ -49,6 +65,7 @@ class TableManagementService {
         'open_time': openTime,
         'close_time': closeTime,
         'sort_order': 0,
+        'service_charge': serviceCharge,
       }).select().single();
       return response;
     } catch (e) {
@@ -64,15 +81,18 @@ class TableManagementService {
     String? openTime,
     String? closeTime,
     bool? isActive,
+    double? serviceCharge,
   }) async {
     try {
-      await _client.from('restaurant_zones').update({
+      final updateData = {
         'name': name,
         'description': description,
         'open_time': openTime,
         'close_time': closeTime,
         if (isActive != null) 'is_active': isActive,
-      }).eq('id', id);
+        if (serviceCharge != null) 'service_charge': serviceCharge,
+      };
+      await _client.from('restaurant_zones').update(updateData).eq('id', id);
       return true;
     } catch (e) {
       debugPrint('Error updateZone: $e');
@@ -120,6 +140,21 @@ class TableManagementService {
     } catch (e) {
       debugPrint('Error getTablesForZone: $e');
       return [];
+    }
+  }
+
+  /// ดึงข้อมูลโต๊ะพร้อมข้อมูลโซน (รวม service_charge)
+  static Future<Map<String, dynamic>?> getTableWithZone(String tableId) async {
+    try {
+      final response = await _client
+          .from('restaurant_tables')
+          .select('*, zone:restaurant_zones(*)')
+          .eq('id', tableId)
+          .single();
+      return response;
+    } catch (e) {
+      debugPrint('Error getTableWithZone: $e');
+      return null;
     }
   }
 
