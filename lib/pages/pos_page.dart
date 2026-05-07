@@ -5,6 +5,7 @@ import '../services/inventory_service.dart';
 import '../services/pos_held_order_service.dart';
 import '../models/pos_held_order_model.dart';
 import '../services/pos_payment_split_service.dart';
+import '../services/pos_discount_service.dart';
 import '../services/pos_shift_service.dart';
 import '../services/table_management_service.dart';
 import '../services/supabase_service.dart';
@@ -1379,11 +1380,12 @@ class _PosPageState extends State<PosPage> {
             if (_selectedCustomer != null) const SizedBox(height: 6),
             // Phase 2: Discount Panel
             PosDiscountPanelWidget(
-              onDiscountApplied: (discount, amount) {
+              onDiscountApplied: (discount, amount, {couponCode}) {
                 setState(() {
                   _appliedDiscounts.add({
                     'discount_id': discount.id,
                     'discount_amount': amount,
+                    'coupon_code': couponCode,
                     'pos_discounts': {
                       'name': discount.name,
                       'discount_type': discount.discountType,
@@ -2790,6 +2792,27 @@ class _PosPageState extends State<PosPage> {
           orderId: orderId,
           splits: _paymentSplits,
         );
+      }
+
+      // Phase 2: Record discount usage
+      for (final discountData in _appliedDiscounts) {
+        final discountId = discountData['discount_id']?.toString();
+        final discountAmount = (discountData['discount_amount'] ?? 0).toDouble();
+        final couponCode = discountData['coupon_code']?.toString();
+        final discountInfo = discountData['pos_discounts'] as Map<String, dynamic>?;
+
+        if (discountId != null && discountId.isNotEmpty) {
+          await PosDiscountService.recordDiscountUsage(
+            orderId: orderId,
+            discountId: discountId,
+            discountAmount: discountAmount,
+            appliedBy: userName,
+            couponCode: couponCode,
+            discountName: discountInfo?['name']?.toString() ?? '',
+            discountType: discountInfo?['discount_type']?.toString() ?? 'fixed',
+            discountValue: (discountInfo?['value'] ?? 0).toDouble(),
+          );
+        }
       }
 
       // Phase 2F: Auto-print receipt

@@ -134,6 +134,7 @@ CREATE TABLE IF NOT EXISTS inventory_recipes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   category_id UUID REFERENCES inventory_categories(id),
+  output_product_id UUID REFERENCES inventory_products(id), -- สินค้าที่ผลิตได้จากสูตรนี้
   yield_quantity DOUBLE PRECISION DEFAULT 1,
   yield_unit TEXT DEFAULT 'ชิ้น',
   cost DOUBLE PRECISION DEFAULT 0,
@@ -144,6 +145,14 @@ CREATE TABLE IF NOT EXISTS inventory_recipes (
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Add output_product_id column if table already exists (for existing databases)
+ALTER TABLE inventory_recipes
+  ADD COLUMN IF NOT EXISTS output_product_id UUID REFERENCES inventory_products(id);
+
+-- Index for faster lookup by output_product_id
+CREATE INDEX IF NOT EXISTS idx_inventory_recipes_output_product_id
+  ON inventory_recipes(output_product_id);
 
 -- 7. ตารางส่วนผสมสูตร (Recipe Ingredients)
 CREATE TABLE IF NOT EXISTS inventory_recipe_ingredients (

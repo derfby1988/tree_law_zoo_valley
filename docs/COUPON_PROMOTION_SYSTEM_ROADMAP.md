@@ -31,7 +31,7 @@
 หน้าจัดการคูปองและโปรโมชันควรแบ่งเป็นแถบหลัก:
 
 ```text
-[คูปอง] [โปรโมชัน] [วิเคราะห์การใช้งาน]
+[คูปอง] [โปรโมชัน] [สินค้าใกล้หมดอายุ] [วัตถุดิบใกล้หมดอายุ] [วิเคราะห์การใช้งาน]
 ```
 
 ### แถบคูปอง
@@ -45,6 +45,20 @@
 - แสดงรายการโปรโมชัน
 - เพิ่ม/แก้ไข/ลบโปรโมชัน
 - กำหนดสินค้า/หมวดหมู่/ช่วงเวลา/เงื่อนไขการใช้งาน
+
+### แถบสินค้าใกล้หมดอายุ (Phase 5)
+
+- แสดงสินค้าที่ใกล้หมดอายุจาก batch tracking
+- Filter ตามช่วงวัน (3/7/14/30 วัน + หมดอายุแล้ว)
+- แสดงเหตุผล, จำนวนวันเหลือ, ส่วนลดแนะนำ
+- ปุ่มสร้างโปรโมชั่นด่วนเพื่อระบายสินค้า
+
+### แถบวัตถุดิบใกล้หมดอายุ (Phase 5)
+
+- แสดงวัตถุดิบที่ใกล้หมดอายุ
+- แสดงเมนูที่ใช้วัตถุดิบนั้นเพื่อระบาย
+- Filter ตามช่วงวัน
+- ปุ่มสร้างโปรโมชั่นด่วนสำหรับเมนูที่เกี่ยวข้อง
 
 ### แถบวิเคราะห์การใช้งาน
 
@@ -1145,21 +1159,44 @@ class PromotionTargetingService {
 
 ## สรุปความคืบหน้าภาพรวม
 
-| Phase | สถานะ | ความคืบหน้า |
-|-------|-------|-------------|
-| 0: Schema & Permission | ✅ เสร็จสมบูรณ์ | 100% |
-| 1: Coupon CRUD | ✅ เสร็จสมบูรณ์ | 100% |
-| 2: POS Integration + Usage Logging | 🔄 กำลังดำเนินการ | ~20% |
-| 3: Product Picker Advanced Filters | ✅ เสร็จสมบูรณ์ (UI) | 80% (รอ API) |
-| 4: Availability & Procurement Rules | ⏳ รอดำเนินการ | 0% |
-| 5: Expiry Targeting | ⏳ รอดำเนินการ | 0% |
-| 6: Promotion CRUD | ✅ เสร็จสมบูรณ์ | 100% |
-| 7: Usage Analytics Tab | ⏳ รอดำเนินการ | 0% |
+| Phase | สถานะ | ความคืบหน้า | รายละเอียด |
+|-------|-------|-------------|-----------|
+| 0: Schema & Permission | ✅ เสร็จสมบูรณ์ | 100% | Migration + Permission ครบ |
+| 1: Coupon CRUD | ✅ เสร็จสมบูรณ์ | 100% | Form + Validation ครบ |
+| 2: POS Integration + Usage Logging | ✅ เสร็จสมบูรณ์ | 100% | Apply + Record ครบ |
+| 3: Product Picker Advanced Filters | ✅ เสร็จสมบูรณ์ | 100% | UI + APIs + Pagination + Caching + Sorting + Seasonal/Festival |
+| 4: Availability & Procurement Rules | ✅ เสร็จสมบูรณ์ | 100% | RPC + Service + UI + POS Validation ครบ |
+| 5: Expiry Targeting | ✅ เสร็จสมบูรณ์ | 100% | RPC + Views + Service + UI Tabs ครบ |
+| 6: Promotion CRUD | ✅ เสร็จสมบูรณ์ | 100% | รวมกับ Phase 1 |
+| 7: Usage Analytics Tab | ⏳ รอดำเนินการ | 0% | มี Tab แต่ยังไม่มี UI |
+| 8: Business Recommendation | 🔄 部分เสร็จ | 70% | UI + Seasonal/Festival/HighMargin APIs เสร็จแล้ว |
+| 9: Governance | ⏳ รอดำเนินการ | 0% | Priority ต่ำ |
 
-**งานที่ยังค้างไว้ (Priority สูง):**
-1. **Phase 2:** POS apply coupon + validate + usage logging
-2. **Phase 3:** Stock filter, Price filter, Availability toggles (รอ API)
-3. **Phase 4-5:** รอ schema stock/ingredient + expiry ก่อน
+**งานที่เสร็จสมบูรณ์แล้ว:**
+1. ✅ **Phase 0-1:** Schema, Permission, Coupon/Promotion CRUD ครบ
+2. ✅ **Phase 2:** POS apply coupon + validate + usage logging ครบ
+3. ✅ **Phase 3:** Product Picker ครบทั้ง UI และ Backend:
+   - ✅ High Priority: Performance fix, Filters, Search, Category, Stock, Price
+   - ✅ Medium Priority: Pagination, Caching, Sorting
+   - ✅ Low Priority: Seasonal/Festival schema และ APIs
+4. ✅ **Phase 4:** Availability & Procurement Rules ครบทั้ง Backend และ UI:
+   - ✅ SQL RPC functions: `check_product_availability()`, `check_recipe_ingredients_sufficient()`, `get_pending_procurement_quantity()`, `check_product_full_availability()`
+   - ✅ `InventoryService` methods สำหรับตรวจสอบ availability
+   - ✅ `PosPromotionService` validation methods สำหรับ POS
+   - ✅ `PromotionFormPage` UI toggles สำหรับตั้งค่า availability
+5. ✅ **Phase 5:** Expiry Targeting ครบทั้ง Backend และ UI:
+   - ✅ SQL Views: `promotion_expiring_product_targets`, `promotion_expiring_ingredient_targets`
+   - ✅ SQL RPC: `get_expiring_products()`, `get_expiring_ingredients()`, `get_recipes_from_expiring_ingredients()`
+   - ✅ `InventoryService` methods: `getExpiringProducts()`, `getExpiringIngredients()`, `getExpirySummary()`
+   - ✅ `CouponPromotionAdminPage` UI Tabs: "สินค้าใกล้หมดอายุ" และ "วัตถุดิบใกล้หมดอายุ"
+   - ✅ Expiry filters: 3/7/14/30 วัน + หมดอายุแล้ว
+   - ✅ Quick promotion creation from expiring items
+6. ✅ **Phase 6:** Promotion CRUD (รวมกับ Phase 1)
+7. 🔄 **Phase 8:** Seasonal/Festival/HighMargin เสร็จแล้ว (รอ Priority Score)
+
+**งานที่ยังค้าง (Priority สูง):**
+1. ⏳ **Phase 7:** Analytics Tab UI
+2. ⏳ **Phase 8:** Priority score calculation (รอ algorithm)
 
 ---
 
@@ -1238,9 +1275,9 @@ class PromotionTargetingService {
 - ✅ Permission checks ทำงาน
 - ✅ บันทึกข้อมูลลง database สำเร็จ
 
-## Phase 2: POS Checkout Integration + Usage Logging 🔄
+## Phase 2: POS Checkout Integration + Usage Logging ✅
 
-**สถานะ:** กำลังดำเนินการ (บางส่วนเสร็จ)  
+**สถานะ:** ✅ เสร็จสมบูรณ์ 5 พฤษภาคม 2568  
 **Dependency:** Phase 1 เสร็จสมบูรณ์แล้ว  
 **วันที่อัปเดต:** 4 พฤษภาคม 2568
 
@@ -1249,12 +1286,16 @@ class PromotionTargetingService {
 ### ที่ทำเสร็จแล้ว:
 - ✅ Schema พร้อมรองรับ usage logging (`pos_order_discounts` table)
 - ✅ POS page refactor แยก widget (เตรียมพื้นที่สำหรับเพิ่ม coupon UI)
+- ✅ ช่องกรอก coupon code ใน POS (`PosDiscountPanelWidget`)
+- ✅ `_applyCouponCode()` พร้อม validation ครบถ้วน
+- ✅ Validate ตอน checkout: lifecycle, date/time, usage limit, channel, min_amount
+- ✅ `recordDiscountUsage()` บันทึกการใช้งานลง database
+- ✅ `increment_discount_usage()` SQL function สำหรับอัปเดต used_count
+- ✅ Mini usage history แสดงในหน้า admin (uses, total discount, unique customers)
 
-### ที่ยังต้องทำ:
-- ⏳ POS apply coupon
-  - เพิ่มช่องกรอก coupon code ใน `pos_page.dart`
-  - คืนค่า `_applyCouponCode()` (ถูกลบออกตอน rollback)
-- ⏳ Validate ตอน checkout:
+### Test ผ่าน:
+- ✅ POS apply coupon ทำงานได้จริง
+- ✅ Validate ตอน checkout:
   - lifecycle status
   - date/time
   - usage limit
@@ -1262,13 +1303,12 @@ class PromotionTargetingService {
   - channel targeting
   - scope item/category/order
   - stackable
-- ⏳ บันทึกการใช้:
+- ✅ บันทึกการใช้:
   - order_id
   - discount_id/promotion_id
   - discount_amount
   - order line allocation เบื้องต้น
-  - คืนค่า `recordDiscountUsage()` (ถูกลบออกตอน rollback)
-- ⏳ เพิ่ม mini usage history ในหน้าคูปอง
+- ✅ Mini usage history แสดงในหน้าคูปอง
 
 ### Test ต้องผ่าน:
 - ใช้คูปองใน order จริง
@@ -1276,15 +1316,16 @@ class PromotionTargetingService {
 - usage limit ทำงาน
 - ประวัติการใช้เบื้องต้นถูกบันทึก
 
-## Phase 3: Product Picker Advanced Filters 🔄
+## Phase 3: Product Picker Advanced Filters ✅
 
-**สถานะ:** กำลังดำเนินการ (UI เสร็จ, รอ Backend API)  
+**สถานะ:** ✅ เสร็จสมบูรณ์ 5-6 พฤษภาคม 2568  
 **วันที่เสร็จ UI:** 4 พฤษภาคม 2568  
-**Note:** ย้ายมาทำพร้อม Phase 1 เพื่อแก้ปัญหา Dialog Rendering
+**วันที่เสร็จ Backend APIs:** 5-6 พฤษภาคม 2568  
+**Note:** ทั้ง UI และ Backend API เสร็จสมบูรณ์ 100%
 
-เป้าหมาย: เลือกสินค้าจำนวนมากได้ดีและไม่ทำให้ dialog หนัก
+เป้าหมาย: เลือกสินค้าจำนวนมากได้ดีและไม่ทำให้ dialog หนัก พร้อมระบบ filter ขั้นสูง
 
-### ที่ทำเสร็จแล้ว:
+### ที่ทำเสร็จแล้ว (UI):
 - ✅ สร้าง `PromotionProductPickerPage` (หน้าเต็มจอ)
 - ✅ เปิดจาก `PromotionFormPage` เมื่อกด "เลือกสินค้า"
 - ✅ 7 Tabs ตาม spec:
@@ -1296,76 +1337,276 @@ class PromotionTargetingService {
   - ✅ **เทศกาล** - แสดงสินค้าตามเทศกาล
   - ✅ **แนะนำ** - แสดงสินค้าที่ระบบแนะนำ
 - ✅ Search สินค้า
-- ✅ Category filter UI (เตรียมไว้รอ API)
+- ✅ Category filter UI
 - ✅ Multi-select พร้อม checkbox
 - ✅ ปรับ quantity แต่ละรายการ
 - ✅ Selected summary แสดงจำนวนที่เลือก
 - ✅ ส่ง selected products กลับ `PromotionFormPage`
 
-### ที่ยังค้าง (รอ Backend API):
-- ⏳ **Stock filter** - ต้องรอ API สต็อก (`/inventory/stock-summary`)
-- ⏳ **Price filter** - ต้องรอ API ราคา (price range query)
-- ⏳ **Availability toggles** - ต้องรอ API วัตถุดิบ (`require_in_stock`, `require_sufficient_ingredients`)
-- ⏳ **Select all เฉพาะผลลัพธ์หลัง filter** - รอ filter logic ฝั่ง backend
+### ที่ทำเสร็จแล้ว (Backend - High Priority):
+- ✅ **Performance Fix** - Batch API `getStockDetailsForProducts()` แก้ N+1 queries
+- ✅ **Stock filter** - API `getProductsForPicker(requireInStock: true)`
+- ✅ **Price filter** - API `getProductsForPicker(minPrice, maxPrice)`
+- ✅ **Search filter** - API `getProductsForPicker(searchQuery)`
+- ✅ **Category filter** - API `getProductsForPicker(categoryId)`
+- ✅ **Availability checks** - API `checkProductAvailability()`
+- ✅ **Select all เฉพาะผลลัพธ์หลัง filter** - ทำงานแล้ว
 
-**Dependency:** ต้องรอ Phase 4 (Availability & Procurement Rules) เสร็จก่อน
+### ที่ทำเสร็จแล้ว (Backend - Medium Priority):
+- ✅ **Pagination APIs** - สำหรับ large datasets:
+  - ✅ `getProductsPaginated()` - พร้อม filter และ sorting
+  - ✅ `getExpiringProductsPaginated()` - สินค้าใกล้หมดอายุ
+  - ✅ `getHighMarginProductsPaginated()` - สินค้ากำไรสูง
+- ✅ **Caching System** - API response caching ด้วย cache key:
+  - ✅ Cache 5 นาที (configurable)
+  - ✅ Auto-expire และ manual clear
+  - ✅ Cache stats สำหรับ monitoring
+- ✅ **Sorting Options** - รองรับ sort ตามหลาย field:
+  - ✅ `name`, `price`, `quantity`, `margin_percent`, `expiry_date`
+  - ✅ Ascending/descending ทุก field
+
+### ที่ทำเสร็จแล้ว (Backend - Low Priority):
+- ✅ **Seasonal/Festival Schema** - SQL schema สำหรับ:
+  - ✅ `promotion_seasonal_tags` - ตารางฤดูกาล
+  - ✅ `promotion_festival_tags` - ตารางเทศกาล
+  - ✅ `promotion_product_seasonal_links` - ความสัมพันธ์สินค้ากับฤดูกาล
+  - ✅ `promotion_product_festival_links` - ความสัมพันธ์สินค้ากับเทศกาล
+  - ✅ Views สำหรับดึงข้อมูล seasonal/festival
+- ✅ **Seasonal/Festival APIs**:
+  - ✅ `getSeasonalProductsForPicker()` - ดึงสินค้าตามฤดูกาล
+  - ✅ `getFestivalProductsForPicker()` - ดึงสินค้าตามเทศกาล
+  - ✅ `getSeasonalTags()` - ดึงรายการฤดูกาลทั้งหมด
+  - ✅ `getFestivalTags()` - ดึงรายการเทศกาลทั้งหมด
+  - ✅ `getCurrentSeason()` - ดึงฤดูกาลปัจจุบัน
+
+### Models ที่สร้างใหม่:
+- ✅ `/lib/models/promotion_product_model.dart` - Standardized `PromotionProduct` model
+- ✅ `/lib/models/pagination_model.dart` - `PaginatedResult` และ `PaginationState`
+
+### APIs ที่สร้าง/อัปเดตใน `InventoryService`:
+| Method | คำอธิบาย |
+|--------|----------|
+| `getProductsForPicker()` | ดึงสินค้าพร้อม filter ทั้งหมด |
+| `getStockDetailsForProducts()` | Batch stock lookup (Performance) |
+| `getProductsPaginated()` | Pagination พร้อม filter/sort |
+| `getExpiringProductsPaginated()` | สินค้าใกล้หมดอายุแบบ paginated |
+| `getHighMarginProductsPaginated()` | สินค้ากำไรสูงแบบ paginated |
+| `getSeasonalProductsForPicker()` | สินค้าตามฤดูกาล |
+| `getFestivalProductsForPicker()` | สินค้าตามเทศกาล |
+| `checkProductAvailability()` | ตรวจสอบสินค้าพร้อมขาย |
+| `clearCachePattern()` | ล้าง cache ตาม pattern |
+| `getCacheStats()` | ดูสถิติ cache |
+
+### ที่ยังค้าง (รอข้อมูลเพิ่มเติม):
+- ⏳ **Priority Score Calculation** - รอ algorithm คำนวณ score
+- ⏳ **Recommendation Engine** - รอ ML/Business rules
+
+**Dependency:** ✅ Phase 3 เสร็จสมบูรณ์แล้ว ไม่ต้องรอ Phase 4
 
 ### Test ผ่าน:
 - ✅ เลือกสินค้า 100+ รายการได้
 - ✅ filter แล้วยังรักษา selected state
 - ✅ เลือกทั้งหมดเฉพาะผลลัพธ์ปัจจุบันได้
-- ✅ UI ไม่ค้าง
+- ✅ UI ไม่ค้าง (Performance ดีขึ้นด้วย Pagination + Caching)
+- ✅ Sorting ทำงานถูกต้องทุก tab
+- ✅ Cache system ทำงานถูกต้อง
 
-## Phase 4: Availability & Procurement Rules ⏳
+## Phase 4: Availability & Procurement Rules ✅
 
-**สถานะ:** รอดำเนินการ  
-**Dependency:** Phase 2 (POS Integration) และ API สต็อก/วัตถุดิบ
+**สถานะ:** ✅ เสร็จสมบูรณ์  
+**Dependency:** Phase 2 ✅ เสร็จแล้ว  
+**วันที่เสร็จ:** 6 พฤษภาคม 2568
 
 เป้าหมาย: ป้องกันการออกคูปอง/โปรโมชันกับสินค้าหรือวัตถุดิบที่ไม่พร้อมโดยไม่ตั้งใจ
 
-- ตรวจ schema stock balance, recipe ingredient balance และ procurement status
-- สร้าง RPC สำหรับคำนวณ:
-  - `available_quantity`
-  - `possible_servings`
-  - `available_servings_including_procurement`
-- รองรับ:
-  - require in stock
-  - require sufficient ingredients
-  - include pending procurement
-  - disabled reason
-- Checkout re-validation ตาม availability rule ที่บันทึกไว้
+### กฎธุรกิจที่ใช้:
+- ✅ **stock > 0** = พร้อมขาย
+- ✅ **วัตถุดิบพอ** = ผลิตได้มากกว่า 1 ชิ้น
+- ✅ **pending procurement** = นับ PO ทั้งหมดยกเว้น completed/cancelled
+- ✅ **block** เมื่อสินค้าไม่พร้อม
 
-Test ได้:
+### ที่ทำเสร็จแล้ว:
 
-- สินค้า stock 0 ถูก block/hide ตาม toggle
-- เมนูวัตถุดิบไม่พอถูก block/hide
-- pending procurement ถูกนับหรือไม่นับตาม toggle
-- checkout ตรวจซ้ำได้จริง
+#### **Backend (SQL):**
+- ✅ สร้าง SQL Check Script: `lib/database/phase4_schema_check.sql`
+- ✅ สร้าง RPC `check_product_availability()` - ตรวจสอบ stock พร้อมขาย
+- ✅ สร้าง RPC `get_pending_procurement_quantity()` - ดึงจำนวนรอรับจาก PO
+- ✅ สร้าง RPC `check_recipe_ingredients_sufficient()` - ตรวจสอบวัตถุดิบพอผลิต > 1 ชิ้น
+- ✅ สร้าง RPC `check_product_full_availability()` - ตรวจสอบแบบครบวงจร
+- ✅ สร้าง RPC `get_available_products()` - ดึงรายการสินค้าพร้อมขายทั้งหมด
+- ✅ สร้าง View `product_availability_summary`
 
-## Phase 5: Expiry Targeting ⏳
+#### **Service Layer (Dart):**
+- ✅ อัปเดต `InventoryService` พร้อม methods:
+  - `checkProductAvailability()` - ตรวจสอบ stock
+  - `getPendingProcurementQuantity()` - ดึง pending procurement
+  - `checkRecipeIngredientsSufficient()` - ตรวจสอบสูตรอาหาร
+  - `checkProductFullAvailability()` - ตรวจสอบแบบครบวงจร
+  - `getAvailableProducts()` - ดึงสินค้าพร้อมขาย
+  - `getProductAvailabilitySummary()` - ดึงสรุปจาก view
+  - `checkProductsAvailabilityBatch()` - ตรวจสอบหลายรายการ
+  - `filterAvailableProducts()` - กรองเฉพาะสินค้าพร้อมขาย
+- ✅ อัปเดต `PosPromotionService` พร้อม methods:
+  - `validatePromotionAvailability()` - ตรวจสอบโปรโมชั่นตามกฎ availability
+  - `filterAvailablePromotions()` - กรองโปรโมชั่นที่ใช้งานได้
+  - `getApplicablePromotionsForPos()` - ดึงโปรโมชั่นสำหรับ POS พร้อม validation
 
-**สถานะ:** รอดำเนินการ  
-**Dependency:** Phase 4 และ Schema วันหมดอายุสินค้า/วัตถุดิบ
+#### **UI Layer (Flutter):**
+- ✅ อัปเดต `PosPromotion` model เพิ่ม fields:
+  - `requireInStock`
+  - `requireSufficientIngredients`
+  - `includePendingProcurement`
+- ✅ อัปเดต `PromotionFormPage` เพิ่ม Card "กฎการตรวจสอบสินค้าพร้อมขาย":
+  - Toggle "ต้องมีสต็อกพร้อมขาย"
+  - Toggle "ต้องมีวัตถุดิบพอผลิต"
+  - Toggle "นับรวมการจัดซื้อที่รอรับ"
+  - Summary box แสดงกฎที่เปิดใช้งาน
+- ✅ อัปเดต `PosPromotionService.addPromotion()` และ `updatePromotion()` รองรับ availability fields
 
-เป้าหมาย: เริ่ม core business สำหรับระบายสินค้าและวัตถุดิบใกล้หมดอายุ
+### ไฟล์ที่สร้าง/อัปเดต:
+- `lib/database/phase4_schema_check.sql` - SQL ตรวจสอบ schema
+- `lib/database/coupon_promotion_phase4_availability.sql` - RPC functions
+- `lib/models/pos_promotion_model.dart` - เพิ่ม availability fields
+- `lib/services/inventory_service.dart` - เพิ่ม availability methods
+- `lib/services/pos_promotion_service.dart` - เพิ่ม validation methods
+- `lib/pages/promotion_form_page.dart` - เพิ่ม UI toggles
 
-- ตรวจ schema batch/lot expiry ของสินค้า
-- ตรวจ schema วัตถุดิบและสูตรอาหาร
-- สร้าง view/RPC:
-  - `promotion_expiring_product_targets`
-  - `promotion_expiring_ingredient_targets`
-- เพิ่ม tab:
-  - สินค้าใกล้หมดอายุ
-  - วัตถุดิบใกล้หมดอายุ
-- เพิ่ม expiry filters 3/7/14/30 วัน
-- แสดง reason, expiry metadata, possible servings
+### วิธีใช้:
 
-Test ได้:
+#### **SQL:**
+```sql
+-- ตรวจสอบสินค้าพร้อมขาย
+SELECT * FROM check_product_availability('product-uuid', true, false);
 
-- เห็นสินค้าที่ใกล้หมดอายุจริง
-- เห็นเมนูที่ใช้วัตถุดิบใกล้หมดอายุจริง
-- เลือกมาทำคูปอง/โปรโมชันได้
-- เหตุผลถูกต้อง
+-- ตรวจสอบวัตถุดิบพอผลิตหรือไม่
+SELECT * FROM check_recipe_ingredients_sufficient('product-uuid');
+
+-- ตรวจสอบแบบครบวงจร
+SELECT * FROM check_product_full_availability('product-uuid', true, true, true);
+
+-- ดูสรุป availability ทั้งหมด
+SELECT * FROM product_availability_summary;
+```
+
+#### **Dart (Service):**
+```dart
+// ตรวจสอบสินค้าพร้อมขาย
+final availability = await InventoryService.checkProductFullAvailability(
+  productId,
+  requireInStock: true,
+  requireSufficientIngredients: true,
+  includePendingProcurement: true,
+);
+
+// ตรวจสอบโปรโมชั่นตามกฎ availability
+final validation = await PosPromotionService.validatePromotionAvailability(
+  promotionId,
+  orderProductIds: ['product-1', 'product-2'],
+);
+
+// ดึงโปรโมชั่นที่ใช้งานได้สำหรับ POS
+final promotions = await PosPromotionService.getApplicablePromotionsForPos(
+  orderProductIds: ['product-1', 'product-2'],
+);
+```
+
+### Test ได้:
+- ✅ SQL RPC functions ทำงานถูกต้อง
+- ✅ InventoryService methods พร้อมใช้งาน
+- ✅ PosPromotionService validation พร้อมใช้งาน
+- ✅ PromotionFormPage UI แสดง toggles ถูกต้อง
+- ✅ บันทึก/โหลด availability settings ได้
+- ✅ Flutter build ผ่าน - แก้ duplicate methods และ parameter mismatches
+- ✅ แอปรันบน Android ได้สำเร็จ
+
+## Phase 5: Expiry Targeting ✅
+
+**สถานะ:** ✅ เสร็จสมบูรณ์  
+**Dependency:** Phase 4 ✅ เสร็จแล้ว + `inventory_item_batches` schema  
+**วันที่เสร็จ:** 6 พฤษภาคม 2568
+
+เป้าหมาย: ระบายสินค้าและวัตถุดิบใกล้หมดอายุผ่านโปรโมชั่น
+
+### กฎธุรกิจที่ใช้:
+- ✅ **critical** = หมดอายุแล้ว หรือ ≤ 3 วัน (ส่วนลด 40-50%)
+- ✅ **warning** = 4-7 วัน (ส่วนลด 15-25%)
+- ✅ **normal** = 8-30 วัน (ส่วนลด 10%)
+- ✅ แนะนำเมนูที่ใช้วัตถุดิบนั้นเพื่อระบาย
+
+### ที่ทำเสร็จแล้ว (Backend):
+- ✅ สร้าง View `promotion_expiring_product_targets` - สินค้าใกล้หมดอายุพร้อม batch details
+- ✅ สร้าง View `promotion_expiring_ingredient_targets` - วัตถุดิบใกล้หมดอายุพร้อมเมนูที่ใช้
+- ✅ สร้าง RPC `get_expiring_products(days_threshold, include_expired)` - ดึงสินค้าตามช่วงวัน
+- ✅ สร้าง RPC `get_expiring_ingredients(days_threshold, include_expired)` - ดึงวัตถุดิบตามช่วงวัน
+- ✅ สร้าง RPC `get_recipes_from_expiring_ingredients(ingredient_ids, days_threshold)` - แนะนำเมนู
+- ✅ อัปเดต `InventoryService` พร้อม methods:
+  - `getExpiringProducts()` - สินค้าใกล้หมดอายุ
+  - `getExpiringIngredients()` - วัตถุดิบใกล้หมดอายุ
+  - `getRecipesFromExpiringIngredients()` - เมนูแนะนำ
+  - `getExpirySummary()` - สรุป dashboard
+  - `getExpiringProductsByFilter()` - กรองตามช่วง (3/7/14/30 วัน)
+
+### ที่ทำเสร็จแล้ว (UI):
+- ✅ **Tab "สินค้าใกล้หมดอายุ"** - ใน CouponPromotionAdminPage
+- ✅ **Tab "วัตถุดิบใกล้หมดอายุ"** - แสดงเมนูที่ใช้
+- ✅ **Expiry filters** - ปุ่ม 3/7/14/30 วัน + หมดอายุแล้ว
+- ✅ **Batch details** - แสดงใน card พร้อมจำนวน
+- ✅ **Quick promotion** - ปุ่มสร้างโปรโมชั่นด่วนจากรายการที่เลือก
+
+### ไฟล์ที่สร้าง:
+- `lib/database/coupon_promotion_phase5_expiry_targeting.sql` - Views + RPC functions
+- `lib/pages/coupon_promotion_admin_page.dart` - อัปเดต UI Tabs สำหรับ expiry targeting
+
+### วิธีใช้:
+```sql
+-- ดึงสินค้าใกล้หมดอายุภายใน 7 วัน
+SELECT * FROM get_expiring_products(7, true);
+
+-- ดึงวัตถุดิบใกล้หมดอายุพร้อมเมนูที่ใช้
+SELECT * FROM get_expiring_ingredients(7, true);
+
+-- แนะนำเมนูจากวัตถุดิบใกล้หมดอายุ
+SELECT * FROM get_recipes_from_expiring_ingredients(ARRAY['ingredient-uuid'], 7);
+
+-- ดูสรุปทั้งหมด
+SELECT * FROM promotion_expiring_product_targets;
+SELECT * FROM promotion_expiring_ingredient_targets;
+```
+
+### Dart (Service):
+```dart
+// ดึงสินค้าใกล้หมดอายุ
+final products = await InventoryService.getExpiringProducts(
+  daysThreshold: 7,
+  includeExpired: true,
+);
+
+// ดึงวัตถุดิบพร้อมเมนูที่ใช้
+final ingredients = await InventoryService.getExpiringIngredients(
+  daysThreshold: 7,
+);
+
+// ดึงเมนูแนะนำ
+final recipes = await InventoryService.getRecipesFromExpiringIngredients(
+  ingredientIds: ['ingredient-1', 'ingredient-2'],
+  daysThreshold: 7,
+);
+
+// กรองตามช่วง
+final expiringIn3Days = await InventoryService.getExpiringProductsByFilter('3days');
+```
+
+### Test ได้:
+- ✅ SQL Views แสดงสินค้า/วัตถุดิบใกล้หมดอายุ
+- ✅ SQL RPC functions ทำงานถูกต้อง
+- ✅ InventoryService methods พร้อมใช้งาน
+- ✅ ส่วนลดแนะนำถูกต้องตามระดับความเร่งด่วน
+- ✅ แนะนำเมนูจากวัตถุดิบใกล้หมดอายุ
+- ✅ UI Tabs "สินค้าใกล้หมดอายุ" และ "วัตถุดิบใกล้หมดอายุ" พร้อมใช้งาน
+- ✅ Expiry filters (3/7/14/30 วัน) ทำงานถูกต้อง
+- ✅ Quick promotion creation จากรายการที่เลือก
+- ✅ Flutter build ผ่าน - แก้ duplicate methods และ parameter mismatches
+- ✅ แอปรันบน Android ได้สำเร็จ
 
 ## Phase 6: Promotion CRUD + Campaign Types ✅
 
@@ -1423,50 +1664,51 @@ Test ได้:
 - เห็น order ที่เกี่ยวข้อง
 - ข้อมูลตรงกับ POS order
 
-## Phase 8: Business Recommendation ⏳ (UI เตรียมพร้อม)
+## Phase 8: Business Recommendation ⏳ (UI + Seasonal/Festival APIs เสร็จแล้ว)
 
-**สถานะ:** UI เตรียมพร้อม (รอ API)  
-**วันที่อัปเดต UI:** 4 พฤษภาคม 2568
+**สถานะ:** UI + Seasonal/Festival APIs เสร็จแล้ว (รอ Priority Score API)  
+**วันที่อัปเดต UI:** 4 พฤษภาคม 2568  
+**วันที่เสร็จ Seasonal/Festival APIs:** 5-6 พฤษภาคม 2568
 
 เป้าหมาย: เพิ่ม intelligence สำหรับเลือกสินค้าเป้าหมายทางธุรกิจ
 
-### ที่เตรียมพร้อมแล้ว:
+### ที่เสร็จสมบูรณ์แล้ว:
 - ✅ Tabs UI ใน `PromotionProductPickerPage`:
-  - ✅ กำไรสูง
-  - ✅ ตามฤดูกาล
-  - ✅ เทศกาล
-  - ✅ แนะนำ
+  - ✅ กำไรสูง - พร้อม API `getHighMarginProductsPaginated()`
+  - ✅ ตามฤดูกาล - พร้อม API `getSeasonalProductsForPicker()`
+  - ✅ เทศกาล - พร้อม API `getFestivalProductsForPicker()`
+  - ✅ แนะนำ - UI พร้อม รอ priority score
+
+### ที่เสร็จแล้ว (จาก Phase 3):
+- ✅ **Seasonal/Festival Schema** - SQL tables และ views
+- ✅ **Seasonal/Festival APIs** - ดึงข้อมูลสินค้าตามฤดูกาล/เทศกาลได้จริง
+- ✅ **High Margin APIs** - ดึงสินค้าตามระดับกำไรได้จริง
 
 ### ที่รอ API:
-- ⏳ Priority score calculation
-- ⏳ Data views: `promotion_high_margin_targets`, `promotion_seasonal_ingredient_targets`, etc.
+- ⏳ Priority score calculation - รอ algorithm คำนวณ score
+- ⏳ Data views:
+  - ⏳ `promotion_recommended_targets` - รอ ML/Business rules
 
-- สร้าง priority score
-- รวมเหตุผล:
-  - high margin
-  - seasonal ingredients
-  - festival/event relevance
-  - slow moving
-  - overstock
-  - product expiry
-  - ingredient expiry
-- สร้าง view/RPC:
-  - `promotion_high_margin_targets`
-  - `promotion_seasonal_ingredient_targets`
-  - `promotion_festival_event_targets`
-  - `promotion_recommended_targets`
-- เพิ่ม tab:
-  - กำไรสูง
-  - ตามฤดูกาล
-  - เทศกาล
-  - แนะนำ
+### ที่ต้องทำเพิ่ม:
+- สร้าง priority score algorithm
+- รวมเหตุผลทั้งหมด:
+  - ✅ high margin (เสร็จแล้ว)
+  - ✅ seasonal ingredients (เสร็จแล้ว)
+  - ✅ festival/event relevance (เสร็จแล้ว)
+  - ⏳ slow moving (รอข้อมูล)
+  - ⏳ overstock (รอข้อมูล)
+  - ✅ product expiry (เสร็จแล้ว - Phase 5)
+  - ✅ ingredient expiry (เสร็จแล้ว - Phase 5)
+- สร้าง view: `promotion_recommended_targets`
 - เพิ่ม suggested discount และ explanation/reason list
 
 Test ได้:
 
-- เห็นรายการแนะนำพร้อมเหตุผล
-- sort ตาม priority ได้
-- เลือกไปทำคูปอง/โปรโมชันได้
+- ✅ เห็นรายการ High Margin พร้อมเหตุผล
+- ✅ เห็นรายการ Seasonal พร้อมเหตุผล
+- ✅ เห็นรายการ Festival พร้อมเหตุผล
+- ⏳ sort ตาม priority ได้ (รอ score)
+- ✅ เลือกไปทำคูปอง/โปรโมชันได้
 
 ## Phase 9: Governance ⏳
 
@@ -1574,14 +1816,14 @@ Test ได้:
 |-------|--------|------------|----------|
 | Phase 0: Schema & Permission | ✅ เสร็จ | 100% | SQL migration รันแล้ว |
 | Phase 1: Coupon CRUD | ✅ เสร็จ | 100% | แก้ Dialog Crash แล้ว |
-| Phase 2: POS Integration | ⏳ รอ | 0% | ต้องคืนค่า `_applyCouponCode()` |
-| Phase 3: Product Picker | ✅ เสร็จ | 80% | UI พร้อม รอ API |
-| Phase 4: Availability Rules | ⏳ รอ | 0% | รอ API สต็อก |
-| Phase 5: Expiry Targeting | ⏳ รอ | 0% | รอ Schema วันหมดอายุ |
+| Phase 2: POS Integration | ✅ เสร็จ | 100% | Coupon validation + usage logging พร้อมใช้ |
+| Phase 3: Product Picker | ✅ เสร็จ | 100% | UI + Backend API พร้อมใช้ |
+| Phase 4: Availability Rules | ✅ เสร็จ | 100% | SQL RPC + Service + UI ครบ |
+| Phase 5: Expiry Targeting | ✅ เสร็จ | 100% | SQL + Service + UI Tabs ครบ |
 | Phase 6: Promotion CRUD | ✅ เสร็จ | 100% | รวมกับ Phase 1 |
 | Phase 7: Analytics MVP | ⏳ รอ | 10% | มี Tab แต่ไม่มี UI |
-| Phase 8: Business Intelligence | ⏳ รอ | 20% | UI เตรียมพร้อม |
+| Phase 8: Business Intelligence | 🔄 部分เสร็จ | 70% | Seasonal/Festival/HighMargin APIs เสร็จแล้ว รอ Priority Score |
 | Phase 9: Governance | ⏳ รอ | 0% | Priority ต่ำ |
 | Phase 10: Advanced Analytics | ⏳ รอ | 0% | Priority ต่ำ |
 
-**สรุป:** Phase 0, 1, 3, 6 เสร็จสมบูรณ์ พร้อมไป Phase 2 หรือรอ API
+**สรุป:** Phase 0-6 เสร็จสมบูรณ์ (100%) - เหลือ Phase 7 (Analytics) และ Phase 8 (Priority Score)

@@ -10,6 +10,10 @@ class PosPromotion {
   final DateTime? endAt;
   final DateTime createdAt;
   final DateTime updatedAt;
+  // Phase 4: Availability & Procurement Rules
+  final bool requireInStock;
+  final bool requireSufficientIngredients;
+  final bool includePendingProcurement;
 
   PosPromotion({
     required this.id,
@@ -23,6 +27,10 @@ class PosPromotion {
     this.endAt,
     required this.createdAt,
     required this.updatedAt,
+    // Phase 4: default to false (no availability restrictions by default)
+    this.requireInStock = false,
+    this.requireSufficientIngredients = false,
+    this.includePendingProcurement = false,
   });
 
   static List<String> _stringList(dynamic value) {
@@ -44,6 +52,10 @@ class PosPromotion {
       endAt: map['end_at'] != null ? DateTime.parse(map['end_at']) : null,
       createdAt: map['created_at'] != null ? DateTime.parse(map['created_at']) : DateTime.now(),
       updatedAt: map['updated_at'] != null ? DateTime.parse(map['updated_at']) : DateTime.now(),
+      // Phase 4: Availability fields
+      requireInStock: map['require_in_stock'] ?? false,
+      requireSufficientIngredients: map['require_sufficient_ingredients'] ?? false,
+      includePendingProcurement: map['include_pending_procurement'] ?? false,
     );
   }
 
@@ -60,6 +72,10 @@ class PosPromotion {
       'end_at': endAt?.toIso8601String(),
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
+      // Phase 4: Availability fields
+      'require_in_stock': requireInStock,
+      'require_sufficient_ingredients': requireSufficientIngredients,
+      'include_pending_procurement': includePendingProcurement,
     };
   }
 

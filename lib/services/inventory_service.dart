@@ -4,9 +4,90 @@ import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'table_management_service.dart';
+import '../models/pagination_model.dart';
+
+/// Cache entry class for storing cached data
+class _CacheEntry {
+  final dynamic data;
+  final DateTime timestamp;
+  final Duration duration;
+  
+  _CacheEntry({
+    required this.data,
+    required this.timestamp,
+    this.duration = const Duration(minutes: 5),
+  });
+  
+  bool get isExpired => DateTime.now().difference(timestamp) > duration;
+}
 
 class InventoryService {
   static final SupabaseClient _client = Supabase.instance.client;
+  
+  // =============================================
+  // Cache System for API Responses
+  // =============================================
+  
+  static final Map<String, _CacheEntry> _cache = {};
+  static const Duration _defaultCacheDuration = Duration(minutes: 5);
+  
+  /// Generate cache key from parameters
+  static String _generateCacheKey(String method, Map<String, dynamic> params) {
+    final sortedParams = Map.fromEntries(
+      params.entries.toList()..sort((a, b) => a.key.compareTo(b.key))
+    );
+    final paramsStr = sortedParams.toString();
+    return '$method:${paramsStr.hashCode}';
+  }
+  
+  /// Get data from cache
+  static T? _getCachedData<T>(String key) {
+    final entry = _cache[key];
+    if (entry != null && !entry.isExpired) {
+      return entry.data as T;
+    }
+    // Remove expired entry
+    if (entry != null) {
+      _cache.remove(key);
+    }
+    return null;
+  }
+  
+  /// Set data to cache
+  static void _setCachedData<T>(String key, T data, {Duration? duration}) {
+    _cache[key] = _CacheEntry(
+      data: data,
+      timestamp: DateTime.now(),
+      duration: duration ?? _defaultCacheDuration,
+    );
+  }
+  
+  /// Clear cache by pattern
+  static void clearCachePattern(String pattern) {
+    final keysToRemove = _cache.keys.where((key) => key.contains(pattern)).toList();
+    for (final key in keysToRemove) {
+      _cache.remove(key);
+    }
+  }
+  
+  /// Clear all cache
+  static void clearAllCache() {
+    _cache.clear();
+  }
+  
+  /// Get cache statistics
+  static Map<String, dynamic> getCacheStats() {
+    final totalEntries = _cache.length;
+    final expiredEntries = _cache.values.where((e) => e.isExpired).length;
+    final validEntries = totalEntries - expiredEntries;
+    
+    return {
+      'total_entries': totalEntries,
+      'valid_entries': validEntries,
+      'expired_entries': expiredEntries,
+      'cache_size_mb': _cache.toString().length / (1024 * 1024),
+    };
+  }
 
   static const Map<String, dynamic> _productTaxFallback = {
     'is_tax_exempt': false,
@@ -32,8 +113,14 @@ class InventoryService {
   // Products
   // =============================================
 
-  static Future<List<Map<String, dynamic>>> getProducts() async {
+  static Future<List<Map<String, dynamic>>> getProducts({bool useCache = false}) async {
     try {
+      // Try to get from cache
+      if (useCache) {
+        final cached = _getCachedData<List<Map<String, dynamic>>>('getProducts');
+        if (cached != null) return cached;
+      }
+
       final response = await _client
           .from('inventory_products')
           .select('''
@@ -44,9 +131,37 @@ class InventoryService {
           ''')
           .eq('is_active', true)
           .order('name');
-      return List<Map<String, dynamic>>.from(response);
+      
+      final result = List<Map<String, dynamic>>.from(response);
+      
+      // Cache the result
+      if (useCache) {
+        _setCachedData('getProducts', result);
+      }
+      
+      return result;
     } catch (e) {
       debugPrint('Error loading products: $e');
+      return [];
+    }
+  }
+
+  /// ดึงสินค้าที่สต็อกต่ำ (low stock)
+  static Future<List<Map<String, dynamic>>> getLowStockProducts({int threshold = 10}) async {
+    try {
+      final response = await _client
+          .from('inventory_products')
+          .select('''
+            *,
+            category:inventory_categories(id, name),
+            unit:inventory_units(id, name, abbreviation)
+          ''')
+          .eq('is_active', true)
+          .lte('quantity', threshold)
+          .order('quantity');
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error loading low stock products: $e');
       return [];
     }
   }
@@ -970,14 +1085,28 @@ class InventoryService {
   // Categories (ประเภทสินค้า/วัตถุดิบ - ใช้กับทั้งสองตาราง)
   // =============================================
 
-  static Future<List<Map<String, dynamic>>> getCategories() async {
+  static Future<List<Map<String, dynamic>>> getCategories({bool useCache = false}) async {
     try {
+      // Try to get from cache
+      if (useCache) {
+        final cached = _getCachedData<List<Map<String, dynamic>>>('getCategories');
+        if (cached != null) return cached;
+      }
+
       final response = await _client
           .from('inventory_categories')
           .select('*')
           .order('sort_order')
           .order('code');
-      return List<Map<String, dynamic>>.from(response);
+      
+      final result = List<Map<String, dynamic>>.from(response);
+      
+      // Cache the result
+      if (useCache) {
+        _setCachedData('getCategories', result);
+      }
+      
+      return result;
     } catch (e) {
       debugPrint('Error loading categories: $e');
       return [];
@@ -3383,23 +3512,8 @@ class InventoryService {
     }
   }
 
-  /// ดึงสินค้าที่คงเหลือต่ำกว่า min_quantity
-  static Future<List<Map<String, dynamic>>> getLowStockProducts() async {
-    try {
-      final products = await getProducts();
-      return products.where((p) {
-        final qty = (p['quantity'] as num?)?.toDouble() ?? 0;
-        final minQty = (p['min_quantity'] as num?)?.toDouble() ?? 0;
-        return qty <= minQty && minQty > 0;
-      }).toList();
-    } catch (e) {
-      debugPrint('Error getting low stock products: $e');
-      return [];
-    }
-  }
-
-  /// สร้าง PO อัตโนมัติสำหรับสินค้าต่ำสต็อก
-  static Future<bool> createAutoPOForLowStock({
+  /// สร้าง PO อัตโนมัติจากแจ้งเตือนสต็อกต่ำ
+  static Future<bool> createAutoPurchaseOrder({
     required String productId,
     required String supplierId,
     required double quantity,
@@ -3490,6 +3604,23 @@ class InventoryService {
       debugPrint('Error creating auto PO for expiring stock: $e');
       return false;
     }
+  }
+
+  /// Alias for backward compatibility
+  static Future<bool> createAutoPOForLowStock({
+    required String productId,
+    required String supplierId,
+    required double quantity,
+    DateTime? expectedDate,
+    String? createdBy,
+  }) async {
+    return createAutoPurchaseOrder(
+      productId: productId,
+      supplierId: supplierId,
+      quantity: quantity,
+      expectedDate: expectedDate,
+      createdBy: createdBy,
+    );
   }
 
   /// ดึงรายการ supplier ทั้งหมด
@@ -5533,6 +5664,1065 @@ class InventoryService {
     final dateStr = '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
     final random = now.millisecondsSinceEpoch % 10000;
     return 'LOT$dateStr-$random';
+  }
+
+  // =============================================
+  // Phase 3: Product Picker Advanced Filters APIs
+  // =============================================
+
+  /// ดึงข้อมูลสต็อกสำหรับหลายสินค้า (Performance fix)
+  static Future<Map<String, Map<String, dynamic>>> getStockDetailsForProducts(
+    List<String> productIds,
+  ) async {
+    try {
+      final response = await _client
+          .from('inventory_stock_summary')
+          .select('*')
+          .inFilter('item_id', productIds)
+          .eq('item_type', 'product');
+
+      final stockMap = <String, Map<String, dynamic>>{};
+      for (final stock in response) {
+        final productId = stock['item_id']?.toString();
+        if (productId != null) {
+          stockMap[productId] = {
+            'product_id': stock['item_id'],
+            'product_name': stock['item_name'],
+            'total_quantity': stock['total_quantity'] ?? 0,
+            'available_quantity': stock['available_quantity'] ?? 0,
+            'reserved_quantity': stock['reserved_quantity'] ?? 0,
+            'reserved_percentage': stock['reserved_percentage'] ?? 0,
+          };
+        }
+      }
+      return stockMap;
+    } catch (e) {
+      debugPrint('Error getStockDetailsForProducts: $e');
+      return {};
+    }
+  }
+
+  // =============================================
+  // Pagination Support for Large Datasets
+  // =============================================
+
+  /// ดึงสินค้าแบบมี pagination (with caching)
+  static Future<PaginatedResult> getProductsPaginated({
+    int page = 1,
+    int limit = 20,
+    String? categoryId,
+    bool? requireInStock,
+    double? minPrice,
+    double? maxPrice,
+    String? searchQuery,
+    String? sortBy,
+    bool? ascending,
+    bool useCache = true,
+    Duration? cacheDuration,
+  }) async {
+    try {
+      // Generate cache key
+      final cacheKey = _generateCacheKey('getProductsPaginated', {
+        'page': page,
+        'limit': limit,
+        'categoryId': categoryId,
+        'requireInStock': requireInStock,
+        'minPrice': minPrice,
+        'maxPrice': maxPrice,
+        'searchQuery': searchQuery,
+        'sortBy': sortBy,
+        'ascending': ascending,
+      });
+      
+      // Try to get from cache
+      if (useCache && page == 1) { // Only cache first page
+        final cached = _getCachedData<PaginatedResult>(cacheKey);
+        if (cached != null) {
+          return cached;
+        }
+      }
+      
+      final offset = (page - 1) * limit;
+      
+      dynamic query = _client
+          .from('inventory_products')
+          .select('*');
+
+      // Apply filters
+      if (categoryId != null && categoryId != 'all') {
+        query = query.eq('category_id', categoryId);
+      }
+      if (requireInStock == true) {
+        query = query.gt('quantity', 0);
+      }
+      if (minPrice != null) {
+        query = query.gte('price', minPrice);
+      }
+      if (maxPrice != null) {
+        query = query.lte('price', maxPrice);
+      }
+      if (searchQuery != null && searchQuery.isNotEmpty) {
+        query = query.or('name.ilike.%$searchQuery%,code.ilike.%$searchQuery%,sku.ilike.%$searchQuery%');
+      }
+
+      // Apply sorting
+      if (sortBy != null) {
+        query = query.order(sortBy, ascending: ascending ?? true);
+      } else {
+        query = query.order('name', ascending: true);
+      }
+
+      // Apply pagination
+      query = query.range(offset, offset + limit - 1);
+
+      final response = await query;
+      final data = List<Map<String, dynamic>>.from(response);
+      
+      // Determine if there are more results by checking if we got a full page
+      final hasMore = data.length >= limit;
+
+      final result = PaginatedResult<Map<String, dynamic>>(
+        data: data,
+        page: page,
+        limit: limit,
+        total: hasMore ? (page * limit) + 1 : (page - 1) * limit + data.length, // Estimate total
+        hasMore: hasMore,
+      );
+      
+      // Cache the result
+      if (useCache && page == 1) {
+        _setCachedData(cacheKey, result, duration: cacheDuration);
+      }
+      
+      return result;
+    } catch (e) {
+      debugPrint('Error getProductsPaginated: $e');
+      return PaginatedResult<Map<String, dynamic>>(
+        data: [],
+        page: page,
+        limit: limit,
+        total: 0,
+        hasMore: false,
+      );
+    }
+  }
+
+  /// ดึงสินค้าใกล้หมดอายุแบบมี pagination
+  static Future<PaginatedResult> getExpiringProductsPaginated({
+    int page = 1,
+    int limit = 20,
+    int daysThreshold = 7,
+    String? sortBy,
+    bool? ascending,
+  }) async {
+    try {
+      final offset = (page - 1) * limit;
+      final thresholdDate = DateTime.now().add(Duration(days: daysThreshold));
+      
+      dynamic query = _client
+          .from('inventory_item_batches')
+          .select('''
+            product_id,
+            product:inventory_products(id, name, price, cost, category_id, image_url),
+            batch_number,
+            quantity,
+            expiry_date,
+            days_until_expiry
+          ''')
+          .eq('is_active', true)
+          .eq('is_expired', false)
+          .gt('quantity', 0)
+          .lte('expiry_date', thresholdDate.toIso8601String().split('T')[0])
+          .gte('expiry_date', DateTime.now().toIso8601String().split('T')[0]);
+
+      // Apply sorting
+      if (sortBy != null) {
+        query = query.order(sortBy, ascending: ascending ?? true);
+      } else {
+        query = query.order('expiry_date', ascending: true);
+      }
+
+      // Apply pagination
+      query = query.range(offset, offset + limit - 1);
+
+      final response = await query;
+      final data = List<Map<String, dynamic>>.from(response);
+      
+      // Determine if there are more results
+      final hasMore = data.length >= limit;
+
+      return PaginatedResult<Map<String, dynamic>>(
+        data: data,
+        page: page,
+        limit: limit,
+        total: hasMore ? (page * limit) + 1 : (page - 1) * limit + data.length,
+        hasMore: hasMore,
+      );
+    } catch (e) {
+      debugPrint('Error getExpiringProductsPaginated: $e');
+      return PaginatedResult<Map<String, dynamic>>(
+        data: [],
+        page: page,
+        limit: limit,
+        total: 0,
+        hasMore: false,
+      );
+    }
+  }
+
+  /// ดึงสินค้ากำไรสูงแบบมี pagination
+  static Future<PaginatedResult> getHighMarginProductsPaginated({
+    int page = 1,
+    int limit = 20,
+    String marginLevel = 'high',
+    String? sortBy,
+    bool? ascending,
+  }) async {
+    try {
+      final offset = (page - 1) * limit;
+      
+      // Calculate margin thresholds
+      double minMargin, maxMargin;
+      switch (marginLevel) {
+        case 'high':
+          minMargin = 0.5; // 50%
+          maxMargin = 1.0;
+          break;
+        case 'medium':
+          minMargin = 0.3; // 30%
+          maxMargin = 0.5;
+          break;
+        case 'low':
+          minMargin = 0.0;
+          maxMargin = 0.3;
+          break;
+        default:
+          minMargin = 0.5;
+          maxMargin = 1.0;
+      }
+
+      dynamic query = _client
+          .from('inventory_products')
+          .select('''
+            *,
+            margin_percent: (price - cost) / price
+          ''')
+          .gte('margin_percent', minMargin)
+          .lt('margin_percent', maxMargin)
+          .gt('price', 0)
+          .gt('cost', 0);
+
+      // Apply sorting
+      if (sortBy != null) {
+        query = query.order(sortBy, ascending: ascending ?? true);
+      } else {
+        query = query.order('margin_percent', ascending: false);
+      }
+
+      // Apply pagination
+      query = query.range(offset, offset + limit - 1);
+
+      final response = await query;
+      final data = List<Map<String, dynamic>>.from(response);
+      
+      // Determine if there are more results
+      final hasMore = data.length >= limit;
+
+      return PaginatedResult<Map<String, dynamic>>(
+        data: data,
+        page: page,
+        limit: limit,
+        total: hasMore ? (page * limit) + 1 : (page - 1) * limit + data.length,
+        hasMore: hasMore,
+      );
+    } catch (e) {
+      debugPrint('Error getHighMarginProductsPaginated: $e');
+      return PaginatedResult<Map<String, dynamic>>(
+        data: [],
+        page: page,
+        limit: limit,
+        total: 0,
+        hasMore: false,
+      );
+    }
+  }
+
+  /// ดึงสินค้าพร้อมข้อมูลสต็อกสำหรับ Product Picker
+  /// รองรับ filter: category, stock availability, price range
+  static Future<List<Map<String, dynamic>>> getProductsForPicker({
+    String? categoryId,
+    bool? requireInStock,
+    double? minPrice,
+    double? maxPrice,
+    String? searchQuery,
+  }) async {
+    try {
+      // ดึงสินค้าทั้งหมดก่อน
+      var products = await getProducts();
+
+      // Filter by category
+      if (categoryId != null && categoryId != 'all') {
+        products = products.where((p) => p['category_id']?.toString() == categoryId).toList();
+      }
+
+      // Filter by price range
+      if (minPrice != null) {
+        products = products.where((p) {
+          final price = (p['price'] as num?)?.toDouble() ?? 0;
+          return price >= minPrice;
+        }).toList();
+      }
+      if (maxPrice != null) {
+        products = products.where((p) {
+          final price = (p['price'] as num?)?.toDouble() ?? 0;
+          return price <= maxPrice;
+        }).toList();
+      }
+
+      // Filter by search query
+      if (searchQuery != null && searchQuery.isNotEmpty) {
+        final query = searchQuery.toLowerCase();
+        products = products.where((p) {
+          final name = (p['name'] ?? '').toString().toLowerCase();
+          final code = (p['code'] ?? '').toString().toLowerCase();
+          final sku = (p['sku'] ?? '').toString().toLowerCase();
+          return name.contains(query) || code.contains(query) || sku.contains(query);
+        }).toList();
+      }
+
+      // Performance fix: Batch fetch stock details
+      final productIds = products
+          .map((p) => p['id']?.toString())
+          .whereType<String>()
+          .toList();
+      
+      final stockMap = await getStockDetailsForProducts(productIds);
+
+      // Add stock info to each product
+      final productsWithStock = <Map<String, dynamic>>[];
+      for (final product in products) {
+        final productId = product['id']?.toString();
+        if (productId != null) {
+          final stockDetails = stockMap[productId] ?? {
+            'available_quantity': (product['quantity'] as num?)?.toDouble() ?? 0,
+            'reserved_quantity': 0,
+          };
+
+          // Filter by stock availability if required
+          if (requireInStock == true && stockDetails['available_quantity'] <= 0) {
+            continue;
+          }
+
+          productsWithStock.add({
+            ...product,
+            'stock_details': stockDetails,
+          });
+        }
+      }
+
+      return productsWithStock;
+    } catch (e) {
+      debugPrint('Error getProductsForPicker: $e');
+      return [];
+    }
+  }
+
+  /// ดึงสินค้าใกล้หมดอายุพร้อมข้อมูลสต็อก
+  static Future<List<Map<String, dynamic>>> getExpiringProductsForPicker({
+    int daysThreshold = 7,
+  }) async {
+    try {
+      // ดึง batch ใกล้หมดอายุ
+      final expiringBatches = await getExpiringBatches(daysThreshold: daysThreshold);
+
+      // Group by product and sum quantities
+      final productMap = <String, Map<String, dynamic>>{};
+      for (final batch in expiringBatches) {
+        final productId = batch['product_id']?.toString();
+        if (productId == null) continue;
+
+        if (!productMap.containsKey(productId)) {
+          productMap[productId] = {
+            'id': productId,
+            'name': batch['product_name'] ?? 'ไม่ระบุชื่อ',
+            'expiring_quantity': 0.0,
+            'nearest_expiry': batch['expiry_date'],
+            'batches': [],
+          };
+        }
+
+        final quantity = (batch['quantity'] as num?)?.toDouble() ?? 0;
+        productMap[productId]!['expiring_quantity'] =
+            (productMap[productId]!['expiring_quantity'] as double) + quantity;
+        (productMap[productId]!['batches'] as List).add(batch);
+      }
+
+      // Get full product details
+      final products = await getProducts();
+      final result = <Map<String, dynamic>>[];
+
+      for (final entry in productMap.entries) {
+        final productId = entry.key;
+        final expiringData = entry.value;
+
+        final product = products.firstWhere(
+          (p) => p['id']?.toString() == productId,
+          orElse: () => {},
+        );
+
+        if (product.isNotEmpty) {
+          result.add({
+            ...product,
+            'expiring_quantity': expiringData['expiring_quantity'],
+            'nearest_expiry_date': expiringData['nearest_expiry'],
+            'expiring_batches': expiringData['batches'],
+          });
+        }
+      }
+
+      return result;
+    } catch (e) {
+      debugPrint('Error getExpiringProductsForPicker: $e');
+      return [];
+    }
+  }
+
+  /// ดึงสินค้ากำไรสูง (ตาม margin)
+  static Future<List<Map<String, dynamic>>> getHighMarginProductsForPicker({
+    String marginLevel = 'high', // 'high', 'medium', 'low'
+  }) async {
+    try {
+      final products = await getProducts();
+
+      // Calculate margin for each product
+      final productsWithMargin = products.map((p) {
+        final price = (p['price'] as num?)?.toDouble() ?? 0;
+        final cost = (p['cost'] as num?)?.toDouble() ?? 0;
+        final margin = price > 0 ? ((price - cost) / price * 100) : 0;
+
+        return {
+          ...p,
+          'margin_percent': margin,
+          'margin_amount': price - cost,
+        };
+      }).toList();
+
+      // Filter by margin level
+      double minMargin;
+      double? maxMargin;
+      switch (marginLevel) {
+        case 'high':
+          minMargin = 50;
+          break;
+        case 'medium':
+          minMargin = 30;
+          maxMargin = 50;
+          break;
+        case 'low':
+          minMargin = 0;
+          maxMargin = 30;
+          break;
+        default:
+          minMargin = 50;
+      }
+
+      return productsWithMargin.where((p) {
+        final margin = p['margin_percent'] as double;
+        if (maxMargin != null) {
+          return margin >= minMargin && margin < maxMargin;
+        }
+        return margin >= minMargin;
+      }).toList();
+    } catch (e) {
+      debugPrint('Error getHighMarginProductsForPicker: $e');
+      return [];
+    }
+  }
+
+  /// ดึงสินค้าที่พร้อมขาย (มีสต็อกหรือผลิตได้)
+  static Future<List<Map<String, dynamic>>> getAvailableProductsForPicker({
+    bool requireSufficientIngredients = false,
+  }) async {
+    try {
+      final products = await getProducts();
+      final availableProducts = <Map<String, dynamic>>[];
+
+      for (final product in products) {
+        final productId = product['id']?.toString();
+        if (productId == null) continue;
+
+        // ตรวจสอบสต็อก
+        final stockDetails = await getStockDetails(productId);
+        final hasStock = (stockDetails?['available_quantity'] ?? 0) > 0;
+
+        if (hasStock) {
+          availableProducts.add({
+            ...product,
+            'availability': {
+              'has_stock': true,
+              'can_produce': false,
+              'available_quantity': stockDetails?['available_quantity'],
+            },
+          });
+        } else if (requireSufficientIngredients) {
+          // ตรวจสอบว่าผลิตได้หรือไม่
+          final availability = await checkProductAvailability(
+            productId,
+            requireInStock: false,
+            includePendingProcurement: false,
+          );
+
+          if (availability['can_fulfill'] == true) {
+            availableProducts.add({
+              ...product,
+              'availability': {
+                'has_stock': false,
+                'can_produce': true,
+                'ingredients_status': availability['ingredients_status'],
+              },
+            });
+          }
+        }
+      }
+
+      return availableProducts;
+    } catch (e) {
+      debugPrint('Error getAvailableProductsForPicker: $e');
+      return [];
+    }
+  }
+
+  /// ดึงสินค้าตามฤดูกาล
+  static Future<List<Map<String, dynamic>>> getSeasonalProductsForPicker({
+    String? season,
+  }) async {
+    try {
+      if (season == null || season == 'all') {
+        // ถ้าไม่ระบุฤดูกาล ดึงสินค้าทั้งหมด
+        return await getProductsForPicker();
+      }
+
+      // ดึงสินค้าที่มี seasonal tag ตรงกับฤดูกาล
+      final response = await _client
+          .from('promotion_products_with_seasonal_tags')
+          .select('''
+            product_id,
+            product_name,
+            seasonal_name,
+            seasonal_name_th
+          ''')
+          .eq('seasonal_name', season);
+
+      // ดึงข้อมูลสินค้าเต็ม
+      final productIds = response
+          .map((r) => r['product_id']?.toString())
+          .whereType<String>()
+          .toList();
+
+      if (productIds.isEmpty) return [];
+
+      final products = await getProductsForPicker();
+      return products
+          .where((p) => productIds.contains(p['id']?.toString()))
+          .map((p) => {
+            ...p,
+            'season': season,
+          })
+          .toList();
+    } catch (e) {
+      debugPrint('Error getSeasonalProductsForPicker: $e');
+      return [];
+    }
+  }
+
+  /// ดึงสินค้าตามเทศกาล
+  static Future<List<Map<String, dynamic>>> getFestivalProductsForPicker() async {
+    try {
+      // ดึงเทศกาลปัจจุบันและที่จะมาถึง
+      final festivalsResponse = await _client.rpc('get_current_festivals', params: {'days_ahead': 30});
+      final festivals = List<Map<String, dynamic>>.from(festivalsResponse);
+
+      if (festivals.isEmpty) return [];
+
+      final festivalIds = festivals
+          .map((f) => f['id']?.toString())
+          .whereType<String>()
+          .toList();
+
+      // ดึงสินค้าที่มี festival tag
+      final response = await _client
+          .from('promotion_products_with_festival_tags')
+          .select('''
+            product_id,
+            product_name,
+            festival_name,
+            festival_name_th,
+            festival_date,
+            days_until
+          ''')
+          .inFilter('festival_tag_id', festivalIds)
+          .order('days_until', ascending: true);
+
+      // ดึงข้อมูลสินค้าเต็ม
+      final productIds = response
+          .map((r) => r['product_id']?.toString())
+          .whereType<String>()
+          .toList();
+
+      if (productIds.isEmpty) return [];
+
+      final products = await getProductsForPicker();
+      final productMap = <String, Map<String, dynamic>>{};
+      for (final p in products) {
+        final id = p['id']?.toString();
+        if (id != null) productMap[id] = p;
+      }
+
+      // เชื่อมข้อมูล festival
+      final result = <Map<String, dynamic>>[];
+      for (final item in response) {
+        final productId = item['product_id']?.toString();
+        if (productId != null && productMap.containsKey(productId)) {
+          result.add({
+            ...productMap[productId]!,
+            'festival': item['festival_name'],
+            'festival_th': item['festival_name_th'],
+            'festival_date': item['festival_date'],
+            'days_until_festival': item['days_until'],
+          });
+        }
+      }
+
+      return result;
+    } catch (e) {
+      debugPrint('Error getFestivalProductsForPicker: $e');
+      return [];
+    }
+  }
+
+  /// ดึงข้อมูลฤดูกาลทั้งหมด
+  static Future<List<Map<String, dynamic>>> getSeasonalTags() async {
+    try {
+      final response = await _client
+          .from('promotion_seasonal_tags')
+          .select('*')
+          .eq('is_active', true)
+          .order('name');
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error getSeasonalTags: $e');
+      return [];
+    }
+  }
+
+  /// ดึงข้อมูลเทศกาลทั้งหมด
+  static Future<List<Map<String, dynamic>>> getFestivalTags() async {
+    try {
+      final response = await _client
+          .from('promotion_festival_tags')
+          .select('*')
+          .eq('is_active', true)
+          .order('festival_date', ascending: true);
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error getFestivalTags: $e');
+      return [];
+    }
+  }
+
+  /// ดึงฤดูกาลปัจจุบัน
+  static Future<String> getCurrentSeason() async {
+    try {
+      final response = await _client.rpc('get_current_season');
+      return response?.toString() ?? 'all';
+    } catch (e) {
+      debugPrint('Error getCurrentSeason: $e');
+      return 'all';
+    }
+  }
+
+  // =============================================
+  // Phase 4: Availability & Procurement Rules
+  // =============================================
+
+  /// ตรวจสอบว่าสินค้ามี stock พร้อมขายหรือไม่
+  /// กฎ: stock > 0 = พร้อมขาย
+  static Future<Map<String, dynamic>> checkProductAvailability(
+    String productId, {
+    bool requireInStock = true,
+    bool includePendingProcurement = false,
+  }) async {
+    try {
+      final response = await _client.rpc(
+        'check_product_availability',
+        params: {
+          'p_product_id': productId,
+          'p_require_in_stock': requireInStock,
+          'p_include_pending_procurement': includePendingProcurement,
+        },
+      );
+      
+      if (response is List && response.isNotEmpty) {
+        return Map<String, dynamic>.from(response.first);
+      }
+      
+      return {
+        'product_id': productId,
+        'is_available': false,
+        'current_stock': 0,
+        'pending_procurement_quantity': 0,
+        'available_quantity': 0,
+        'reason': 'ไม่พบข้อมูลสินค้า',
+      };
+    } catch (e) {
+      debugPrint('Error checkProductAvailability: $e');
+      return {
+        'product_id': productId,
+        'is_available': false,
+        'current_stock': 0,
+        'pending_procurement_quantity': 0,
+        'available_quantity': 0,
+        'reason': 'เกิดข้อผิดพลาด: $e',
+      };
+    }
+  }
+
+  /// ดึงจำนวนสินค้าที่รอรับจากการจัดซื้อ
+  /// นับ PO ทั้งหมดยกเว้น completed/cancelled
+  static Future<double> getPendingProcurementQuantity(String productId) async {
+    try {
+      final response = await _client.rpc(
+        'get_pending_procurement_quantity',
+        params: {'p_product_id': productId},
+      );
+      
+      if (response != null) {
+        return (response as num).toDouble();
+      }
+      return 0.0;
+    } catch (e) {
+      debugPrint('Error getPendingProcurementQuantity: $e');
+      return 0.0;
+    }
+  }
+
+  /// ตรวจสอบว่าวัตถุดิบในสูตรอาหารพอผลิตสินค้าได้มากกว่า 1 ชิ้นหรือไม่
+  static Future<Map<String, dynamic>> checkRecipeIngredientsSufficient(
+    String productId,
+  ) async {
+    try {
+      final response = await _client.rpc(
+        'check_recipe_ingredients_sufficient',
+        params: {'p_product_id': productId},
+      );
+      
+      if (response is List && response.isNotEmpty) {
+        return Map<String, dynamic>.from(response.first);
+      }
+      
+      return {
+        'product_id': productId,
+        'can_produce': false,
+        'max_possible_servings': 0,
+        'ingredient_count': 0,
+        'sufficient_ingredients': 0,
+        'insufficient_ingredients': <String>[],
+        'reason': 'ไม่พบข้อมูลสูตรอาหาร',
+      };
+    } catch (e) {
+      debugPrint('Error checkRecipeIngredientsSufficient: $e');
+      return {
+        'product_id': productId,
+        'can_produce': false,
+        'max_possible_servings': 0,
+        'ingredient_count': 0,
+        'sufficient_ingredients': 0,
+        'insufficient_ingredients': <String>[],
+        'reason': 'เกิดข้อผิดพลาด: $e',
+      };
+    }
+  }
+
+  /// ตรวจสอบสินค้าพร้อมขายแบบครบวงจร
+  /// รวม stock, recipe ingredients, และ pending procurement
+  static Future<Map<String, dynamic>> checkProductFullAvailability(
+    String productId, {
+    bool requireInStock = true,
+    bool requireSufficientIngredients = false,
+    bool includePendingProcurement = false,
+  }) async {
+    try {
+      final response = await _client.rpc(
+        'check_product_full_availability',
+        params: {
+          'p_product_id': productId,
+          'p_require_in_stock': requireInStock,
+          'p_require_sufficient_ingredients': requireSufficientIngredients,
+          'p_include_pending_procurement': includePendingProcurement,
+        },
+      );
+      
+      if (response is List && response.isNotEmpty) {
+        return Map<String, dynamic>.from(response.first);
+      }
+      
+      return {
+        'product_id': productId,
+        'is_available': false,
+        'availability_status': 'not_available',
+        'current_stock': 0,
+        'pending_procurement': 0,
+        'recipe_possible_servings': null,
+        'total_available': 0,
+        'disabled_reason': 'ไม่พบข้อมูลสินค้า',
+      };
+    } catch (e) {
+      debugPrint('Error checkProductFullAvailability: $e');
+      return {
+        'product_id': productId,
+        'is_available': false,
+        'availability_status': 'error',
+        'current_stock': 0,
+        'pending_procurement': 0,
+        'recipe_possible_servings': null,
+        'total_available': 0,
+        'disabled_reason': 'เกิดข้อผิดพลาด: $e',
+      };
+    }
+  }
+
+  /// ดึงรายการสินค้าทั้งหมดพร้อมสถานะ availability
+  static Future<List<Map<String, dynamic>>> getAvailableProducts({
+    bool requireInStock = true,
+    bool requireSufficientIngredients = false,
+    bool includePendingProcurement = false,
+  }) async {
+    try {
+      final response = await _client.rpc(
+        'get_available_products',
+        params: {
+          'p_require_in_stock': requireInStock,
+          'p_require_sufficient_ingredients': requireSufficientIngredients,
+          'p_include_pending_procurement': includePendingProcurement,
+        },
+      );
+      
+      if (response is List) {
+        return response
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList();
+      }
+      return [];
+    } catch (e) {
+      debugPrint('Error getAvailableProducts: $e');
+      return [];
+    }
+  }
+
+  /// ดึงสรุป availability ของสินค้าทั้งหมดจาก view
+  static Future<List<Map<String, dynamic>>> getProductAvailabilitySummary() async {
+    try {
+      final response = await _client
+          .from('product_availability_summary')
+          .select('*')
+          .order('product_name');
+      
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error getProductAvailabilitySummary: $e');
+      return [];
+    }
+  }
+
+  /// ตรวจสอบสินค้าหลายรายการพร้อมกัน (Batch Check)
+  static Future<Map<String, Map<String, dynamic>>> checkProductsAvailabilityBatch(
+    List<String> productIds, {
+    bool requireInStock = true,
+    bool requireSufficientIngredients = false,
+    bool includePendingProcurement = false,
+  }) async {
+    final results = <String, Map<String, dynamic>>{};
+    
+    for (final productId in productIds) {
+      final availability = await checkProductFullAvailability(
+        productId,
+        requireInStock: requireInStock,
+        requireSufficientIngredients: requireSufficientIngredients,
+        includePendingProcurement: includePendingProcurement,
+      );
+      results[productId] = availability;
+    }
+    
+    return results;
+  }
+
+  /// กรองรายการสินค้าที่พร้อมขายเท่านั้น
+  static Future<List<Map<String, dynamic>>> filterAvailableProducts(
+    List<Map<String, dynamic>> products, {
+    bool requireInStock = true,
+    bool requireSufficientIngredients = false,
+    bool includePendingProcurement = false,
+  }) async {
+    final availableProducts = <Map<String, dynamic>>[];
+    
+    for (final product in products) {
+      final productId = product['id']?.toString();
+      if (productId == null) continue;
+      
+      final availability = await checkProductFullAvailability(
+        productId,
+        requireInStock: requireInStock,
+        requireSufficientIngredients: requireSufficientIngredients,
+        includePendingProcurement: includePendingProcurement,
+      );
+      
+      if (availability['is_available'] == true) {
+        availableProducts.add({
+          ...product,
+          'availability': availability,
+        });
+      }
+    }
+    
+    return availableProducts;
+  }
+
+  // =============================================
+  // Phase 5: Expiry Targeting Methods
+  // =============================================
+
+  /// ดึงสินค้าใกล้หมดอายุสำหรับทำโปรโมชั่นระบาย
+  static Future<List<Map<String, dynamic>>> getExpiringProducts({
+    int daysThreshold = 7,
+    bool includeExpired = true,
+  }) async {
+    try {
+      final response = await _client.rpc(
+        'get_expiring_products',
+        params: {
+          'p_days_threshold': daysThreshold,
+          'p_include_expired': includeExpired,
+        },
+      );
+
+      return List<Map<String, dynamic>>.from(response as List? ?? []);
+    } catch (e) {
+      debugPrint('Error getExpiringProducts: $e');
+      return [];
+    }
+  }
+
+  /// ดึงวัตถุดิบใกล้หมดอายุพร้อมเมนูที่ใช้
+  static Future<List<Map<String, dynamic>>> getExpiringIngredients({
+    int daysThreshold = 7,
+    bool includeExpired = true,
+  }) async {
+    try {
+      final response = await _client.rpc(
+        'get_expiring_ingredients',
+        params: {
+          'p_days_threshold': daysThreshold,
+          'p_include_expired': includeExpired,
+        },
+      );
+
+      return List<Map<String, dynamic>>.from(response as List? ?? []);
+    } catch (e) {
+      debugPrint('Error getExpiringIngredients: $e');
+      return [];
+    }
+  }
+
+  /// ดึงเมนูที่แนะนำจากวัตถุดิบใกล้หมดอายุ
+  static Future<List<Map<String, dynamic>>> getRecipesFromExpiringIngredients({
+    List<String>? ingredientIds,
+    int daysThreshold = 7,
+  }) async {
+    try {
+      final response = await _client.rpc(
+        'get_recipes_from_expiring_ingredients',
+        params: {
+          'p_ingredient_ids': ingredientIds,
+          'p_days_threshold': daysThreshold,
+        },
+      );
+
+      return List<Map<String, dynamic>>.from(response as List? ?? []);
+    } catch (e) {
+      debugPrint('Error getRecipesFromExpiringIngredients: $e');
+      return [];
+    }
+  }
+
+  /// ดึงสรุปสินค้าและวัตถุดิบใกล้หมดอายุ (สำหรับ dashboard)
+  static Future<Map<String, dynamic>> getExpirySummary() async {
+    try {
+      final products = await getExpiringProducts(daysThreshold: 30);
+      final ingredients = await getExpiringIngredients(daysThreshold: 30);
+
+      // นับจำนวนตามระดับความเร่งด่วน
+      final criticalProducts = products.where((p) => p['expiry_status'] == 'expired' || p['expiry_status'] == 'critical').length;
+      final warningProducts = products.where((p) => p['expiry_status'] == 'warning').length;
+      
+      final criticalIngredients = ingredients.where((i) => i['expiry_status'] == 'expired' || i['expiry_status'] == 'critical').length;
+      final warningIngredients = ingredients.where((i) => i['expiry_status'] == 'warning').length;
+
+      return {
+        'products': {
+          'total': products.length,
+          'critical': criticalProducts,
+          'warning': warningProducts,
+          'expiring_soon': criticalProducts + warningProducts,
+        },
+        'ingredients': {
+          'total': ingredients.length,
+          'critical': criticalIngredients,
+          'warning': warningIngredients,
+          'expiring_soon': criticalIngredients + warningIngredients,
+          'affected_recipes': ingredients.fold<int>(0, (sum, i) => sum + ((i['affected_recipes'] as List?)?.length ?? 0)),
+        },
+        'total_items': products.length + ingredients.length,
+        'needs_immediate_action': criticalProducts + criticalIngredients,
+      };
+    } catch (e) {
+      debugPrint('Error getExpirySummary: $e');
+      return {
+        'products': {'total': 0, 'critical': 0, 'warning': 0, 'expiring_soon': 0},
+        'ingredients': {'total': 0, 'critical': 0, 'warning': 0, 'expiring_soon': 0, 'affected_recipes': 0},
+        'total_items': 0,
+        'needs_immediate_action': 0,
+      };
+    }
+  }
+
+  /// กรองสินค้าใกล้หมดอายุตามช่วงวันที่เลือก (3, 7, 14, 30 วัน)
+  static Future<List<Map<String, dynamic>>> getExpiringProductsByFilter(
+    String filterType, {
+    bool includeExpired = true,
+  }) async {
+    final daysMap = {
+      '3days': 3,
+      '7days': 7,
+      '14days': 14,
+      '30days': 30,
+      'expired': 0,
+    };
+
+    final days = daysMap[filterType] ?? 7;
+    
+    if (filterType == 'expired') {
+      // ดึงเฉพาะที่หมดอายุแล้ว
+      final allExpiring = await getExpiringProducts(
+        daysThreshold: 0,
+        includeExpired: true,
+      );
+      return allExpiring.where((p) => p['days_until_expiry'] < 0).toList();
+    }
+
+    return getExpiringProducts(
+      daysThreshold: days,
+      includeExpired: includeExpired,
+    );
   }
 }
 

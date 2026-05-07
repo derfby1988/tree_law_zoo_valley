@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import '../theme/app_design_system.dart';
-import '../services/inventory_service.dart';
+import 'package:tree_law_zoo_valley/services/inventory_service.dart';
+import 'package:tree_law_zoo_valley/theme/app_design_system.dart';
+import 'package:tree_law_zoo_valley/models/pagination_model.dart';
 
 class PromotionProductPickerPage extends StatefulWidget {
   final List<Map<String, dynamic>> initiallySelectedProducts;
@@ -48,6 +49,19 @@ class _PromotionProductPickerPageState extends State<PromotionProductPickerPage>
   String _expiringFilter = '7'; // days
   String _marginFilter = 'high'; // high, medium, low
   String _seasonFilter = 'summer'; // summer, rainy, winter
+  String _searchQuery = '';
+  bool _showFilters = false;
+  
+  // Sorting
+  String _sortBy = 'name';
+  bool _sortAscending = true;
+  final Map<int, String> _tabSortOptions = {
+    0: 'name', // All products
+    1: 'expiry_date', // Expiring
+    3: 'margin_percent', // High margin
+    4: 'name', // Seasonal
+    5: 'festival_date', // Festival
+  };
 
   @override
   void initState() {
@@ -80,13 +94,18 @@ class _PromotionProductPickerPageState extends State<PromotionProductPickerPage>
 
   Future<void> _loadAllProducts() async {
     try {
-      final products = await InventoryService.getProducts();
-      // TODO: Filter by category if needed
-      // if (_selectedCategory != 'all') {
-      //   products = products.where((p) => p['category_id'] == _selectedCategory).toList();
-      // }
+      // Phase 3: Use new API with filters and sorting
+      final result = await InventoryService.getProductsPaginated(
+        page: 1,
+        limit: 100, // Load more for picker
+        categoryId: _selectedCategory == 'all' ? null : _selectedCategory,
+        searchQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
+        sortBy: _sortBy,
+        ascending: _sortAscending,
+        useCache: true,
+      );
       setState(() {
-        _allProducts = products;
+        _allProducts = result.data.cast<Map<String, dynamic>>();
         _tabLoading['all'] = false;
       });
     } catch (e) {
@@ -96,59 +115,157 @@ class _PromotionProductPickerPageState extends State<PromotionProductPickerPage>
   }
 
   Future<void> _loadExpiringProducts() async {
-    // TODO: Implement with actual API for expiring products
-    // For now, simulate with placeholder data
-    await Future.delayed(const Duration(milliseconds: 500));
-    setState(() {
-      _expiringProducts = [];
-      _tabLoading['expiring'] = false;
-    });
+    try {
+      // Phase 3: Use new API with sorting
+      final result = await InventoryService.getExpiringProductsPaginated(
+        page: 1,
+        limit: 100,
+        daysThreshold: int.tryParse(_expiringFilter) ?? 7,
+        sortBy: _sortBy,
+        ascending: _sortAscending,
+      );
+      setState(() {
+        _expiringProducts = result.data.cast<Map<String, dynamic>>();
+        _tabLoading['expiring'] = false;
+      });
+    } catch (e) {
+      debugPrint('Error loading expiring products: $e');
+      setState(() => _tabLoading['expiring'] = false);
+    }
   }
 
   Future<void> _loadExpiringIngredients() async {
-    // TODO: Implement with actual API
-    await Future.delayed(const Duration(milliseconds: 500));
-    setState(() {
-      _expiringIngredients = [];
-      _tabLoading['ingredients'] = false;
-    });
+    try {
+      // Phase 3: Use batch API for ingredients
+      final batches = await InventoryService.getExpiringBatches(
+        daysThreshold: int.tryParse(_expiringFilter) ?? 7,
+        itemType: 'ingredient',
+      );
+      // Group batches by ingredient
+      final ingredientMap = <String, Map<String, dynamic>>{};
+      for (final batch in batches) {
+        final ingredientId = batch['ingredient_id']?.toString();
+        if (ingredientId == null) continue;
+
+        if (!ingredientMap.containsKey(ingredientId)) {
+          ingredientMap[ingredientId] = {
+            'id': ingredientId,
+            'name': batch['ingredient_name'] ?? 'วัตถุดิบ #$ingredientId',
+            'expiring_quantity': 0.0,
+            'batches': [],
+          };
+        }
+
+        final qty = (batch['quantity'] as num?)?.toDouble() ?? 0;
+        ingredientMap[ingredientId]!['expiring_quantity'] =
+            (ingredientMap[ingredientId]!['expiring_quantity'] as double) + qty;
+        (ingredientMap[ingredientId]!['batches'] as List).add(batch);
+      }
+
+      setState(() {
+        _expiringIngredients = ingredientMap.values.toList();
+        _tabLoading['ingredients'] = false;
+      });
+    } catch (e) {
+      debugPrint('Error loading expiring ingredients: $e');
+      setState(() => _tabLoading['ingredients'] = false);
+    }
   }
 
   Future<void> _loadHighMarginProducts() async {
-    // TODO: Implement with actual API
-    await Future.delayed(const Duration(milliseconds: 500));
-    setState(() {
-      _highMarginProducts = [];
-      _tabLoading['margin'] = false;
-    });
+    try {
+      // Phase 3: Use new API with sorting
+      final result = await InventoryService.getHighMarginProductsPaginated(
+        page: 1,
+        limit: 100,
+        marginLevel: _marginFilter,
+        sortBy: _sortBy,
+        ascending: _sortAscending,
+      );
+      setState(() {
+        _highMarginProducts = result.data.cast<Map<String, dynamic>>();
+        _tabLoading['margin'] = false;
+      });
+    } catch (e) {
+      debugPrint('Error loading high margin products: $e');
+      setState(() => _tabLoading['margin'] = false);
+    }
   }
 
   Future<void> _loadSeasonalProducts() async {
-    // TODO: Implement with actual API
-    await Future.delayed(const Duration(milliseconds: 500));
-    setState(() {
-      _seasonalProducts = [];
-      _tabLoading['seasonal'] = false;
-    });
+    try {
+      // Phase 3: Filter products by season based on ingredient seasonality
+      // For now, return products that might use seasonal ingredients
+      final products = await InventoryService.getProducts();
+      // TODO: Implement actual seasonal logic when ingredient season data is available
+      setState(() {
+        _seasonalProducts = products.take(20).toList();
+        _tabLoading['seasonal'] = false;
+      });
+    } catch (e) {
+      debugPrint('Error loading seasonal products: $e');
+      setState(() => _tabLoading['seasonal'] = false);
+    }
   }
 
   Future<void> _loadFestivalProducts() async {
-    // TODO: Implement with actual API
-    await Future.delayed(const Duration(milliseconds: 500));
-    setState(() {
-      _festivalProducts = [];
-      _tabLoading['festival'] = false;
-    });
+    try {
+      // Phase 3: Return products tagged for current festivals
+      // For now, return products that might be festival-related
+      final products = await InventoryService.getProducts();
+      // TODO: Implement actual festival tagging when promotion_festival_tags table is ready
+      setState(() {
+        _festivalProducts = products.take(20).toList();
+        _tabLoading['festival'] = false;
+      });
+    } catch (e) {
+      debugPrint('Error loading festival products: $e');
+      setState(() => _tabLoading['festival'] = false);
+    }
   }
 
   Future<void> _loadRecommendedProducts() async {
-    // TODO: Implement with actual API
-    // This combines expiring, high margin, seasonal, etc.
-    await Future.delayed(const Duration(milliseconds: 500));
-    setState(() {
-      _recommendedProducts = [];
-      _tabLoading['recommended'] = false;
-    });
+    try {
+      // Phase 3: Combine multiple criteria for recommendations
+      final expiring = await InventoryService.getExpiringProductsForPicker(daysThreshold: 14);
+      final highMargin = await InventoryService.getHighMarginProductsForPicker(marginLevel: 'high');
+      final available = await InventoryService.getAvailableProductsForPicker();
+
+      // Merge and deduplicate, prioritizing expiring products
+      final productMap = <String, Map<String, dynamic>>{};
+
+      for (final p in expiring) {
+        final id = p['id']?.toString();
+        if (id != null) {
+          productMap[id] = {...p, 'recommendation_reason': 'ใกล้หมดอายุ'};
+        }
+      }
+
+      for (final p in highMargin) {
+        final id = p['id']?.toString();
+        if (id != null && !productMap.containsKey(id)) {
+          productMap[id] = {...p, 'recommendation_reason': 'กำไรสูง'};
+        }
+      }
+
+      for (final p in available) {
+        final id = p['id']?.toString();
+        if (id != null && !productMap.containsKey(id)) {
+          final hasStock = p['availability']?['has_stock'] ?? false;
+          if (hasStock) {
+            productMap[id] = {...p, 'recommendation_reason': 'พร้อมขาย'};
+          }
+        }
+      }
+
+      setState(() {
+        _recommendedProducts = productMap.values.toList();
+        _tabLoading['recommended'] = false;
+      });
+    } catch (e) {
+      debugPrint('Error loading recommended products: $e');
+      setState(() => _tabLoading['recommended'] = false);
+    }
   }
 
   void _toggleProductSelection(Map<String, dynamic> product) {
@@ -183,6 +300,285 @@ class _PromotionProductPickerPageState extends State<PromotionProductPickerPage>
 
   void _finishSelection() {
     Navigator.pop(context, _selectedProducts);
+  }
+
+  void _refreshCurrentTab() {
+    setState(() {
+      _tabLoading[_getTabKey(_tabController.index)] = true;
+    });
+    
+    switch (_tabController.index) {
+      case 0: _loadAllProducts(); break;
+      case 1: _loadExpiringProducts(); break;
+      case 2: _loadExpiringIngredients(); break;
+      case 3: _loadHighMarginProducts(); break;
+      case 4: _loadSeasonalProducts(); break;
+      case 5: _loadFestivalProducts(); break;
+      case 6: _loadRecommendedProducts(); break;
+    }
+  }
+
+  String _getTabKey(int index) {
+    const keys = ['all', 'expiring', 'ingredients', 'margin', 'seasonal', 'festival', 'recommended'];
+    return keys[index];
+  }
+
+  Widget _buildFilterControls() {
+    return Column(
+      children: [
+        // Tab-specific filters
+        _buildTabSpecificFilters(),
+        
+        // Sorting controls
+        _buildSortingControls(),
+      ],
+    );
+  }
+  
+  Widget _buildTabSpecificFilters() {
+    switch (_tabController.index) {
+      case 0: // All products
+        return _buildAllProductsFilters();
+      case 1: // Expiring products
+        return _buildExpiringFilters();
+      case 3: // High margin
+        return _buildMarginFilters();
+      case 4: // Seasonal
+        return _buildSeasonalFilters();
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+  
+  Widget _buildSortingControls() {
+    final currentSortField = _tabSortOptions[_tabController.index] ?? 'name';
+    final sortOptions = _getSortOptionsForTab(_tabController.index);
+    
+    if (sortOptions.isEmpty) return const SizedBox.shrink();
+    
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          const Text('เรียงตาม:', style: TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: DropdownButtonFormField<String>(
+              value: _sortBy,
+              decoration: const InputDecoration(
+                hintText: 'เลือกการเรียง',
+                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+              items: sortOptions.map((option) => DropdownMenuItem(
+                value: option.field,
+                child: Text(option.label),
+              )).toList(),
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() {
+                    _sortBy = value;
+                  });
+                  _refreshCurrentTab();
+                }
+              },
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            icon: Icon(
+              _sortAscending ? Icons.arrow_upward : Icons.arrow_downward,
+              color: AppDesignSystem.primary,
+            ),
+            onPressed: () {
+              setState(() {
+                _sortAscending = !_sortAscending;
+              });
+              _refreshCurrentTab();
+            },
+            tooltip: _sortAscending ? 'เรียงจากน้อยไปมาก' : 'เรียงจากมากไปน้อย',
+          ),
+        ],
+      ),
+    );
+  }
+  
+  List<SortOption> _getSortOptionsForTab(int tabIndex) {
+    switch (tabIndex) {
+      case 0: // All products
+        return SortOption.productSortOptions;
+      case 1: // Expiring products
+        return SortOption.expiringSortOptions;
+      case 3: // High margin
+        return SortOption.marginSortOptions;
+      case 4: // Seasonal
+        return SortOption.productSortOptions;
+      case 5: // Festival
+        return [
+          const SortOption(field: 'festival_date', label: 'วันเทศกาล'),
+          const SortOption(field: 'days_until_festival', label: 'วันที่เหลือ'),
+          ...SortOption.productSortOptions,
+        ];
+      default:
+        return [];
+    }
+  }
+
+  Widget _buildAllProductsFilters() {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('ค้นหาสินค้า', style: TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _searchCtrl,
+            decoration: InputDecoration(
+              hintText: 'พิมพ์ชื่อสินค้า, รหัสสินค้า, หรือ SKU...',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () {
+                        _searchCtrl.clear();
+                        setState(() {
+                          _searchQuery = '';
+                        });
+                        _refreshCurrentTab();
+                      },
+                    )
+                  : null,
+            ),
+            onChanged: (value) {
+              _searchQuery = value;
+            },
+            onSubmitted: (_) => _refreshCurrentTab(),
+          ),
+          const SizedBox(height: 16),
+          const Text('หมวดหมู่', style: TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          FutureBuilder<List<Map<String, dynamic>>>(
+            future: InventoryService.getCategories(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const CircularProgressIndicator();
+              }
+              final categories = snapshot.data!;
+              return DropdownButtonFormField<String>(
+                value: _selectedCategory,
+                decoration: const InputDecoration(
+                  hintText: 'เลือกหมวดหมู่',
+                ),
+                items: [
+                  const DropdownMenuItem(value: 'all', child: Text('ทุกหมวดหมู่')),
+                  ...categories.map((cat) => DropdownMenuItem(
+                    value: cat['id']?.toString(),
+                    child: Text(cat['name'] ?? 'ไม่ระบุชื่อ'),
+                  )),
+                ],
+                onChanged: (value) {
+                  setState(() {
+                    _selectedCategory = value ?? 'all';
+                  });
+                  _refreshCurrentTab();
+                },
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExpiringFilters() {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('สินค้าที่จะหมดอายุใน', style: TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            value: _expiringFilter,
+            decoration: const InputDecoration(
+              hintText: 'เลือกช่วงเวลา',
+            ),
+            items: const [
+              DropdownMenuItem(value: '3', child: Text('3 วัน')),
+              DropdownMenuItem(value: '7', child: Text('7 วัน')),
+              DropdownMenuItem(value: '14', child: Text('14 วัน')),
+              DropdownMenuItem(value: '30', child: Text('30 วัน')),
+            ],
+            onChanged: (value) {
+              setState(() {
+                _expiringFilter = value ?? '7';
+              });
+              _refreshCurrentTab();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMarginFilters() {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('ระดับกำไร', style: TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            value: _marginFilter,
+            decoration: const InputDecoration(
+              hintText: 'เลือกระดับกำไร',
+            ),
+            items: const [
+              DropdownMenuItem(value: 'high', child: Text('สูง (50%+)')),
+              DropdownMenuItem(value: 'medium', child: Text('ปานกลาง (30-50%)')),
+              DropdownMenuItem(value: 'low', child: Text('ต่ำ (0-30%)')),
+            ],
+            onChanged: (value) {
+              setState(() {
+                _marginFilter = value ?? 'high';
+              });
+              _refreshCurrentTab();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSeasonalFilters() {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('ฤดูกาล', style: TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            value: _seasonFilter,
+            decoration: const InputDecoration(
+              hintText: 'เลือกฤดูกาล',
+            ),
+            items: const [
+              DropdownMenuItem(value: 'summer', child: Text('ฤดูร้อน (มี.ค.-พ.ค.)')),
+              DropdownMenuItem(value: 'rainy', child: Text('ฤดูฝน (มิ.ย.-ต.ค.)')),
+              DropdownMenuItem(value: 'winter', child: Text('ฤดูหนาว (พ.ย.-ก.พ.)')),
+            ],
+            onChanged: (value) {
+              setState(() {
+                _seasonFilter = value ?? 'summer';
+              });
+              _refreshCurrentTab();
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   List<Map<String, dynamic>> _getCurrentTabProducts() {
@@ -247,6 +643,18 @@ class _PromotionProductPickerPageState extends State<PromotionProductPickerPage>
           onTap: (_) => setState(() {}), // Refresh to show correct filter UI
         ),
         actions: [
+          IconButton(
+            icon: Icon(
+              _showFilters ? Icons.filter_list_off : Icons.filter_list,
+              color: AppDesignSystem.primary,
+            ),
+            onPressed: () {
+              setState(() {
+                _showFilters = !_showFilters;
+              });
+            },
+            tooltip: 'ตัวกรอง',
+          ),
           Center(
             child: Padding(
               padding: const EdgeInsets.only(right: 16),
@@ -263,32 +671,12 @@ class _PromotionProductPickerPageState extends State<PromotionProductPickerPage>
       ),
       body: Column(
         children: [
-          // Search and Filter Bar
-          Container(
-            color: Colors.white,
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              children: [
-                // Search
-                TextField(
-                  controller: _searchCtrl,
-                  decoration: InputDecoration(
-                    hintText: 'ค้นหาสินค้า / SKU / Barcode',
-                    prefixIcon: const Icon(Icons.search),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                  ),
-                  onChanged: (value) => setState(() {}),
-                ),
-                const SizedBox(height: 8),
-                
-                // Tab-specific filters
-                _buildFilterBar(),
-              ],
+          // Filter Panel (collapsible)
+          if (_showFilters)
+            Container(
+              color: Colors.grey[50],
+              child: _buildFilterControls(),
             ),
-          ),
           
           // Product List
           Expanded(

@@ -303,4 +303,350 @@ class PosDiscountService {
       return false;
     }
   }
+
+  // =============================================
+  // Coupon Code Validation
+  // =============================================
+
+  /// Validate coupon code and return discount if valid
+  static Future<PosDiscount?> validateCouponCode({
+    required String couponCode,
+    required double orderAmount,
+    String? customerId,
+    String channel = 'pos',
+  }) async {
+    try {
+      final now = DateTime.now().toIso8601String();
+
+      // Find discount by coupon code
+      final response = await _client
+          .from('pos_discounts')
+          .select()
+          .eq('coupon_code', couponCode)
+          .maybeSingle();
+
+      if (response == null) {
+        debugPrint('Coupon code not found: $couponCode');
+        return null;
+      }
+
+      final discount = PosDiscount.fromMap(Map<String, dynamic>.from(response));
+
+      // Validate lifecycle status
+      if (discount.lifecycleStatus == 'draft') {
+        debugPrint('Coupon is in draft status');
+        return null;
+      }
+      if (discount.lifecycleStatus == 'paused') {
+        debugPrint('Coupon is paused');
+        return null;
+      }
+      if (discount.lifecycleStatus == 'archived') {
+        debugPrint('Coupon is archived');
+        return null;
+      }
+
+      // Validate active status
+      if (!discount.isActive) {
+        debugPrint('Coupon is not active');
+        return null;
+      }
+
+      // Validate date/time
+      if (discount.startAt != null && DateTime.now().isBefore(discount.startAt!)) {
+        debugPrint('Coupon not yet started');
+        return null;
+      }
+      if (discount.endAt != null && DateTime.now().isAfter(discount.endAt!)) {
+        debugPrint('Coupon has expired');
+        return null;
+      }
+
+      // Validate minimum amount
+      if (discount.minAmount != null && orderAmount < discount.minAmount!) {
+        debugPrint('Order amount below minimum: $orderAmount < ${discount.minAmount}');
+        return null;
+      }
+
+      // Validate usage limit
+      if (discount.usageLimit != null && discount.usedCount >= discount.usageLimit!) {
+        debugPrint('Usage limit reached: ${discount.usedCount}/${discount.usageLimit}');
+        return null;
+      }
+
+      // Validate channel
+      if (discount.applicableChannels.isNotEmpty &&
+          !discount.applicableChannels.contains(channel)) {
+        debugPrint('Channel not allowed: $channel');
+        return null;
+      }
+
+      // TODO: Validate per-customer limit (needs usage history query)
+      // TODO: Validate per-day limit (needs usage history query)
+
+      return discount;
+    } catch (e) {
+      debugPrint('Error validateCouponCode: $e');
+      return null;
+    }
+  }
+
+  // =============================================
+  // Usage Logging
+  // =============================================
+
+  /// Record discount usage for an order
+  static Future<bool> recordDiscountUsage({
+    required String orderId,
+    required String discountId,
+    required double discountAmount,
+    required String appliedBy,
+    String? orderLineId,
+    String? promotionId,
+    String? couponCode,
+    String discountName = '',
+    String discountType = 'fixed',
+    double discountValue = 0,
+  }) async {
+    try {
+      final payload = {
+        'order_id': orderId,
+        'discount_id': discountId,
+        'discount_amount': discountAmount,
+        'applied_by': appliedBy,
+        'applied_at': DateTime.now().toIso8601String(),
+        'order_line_id': orderLineId,
+        'promotion_id': promotionId,
+        'coupon_code': couponCode,
+        'discount_name': discountName,
+        'discount_type': discountType,
+        'discount_value': discountValue,
+      };
+
+      await _client.from('pos_order_discounts').insert(payload);
+
+      // Increment used_count on the discount
+      await _client.rpc('increment_discount_usage', params: {'p_discount_id': discountId});
+
+      return true;
+    } catch (e) {
+      debugPrint('Error recordDiscountUsage: $e');
+      return false;
+    }
+  }
+
+  /// Get usage statistics for a discount
+  static Future<Map<String, dynamic>> getDiscountUsageStats(String discountId) async {
+    try {
+      final response = await _client
+          .from('pos_order_discounts')
+          .select()
+          .eq('discount_id', discountId);
+
+      final usages = (response as List).map((e) => Map<String, dynamic>.from(e)).toList();
+
+      final totalUses = usages.length;
+      final totalDiscountAmount = usages.fold<double>(
+        0,
+        (sum, u) => sum + ((u['discount_amount'] ?? 0) as num).toDouble(),
+      );
+
+      // Get unique customers
+      final customerIds = usages
+          .where((u) => u['order'] != null && u['order']['customer_id'] != null)
+          .map((u) => u['order']['customer_id'])
+          .toSet();
+
+      return {
+        'total_uses': totalUses,
+        'total_discount_amount': totalDiscountAmount,
+        'unique_customers': customerIds.length,
+        'last_used_at': usages.isNotEmpty ? usages.last['applied_at'] : null,
+      };
+    } catch (e) {
+      debugPrint('Error getDiscountUsageStats: $e');
+      return {
+        'total_uses': 0,
+        'total_discount_amount': 0.0,
+        'unique_customers': 0,
+        'last_used_at': null,
+      };
+    }
+  }
+
+  // =============================================
+  // Phase 7: Analytics Methods
+  // =============================================
+
+  /// Get analytics summary for the dashboard cards
+  static Future<Map<String, dynamic>> getAnalyticsSummary({
+    DateTime? startDate,
+    DateTime? endDate,
+    String? discountId,
+    String? promotionId,
+  }) async {
+    try {
+      final response = await _client.rpc('get_analytics_summary', params: {
+        'p_start_date': startDate?.toIso8601String().split('T')[0],
+        'p_end_date': endDate?.toIso8601String().split('T')[0],
+        'p_discount_id': discountId,
+        'p_promotion_id': promotionId,
+      });
+
+      final data = response as List<dynamic>;
+      if (data.isEmpty) {
+        return {
+          'total_usage': 0,
+          'total_discount': 0.0,
+          'total_orders': 0,
+          'total_customers': 0,
+          'coupon_usage': 0,
+          'promotion_usage': 0,
+          'coupon_discount': 0.0,
+          'promotion_discount': 0.0,
+        };
+      }
+
+      final summary = data.first as Map<String, dynamic>;
+      return {
+        'total_usage': summary['total_usage_count'] ?? 0,
+        'total_discount': (summary['total_discount_amount'] ?? 0).toDouble(),
+        'total_orders': summary['total_orders_with_discount'] ?? 0,
+        'total_customers': summary['total_unique_customers'] ?? 0,
+        'coupon_usage': summary['coupon_usage_count'] ?? 0,
+        'promotion_usage': summary['promotion_usage_count'] ?? 0,
+        'coupon_discount': (summary['coupon_discount_amount'] ?? 0).toDouble(),
+        'promotion_discount': (summary['promotion_discount_amount'] ?? 0).toDouble(),
+      };
+    } catch (e) {
+      debugPrint('Error getAnalyticsSummary: $e');
+      return {
+        'total_usage': 0,
+        'total_discount': 0.0,
+        'total_orders': 0,
+        'total_customers': 0,
+        'coupon_usage': 0,
+        'promotion_usage': 0,
+        'coupon_discount': 0.0,
+        'promotion_discount': 0.0,
+      };
+    }
+  }
+
+  /// Get detailed usage analytics for the table
+  static Future<List<Map<String, dynamic>>> getUsageAnalytics({
+    DateTime? startDate,
+    DateTime? endDate,
+    String? discountId,
+    String? promotionId,
+    int limit = 100,
+    int offset = 0,
+  }) async {
+    try {
+      final response = await _client.rpc('get_usage_analytics', params: {
+        'p_start_date': startDate?.toIso8601String().split('T')[0],
+        'p_end_date': endDate?.toIso8601String().split('T')[0],
+        'p_discount_id': discountId,
+        'p_promotion_id': promotionId,
+        'p_limit': limit,
+        'p_offset': offset,
+      });
+
+      return (response as List)
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+    } catch (e) {
+      debugPrint('Error getUsageAnalytics: $e');
+      return [];
+    }
+  }
+
+  /// Get order details for a specific discount/promotion
+  static Future<List<Map<String, dynamic>>> getOrderDetailsForDiscount({
+    String? discountId,
+    String? promotionId,
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    try {
+      var query = _client
+          .from('order_discount_details')
+          .select()
+          .order('order_date', ascending: false);
+
+      if (discountId != null) {
+        query = query.eq('discount_id', discountId);
+      }
+      if (promotionId != null) {
+        query = query.eq('promotion_id', promotionId);
+      }
+      if (startDate != null) {
+        query = query.gte('order_date', startDate.toIso8601String());
+      }
+      if (endDate != null) {
+        query = query.lte('order_date', endDate.toIso8601String());
+      }
+
+      final response = await query;
+      return (response as List)
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+    } catch (e) {
+      debugPrint('Error getOrderDetailsForDiscount: $e');
+      return [];
+    }
+  }
+
+  /// Get top performing discounts
+  static Future<List<Map<String, dynamic>>> getTopPerformingDiscounts({
+    String? type, // 'coupon' or 'promotion'
+    int limit = 10,
+  }) async {
+    try {
+      var query = _client
+          .from('top_performing_discounts')
+          .select()
+          .order('usage_rank', ascending: true)
+          .limit(limit);
+
+      if (type != null) {
+        query = query.eq('type', type);
+      }
+
+      final response = await query;
+      return (response as List)
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+    } catch (e) {
+      debugPrint('Error getTopPerformingDiscounts: $e');
+      return [];
+    }
+  }
+
+  /// Get customer usage patterns
+  static Future<List<Map<String, dynamic>>> getCustomerUsagePatterns({
+    String? customerId,
+    int limit = 50,
+  }) async {
+    try {
+      var query = _client
+          .from('customer_discount_usage')
+          .select()
+          .order('total_discount_received', ascending: false)
+          .limit(limit);
+
+      if (customerId != null) {
+        query = query.eq('customer_id', customerId);
+      }
+
+      final response = await query;
+      return (response as List)
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+    } catch (e) {
+      debugPrint('Error getCustomerUsagePatterns: $e');
+      return [];
+    }
+  }
+
 }

@@ -8,11 +8,23 @@ import '../services/user_group_service.dart';
 // import '../utils/buddhist_date_converter.dart';  // TODO: สร้างไฟล์นี้หรือใช้ date_picker_helper แทน
 import '../theme/app_design_system.dart';
 import 'promotion_product_picker_page.dart';
+import '../services/inventory_service.dart';
 
 class PromotionFormPage extends StatefulWidget {
   final String? promotionId;
+  final String? initialName;
+  final String? initialDescription;
+  final double? initialDiscountPercent;
+  final List<String>? initialSelectedProducts;
 
-  const PromotionFormPage({super.key, this.promotionId});
+  const PromotionFormPage({
+    super.key, 
+    this.promotionId,
+    this.initialName,
+    this.initialDescription,
+    this.initialDiscountPercent,
+    this.initialSelectedProducts,
+  });
 
   @override
   State<PromotionFormPage> createState() => _PromotionFormPageState();
@@ -35,6 +47,10 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
   bool _isActive = true;
   bool _isLoading = false;
   bool _isSaving = false;
+  // Phase 4: Availability & Procurement Rules
+  bool _requireInStock = false;
+  bool _requireSufficientIngredients = false;
+  bool _includePendingProcurement = false;
 
   // Data
   List<PosDiscount> _coupons = [];
@@ -44,6 +60,20 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
   @override
   void initState() {
     super.initState();
+    // Initialize with initial values if provided
+    if (widget.initialName != null) {
+      _nameCtrl.text = widget.initialName!;
+    }
+    if (widget.initialDescription != null) {
+      _descCtrl.text = widget.initialDescription!;
+    }
+    if (widget.initialSelectedProducts != null) {
+      _selectedProducts = widget.initialSelectedProducts!.map((id) => {
+        'id': id,
+        'product_id': id,
+        'quantity': 1,
+      }).toList();
+    }
     _loadData();
   }
 
@@ -94,13 +124,30 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
       _endAt = _existingPromotion!.endAt;
       _isActive = _existingPromotion!.isActive;
       _selectedUserGroupIds = _existingPromotion!.applicableUserGroupIds;
+      // Phase 4: Load availability rules
+      _requireInStock = _existingPromotion!.requireInStock;
+      _requireSufficientIngredients = _existingPromotion!.requireSufficientIngredients;
+      _includePendingProcurement = _existingPromotion!.includePendingProcurement;
       
       // Load promotion items (selected products)
       final promotionItems = await PosPromotionService.getPromotionItems(widget.promotionId!);
+      
+      // Fetch product details to get actual names
+      final productIds = promotionItems.map((item) => item.productId).toList();
+      final productDetails = await InventoryService.getProducts();
+      final productMap = <String, Map<String, dynamic>>{};
+      for (final product in productDetails) {
+        final id = product['id']?.toString();
+        if (id != null) {
+          productMap[id] = product;
+        }
+      }
+      
       _selectedProducts = promotionItems.map((item) {
+        final product = productMap[item.productId];
         return {
           'id': item.productId,
-          'name': 'สินค้า ID: ${item.productId}', // Will be replaced with actual name if available
+          'name': product?['name'] ?? 'สินค้า ID: ${item.productId}',
           'quantity': item.quantityRequired,
         };
       }).toList();
@@ -205,6 +252,10 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
           isActive: _isActive,
           startAt: _startAt,
           endAt: _endAt,
+          // Phase 4: Availability fields
+          requireInStock: _requireInStock,
+          requireSufficientIngredients: _requireSufficientIngredients,
+          includePendingProcurement: _includePendingProcurement,
         );
 
         if (result == null) {
@@ -234,6 +285,10 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
           isActive: _isActive,
           startAt: _startAt,
           endAt: _endAt,
+          // Phase 4: Availability fields
+          requireInStock: _requireInStock,
+          requireSufficientIngredients: _requireSufficientIngredients,
+          includePendingProcurement: _includePendingProcurement,
         );
 
         if (result == null) {
@@ -602,6 +657,90 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
                         onChanged: (v) => setState(() => _isActive = v),
                         activeColor: AppDesignSystem.primary,
                       ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Phase 4: Availability & Procurement Rules Card
+                  _buildCard(
+                    title: 'กฎการตรวจสอบสินค้าพร้อมขาย',
+                    subtitle: 'Phase 4',
+                    children: [
+                      // Require In Stock
+                      SwitchListTile(
+                        title: const Text('ต้องมีสต็อกพร้อมขาย'),
+                        subtitle: Text(
+                          _requireInStock
+                              ? 'สินค้าต้องมี stock > 0 จึงจะขายได้'
+                              : 'ไม่ตรวจสอบสต็อก (ขายได้แม้ stock หมด)',
+                          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        ),
+                        value: _requireInStock,
+                        onChanged: (v) => setState(() => _requireInStock = v),
+                        activeColor: AppDesignSystem.primary,
+                      ),
+                      const Divider(height: 1),
+                      // Require Sufficient Ingredients
+                      SwitchListTile(
+                        title: const Text('ต้องมีวัตถุดิบพอผลิต'),
+                        subtitle: Text(
+                          _requireSufficientIngredients
+                              ? 'ตรวจสอบวัตถุดิบพอผลิต > 1 ชิ้น'
+                              : 'ไม่ตรวจสอบวัตถุดิบ',
+                          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        ),
+                        value: _requireSufficientIngredients,
+                        onChanged: (v) => setState(() => _requireSufficientIngredients = v),
+                        activeColor: AppDesignSystem.primary,
+                      ),
+                      const Divider(height: 1),
+                      // Include Pending Procurement
+                      SwitchListTile(
+                        title: const Text('นับรวมการจัดซื้อที่รอรับ'),
+                        subtitle: Text(
+                          _includePendingProcurement
+                              ? 'นับ PO ที่รอรับ (ยกเว้น completed/cancelled)'
+                              : 'ไม่นับรวมการจัดซื้อ',
+                          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        ),
+                        value: _includePendingProcurement,
+                        onChanged: (v) => setState(() => _includePendingProcurement = v),
+                        activeColor: AppDesignSystem.primary,
+                      ),
+                      // Summary
+                      if (_requireInStock || _requireSufficientIngredients || _includePendingProcurement)
+                        Container(
+                          margin: const EdgeInsets.only(top: 12, left: 16, right: 16, bottom: 8),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'สรุปการตรวจสอบ:',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blue,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                [
+                                  if (_requireInStock) '• ต้องมี stock > 0',
+                                  if (_requireSufficientIngredients) '• วัตถุดิบพอผลิต > 1 ชิ้น',
+                                  if (_includePendingProcurement) '• นับรวม PO รอรับ',
+                                ].join('\n'),
+                                style: const TextStyle(fontSize: 11, color: Colors.blue),
+                              ),
+                            ],
+                          ),
+                        ),
                     ],
                   ),
 

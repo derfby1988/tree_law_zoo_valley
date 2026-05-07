@@ -7,9 +7,11 @@ import '../services/user_group_service.dart';
 import '../models/pos_discount_model.dart';
 import '../models/pos_promotion_model.dart';
 import '../models/user_group_model.dart';
+import '../models/pagination_model.dart';
 import '../utils/date_picker_helper.dart';
 import '../utils/permission_helpers.dart';
 import 'promotion_form_page.dart';
+import 'promotion_product_picker_page.dart';
 
 class CouponPromotionAdminPage extends StatefulWidget {
   const CouponPromotionAdminPage({super.key});
@@ -27,6 +29,30 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
   List<Map<String, dynamic>> _categories = [];
   List<UserGroup> _userGroups = [];
   String? _errorMessage;
+  
+  // Phase 5: Expiry targeting data
+  List<Map<String, dynamic>> _expiringProducts = [];
+  List<Map<String, dynamic>> _expiringIngredients = [];
+  String _expiryFilter = '7days'; // 3days, 7days, 14days, 30days, expired
+  bool _isLoadingExpiry = false;
+  
+  // Phase 7: Analytics data
+  List<Map<String, dynamic>> _usageData = [];
+  DateTime? _analyticsStartDate;
+  DateTime? _analyticsEndDate;
+  String? _selectedCouponId;
+  String? _selectedPromotionId;
+  bool _isLoadingAnalytics = false;
+  Map<String, dynamic>? _analyticsSummary;
+  
+  // Phase 3: Enhanced product management
+  PaginationState _productPagination = PaginationState();
+  List<Map<String, dynamic>> _filteredProducts = [];
+  String _productSearchQuery = '';
+  String _selectedCategory = 'all';
+  bool _showProductFilters = false;
+  String _productSortBy = 'name';
+  bool _productSortAscending = true;
 
   @override
   void initState() {
@@ -44,8 +70,9 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
       final results = await Future.wait([
         PosDiscountService.getAllDiscounts(),
         PosPromotionService.getAllPromotions(),
-        InventoryService.getProducts(),
-        InventoryService.getCategories(),
+        // Phase 3: Use cached product loading
+        InventoryService.getProducts(useCache: true),
+        InventoryService.getCategories(useCache: true),
         UserGroupService.getAllGroups(),
       ]);
 
@@ -55,6 +82,7 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
         _allProducts = results[2] as List<Map<String, dynamic>>;
         _categories = results[3] as List<Map<String, dynamic>>;
         _userGroups = results[4] as List<UserGroup>;
+        _filteredProducts = _allProducts;
         _isLoading = false;
       });
     } catch (e) {
@@ -63,6 +91,87 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
         _errorMessage = 'ไม่สามารถโหลดข้อมูล: $e';
         _isLoading = false;
       });
+    }
+  }
+  
+  // Phase 3: Enhanced product loading with pagination
+  Future<void> _loadProductsPaginated({bool refresh = false}) async {
+    if (refresh) {
+      _productPagination.reset();
+      InventoryService.clearCachePattern('getProducts');
+    }
+    
+    setState(() {
+      _productPagination.setLoading(true);
+    });
+    
+    try {
+      final result = await InventoryService.getProductsPaginated(
+        page: _productPagination.currentPage,
+        limit: _productPagination.limit,
+        categoryId: _selectedCategory == 'all' ? null : _selectedCategory,
+        searchQuery: _productSearchQuery.isNotEmpty ? _productSearchQuery : null,
+        sortBy: _productSortBy,
+        ascending: _productSortAscending,
+        useCache: !refresh,
+      );
+      
+      setState(() {
+        if (refresh || _productPagination.currentPage == 1) {
+          _filteredProducts = result.data.cast<Map<String, dynamic>>();
+        } else {
+          _filteredProducts.addAll(result.data.cast<Map<String, dynamic>>());
+        }
+        _productPagination.updateFromResult(result);
+      });
+    } catch (e) {
+      debugPrint('Error loading products: $e');
+      setState(() {
+        _productPagination.setError('ไม่สามารถโหลดสินค้า: $e');
+      });
+    }
+  }
+  
+  // Phase 3: Product filtering
+  void _filterProducts() {
+    setState(() {
+      _filteredProducts = _allProducts.where((product) {
+        // Category filter
+        if (_selectedCategory != 'all' && product['category_id']?.toString() != _selectedCategory) {
+          return false;
+        }
+        
+        // Search filter
+        if (_productSearchQuery.isNotEmpty) {
+          final query = _productSearchQuery.toLowerCase();
+          final name = (product['name'] ?? '').toString().toLowerCase();
+          final code = (product['code'] ?? '').toString().toLowerCase();
+          final sku = (product['sku'] ?? '').toString().toLowerCase();
+          if (!name.contains(query) && !code.contains(query) && !sku.contains(query)) {
+            return false;
+          }
+        }
+        
+        return true;
+      }).toList();
+    });
+  }
+  
+  // Phase 3: Open enhanced product picker
+  Future<void> _openProductPicker() async {
+    final result = await Navigator.push<List<Map<String, dynamic>>>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PromotionProductPickerPage(
+          initiallySelectedProducts: [],
+        ),
+      ),
+    );
+    
+    if (result != null && result.isNotEmpty) {
+      // Handle selected products for promotion creation
+      debugPrint('Selected ${result.length} products for promotion');
+      // TODO: Navigate to promotion form with selected products
     }
   }
 
@@ -101,6 +210,15 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
                         onPressed: _loadData,
                         child: const Text('ลองใหม่'),
                       ),
+                      const SizedBox(height: 8),
+                      ElevatedButton.icon(
+                        onPressed: () => InventoryService.clearAllCache(),
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('ล้างแคช'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange,
+                        ),
+                      ),
                     ],
                   ),
                 )
@@ -135,6 +253,30 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
                                 label: 'โปรโมชั่น',
                                 index: 1,
                                 isSelected: _selectedTabIndex == 1,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _buildTabButton(
+                                label: 'สินค้าใกล้หมดอายุ',
+                                index: 2,
+                                isSelected: _selectedTabIndex == 2,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _buildTabButton(
+                                label: 'วัตถุดิบใกล้หมดอายุ',
+                                index: 3,
+                                isSelected: _selectedTabIndex == 3,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _buildTabButton(
+                                label: 'วิเคราะห์การใช้งาน',
+                                index: 4,
+                                isSelected: _selectedTabIndex == 4,
                               ),
                             ),
                           ],
@@ -181,6 +323,18 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
         setState(() {
           _selectedTabIndex = index;
         });
+        // Phase 5: Auto-load expiry data when switching to expiry tabs
+        if (index == 2 || index == 3) {
+          if (_expiringProducts.isEmpty && _expiringIngredients.isEmpty) {
+            _loadExpiringData();
+          }
+        }
+        // Phase 7: Auto-load analytics data when switching to analytics tab
+        if (index == 4) {
+          if (_usageData.isEmpty && _analyticsSummary == null) {
+            _loadAnalyticsData();
+          }
+        }
       },
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
@@ -212,6 +366,12 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
         return _buildCouponsTab();
       case 1:
         return _buildPromotionsTab();
+      case 2:
+        return _buildExpiringProductsTab();
+      case 3:
+        return _buildExpiringIngredientsTab();
+      case 4:
+        return _buildAnalyticsTab();
       default:
         return const SizedBox.shrink();
     }
@@ -355,6 +515,48 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Phase 2: Mini Usage Stats (async loaded)
+            FutureBuilder<Map<String, dynamic>>(
+              future: PosDiscountService.getDiscountUsageStats(coupon.id),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData || snapshot.data!['total_uses'] == 0) {
+                  return const SizedBox.shrink();
+                }
+                final stats = snapshot.data!;
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.green[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green[200]!),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildStatItem(
+                        label: 'ใช้แล้ว',
+                        value: '${stats['total_uses']}',
+                        icon: Icons.check_circle,
+                        color: Colors.green,
+                      ),
+                      _buildStatItem(
+                        label: 'ส่วนลดรวม',
+                        value: '฿${(stats['total_discount_amount'] as double).toStringAsFixed(0)}',
+                        icon: Icons.savings,
+                        color: Colors.orange,
+                      ),
+                      _buildStatItem(
+                        label: 'ลูกค้า',
+                        value: '${stats['unique_customers']}',
+                        icon: Icons.people,
+                        color: Colors.blue,
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -2011,6 +2213,36 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
     }
   }
 
+  // Phase 2: Mini stat item widget for usage history
+  Widget _buildStatItem({
+    required String label,
+    required String value,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Column(
+      children: [
+        Icon(icon, color: color, size: 20),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            color: Colors.grey[600],
+          ),
+        ),
+      ],
+    );
+  }
+
   String _formatDate(DateTime date) {
     final months = [
       'มกราคม',
@@ -2039,6 +2271,1120 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
         return 'ซื้อ X แถม Y';
       default:
         return promotionType;
+    }
+  }
+
+  // =============================================
+  // Phase 5: Expiry Targeting Methods
+  // =============================================
+
+  Future<void> _loadExpiringData() async {
+    setState(() {
+      _isLoadingExpiry = true;
+    });
+
+    try {
+      final daysMap = {
+        '3days': 3,
+        '7days': 7,
+        '14days': 14,
+        '30days': 30,
+        'expired': 0,
+      };
+      final days = daysMap[_expiryFilter] ?? 7;
+      final includeExpired = _expiryFilter == 'expired' || days >= 7;
+
+      final results = await Future.wait([
+        InventoryService.getExpiringProducts(
+          daysThreshold: days,
+          includeExpired: includeExpired,
+        ),
+        InventoryService.getExpiringIngredients(
+          daysThreshold: days,
+          includeExpired: includeExpired,
+        ),
+      ]);
+
+      setState(() {
+        _expiringProducts = results[0] as List<Map<String, dynamic>>;
+        _expiringIngredients = results[1] as List<Map<String, dynamic>>;
+        _isLoadingExpiry = false;
+      });
+    } catch (e) {
+      debugPrint('Error loading expiry data: $e');
+      setState(() {
+        _isLoadingExpiry = false;
+      });
+    }
+  }
+
+  Widget _buildExpiryFilterChips() {
+    final filters = [
+      {'key': '3days', 'label': '3 วัน', 'color': Colors.red},
+      {'key': '7days', 'label': '7 วัน', 'color': Colors.orange},
+      {'key': '14days', 'label': '14 วัน', 'color': Colors.yellow.shade700},
+      {'key': '30days', 'label': '30 วัน', 'color': Colors.blue},
+      {'key': 'expired', 'label': 'หมดอายุแล้ว', 'color': Colors.red.shade900},
+    ];
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: filters.map((filter) {
+          final isSelected = _expiryFilter == filter['key'];
+          return ChoiceChip(
+            label: Text(filter['label'] as String),
+            selected: isSelected,
+            selectedColor: (filter['color'] as Color).withOpacity(0.2),
+            backgroundColor: Colors.white.withOpacity(0.1),
+            labelStyle: TextStyle(
+              color: isSelected ? filter['color'] as Color : Colors.white,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            ),
+            onSelected: (selected) {
+              if (selected) {
+                setState(() {
+                  _expiryFilter = filter['key'] as String;
+                });
+                _loadExpiringData();
+              }
+            },
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildExpiringProductsTab() {
+    if (_isLoadingExpiry) {
+      return const Center(
+        child: CircularProgressIndicator(color: Colors.white),
+      );
+    }
+
+    if (_expiringProducts.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.inventory_2_outlined,
+              size: 64,
+              color: Colors.white.withOpacity(0.5),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'ไม่มีสินค้าใกล้หมดอายุ',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.white.withOpacity(0.7),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'ในช่วง $_expiryFilter',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.white.withOpacity(0.5),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        _buildExpiryFilterChips(),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: _expiringProducts.length,
+            itemBuilder: (context, index) {
+              final product = _expiringProducts[index];
+              return _buildExpiringProductCard(product);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildExpiringIngredientsTab() {
+    if (_isLoadingExpiry) {
+      return const Center(
+        child: CircularProgressIndicator(color: Colors.white),
+      );
+    }
+
+    if (_expiringIngredients.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.kitchen_outlined,
+              size: 64,
+              color: Colors.white.withOpacity(0.5),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'ไม่มีวัตถุดิบใกล้หมดอายุ',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.white.withOpacity(0.7),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'ในช่วง $_expiryFilter',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.white.withOpacity(0.5),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        _buildExpiryFilterChips(),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: _expiringIngredients.length,
+            itemBuilder: (context, index) {
+              final ingredient = _expiringIngredients[index];
+              return _buildExpiringIngredientCard(ingredient);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildExpiringProductCard(Map<String, dynamic> product) {
+    final daysUntilExpiry = product['days_until_expiry'] as int? ?? 0;
+    final expiryStatus = product['expiry_status'] as String? ?? 'normal';
+    final promotionReason = product['promotion_reason'] as String? ?? '';
+    final promotionMetadata = product['promotion_metadata'] as Map<String, dynamic>? ?? {};
+    final suggestedDiscount = promotionMetadata['suggested_discount_percent'] as int? ?? 10;
+
+    Color statusColor;
+    IconData statusIcon;
+    switch (expiryStatus) {
+      case 'expired':
+        statusColor = Colors.red.shade900;
+        statusIcon = Icons.warning_rounded;
+        break;
+      case 'critical':
+        statusColor = Colors.red;
+        statusIcon = Icons.timer_off;
+        break;
+      case 'warning':
+        statusColor = Colors.orange;
+        statusIcon = Icons.access_time;
+        break;
+      default:
+        statusColor = Colors.blue;
+        statusIcon = Icons.schedule;
+    }
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      color: Colors.white.withOpacity(0.95),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: statusColor.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(statusIcon, color: statusColor, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        product['product_name'] as String? ?? 'ไม่มีชื่อ',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        product['category_name'] as String? ?? 'ไม่มีหมวดหมู่',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppDesignSystem.primary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Text(
+                    'ส่วนลด $suggestedDiscount%',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: AppDesignSystem.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: statusColor.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, color: statusColor, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      promotionReason,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey[800],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildExpiryStat(
+                    label: 'เหลือ (วัน)',
+                    value: daysUntilExpiry.toString(),
+                    color: statusColor,
+                  ),
+                ),
+                Expanded(
+                  child: _buildExpiryStat(
+                    label: 'จำนวน',
+                    value: '${product['expiring_quantity'] ?? 0}',
+                    color: Colors.blue,
+                  ),
+                ),
+                Expanded(
+                  child: _buildExpiryStat(
+                    label: 'ราคาปัจจุบัน',
+                    value: '${product['current_price'] ?? 0}฿',
+                    color: Colors.green,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _createPromotionFromExpiringProduct(product),
+                    icon: const Icon(Icons.local_offer, size: 16),
+                    label: const Text('สร้างโปรโมชั่น'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppDesignSystem.primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExpiringIngredientCard(Map<String, dynamic> ingredient) {
+    final daysUntilExpiry = ingredient['days_until_expiry'] as int? ?? 0;
+    final expiryStatus = ingredient['expiry_status'] as String? ?? 'normal';
+    final promotionReason = ingredient['promotion_reason'] as String? ?? '';
+    final promotionMetadata = ingredient['promotion_metadata'] as Map<String, dynamic>? ?? {};
+    final suggestedDiscount = promotionMetadata['suggested_discount_percent'] as int? ?? 10;
+    final affectedRecipes = promotionMetadata['affected_recipes'] as List<dynamic>? ?? [];
+
+    Color statusColor;
+    IconData statusIcon;
+    switch (expiryStatus) {
+      case 'expired':
+        statusColor = Colors.red.shade900;
+        statusIcon = Icons.warning_rounded;
+        break;
+      case 'critical':
+        statusColor = Colors.red;
+        statusIcon = Icons.timer_off;
+        break;
+      case 'warning':
+        statusColor = Colors.orange;
+        statusIcon = Icons.access_time;
+        break;
+      default:
+        statusColor = Colors.blue;
+        statusIcon = Icons.schedule;
+    }
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      color: Colors.white.withOpacity(0.95),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: statusColor.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(statusIcon, color: statusColor, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        ingredient['ingredient_name'] as String? ?? 'ไม่มีชื่อ',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        ingredient['category_name'] as String? ?? 'ไม่มีหมวดหมู่',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppDesignSystem.primary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Text(
+                    'ส่วนลด $suggestedDiscount%',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: AppDesignSystem.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: statusColor.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, color: statusColor, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      promotionReason,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey[800],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (affectedRecipes.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.restaurant_menu, color: Colors.blue, size: 16),
+                        const SizedBox(width: 8),
+                        Text(
+                          'เมนูที่ใช้วัตถุดิบนี้ (${affectedRecipes.length} เมนู)',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: affectedRecipes.take(5).map<Widget>((recipe) {
+                        return Chip(
+                          label: Text(
+                            recipe['output_product_name'] as String? ?? 'ไม่มีชื่อ',
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                          backgroundColor: Colors.blue.withOpacity(0.1),
+                          visualDensity: VisualDensity.compact,
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _createPromotionFromExpiringIngredient(ingredient),
+                    icon: const Icon(Icons.local_offer, size: 16),
+                    label: const Text('สร้างโปรโมชั่น'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppDesignSystem.primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExpiryStat({
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.grey[600],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _createPromotionFromExpiringProduct(Map<String, dynamic> product) async {
+    final promotionMetadata = product['promotion_metadata'] as Map<String, dynamic>? ?? {};
+    final suggestedDiscount = promotionMetadata['suggested_discount_percent'] as int? ?? 20;
+    
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PromotionFormPage(
+          initialName: 'โปรโมชั่นระบาย ${product['product_name']}',
+          initialDescription: product['promotion_reason'] as String? ?? 'สินค้าใกล้หมดอายุ',
+          initialDiscountPercent: suggestedDiscount.toDouble(),
+          initialSelectedProducts: [product['product_id'] as String],
+        ),
+      ),
+    );
+
+    if (result == true) {
+      _loadData();
+      _loadExpiringData();
+    }
+  }
+
+  Future<void> _createPromotionFromExpiringIngredient(Map<String, dynamic> ingredient) async {
+    final promotionMetadata = ingredient['promotion_metadata'] as Map<String, dynamic>? ?? {};
+    final suggestedDiscount = promotionMetadata['suggested_discount_percent'] as int? ?? 20;
+    final affectedRecipes = promotionMetadata['affected_recipes'] as List<dynamic>? ?? [];
+
+    // Get product IDs from affected recipes
+    final productIds = affectedRecipes
+        .map((r) => r['output_product_id'] as String?)
+        .where((id) => id != null)
+        .cast<String>()
+        .toList();
+
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PromotionFormPage(
+          initialName: 'โปรโมชั่นระบายวัตถุดิบ ${ingredient['ingredient_name']}',
+          initialDescription: ingredient['promotion_reason'] as String? ?? 'วัตถุดิบใกล้หมดอายุ',
+          initialDiscountPercent: suggestedDiscount.toDouble(),
+          initialSelectedProducts: productIds,
+        ),
+      ),
+    );
+
+    if (result == true) {
+      _loadData();
+      _loadExpiringData();
+    }
+  }
+
+  // =============================================
+  // Phase 7: Analytics Tab
+  // =============================================
+
+  Widget _buildAnalyticsTab() {
+    return Column(
+      children: [
+        // Date Range Filter
+        Container(
+          margin: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => _selectDate(context, true),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.white.withOpacity(0.3)),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.calendar_today, color: Colors.white.withOpacity(0.7), size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _analyticsStartDate != null
+                                    ? '${_analyticsStartDate!.day}/${_analyticsStartDate!.month}/${_analyticsStartDate!.year + 543}'
+                                    : 'วันที่เริ่มต้น',
+                                style: TextStyle(color: Colors.white.withOpacity(0.9)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => _selectDate(context, false),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.white.withOpacity(0.3)),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.calendar_today, color: Colors.white.withOpacity(0.7), size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _analyticsEndDate != null
+                                    ? '${_analyticsEndDate!.day}/${_analyticsEndDate!.month}/${_analyticsEndDate!.year + 543}'
+                                    : 'วันที่สิ้นสุด',
+                                style: TextStyle(color: Colors.white.withOpacity(0.9)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  ElevatedButton(
+                    onPressed: _loadAnalyticsData,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppDesignSystem.primary,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text('ค้นหา'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              // Coupon/Promotion Filter
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      value: _selectedCouponId,
+                      decoration: InputDecoration(
+                        labelText: 'กรองตามคูปอง',
+                        labelStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                        ),
+                      ),
+                      dropdownColor: AppDesignSystem.surface,
+                      style: TextStyle(color: Colors.white),
+                      items: [
+                        DropdownMenuItem(value: null, child: Text('ทั้งหมด', style: TextStyle(color: Colors.white))),
+                        ..._coupons.map((coupon) => DropdownMenuItem(
+                          value: coupon.id,
+                          child: Text(coupon.name ?? '', style: TextStyle(color: Colors.white)),
+                        )),
+                      ],
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedCouponId = value;
+                          _selectedPromotionId = null; // Clear promotion filter
+                        });
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      value: _selectedPromotionId,
+                      decoration: InputDecoration(
+                        labelText: 'กรองตามโปรโมชั่น',
+                        labelStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                        ),
+                      ),
+                      dropdownColor: AppDesignSystem.surface,
+                      style: TextStyle(color: Colors.white),
+                      items: [
+                        DropdownMenuItem(value: null, child: Text('ทั้งหมด', style: TextStyle(color: Colors.white))),
+                        ..._promotions.map((promotion) => DropdownMenuItem(
+                          value: promotion.id,
+                          child: Text(promotion.name ?? '', style: TextStyle(color: Colors.white)),
+                        )),
+                      ],
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedPromotionId = value;
+                          _selectedCouponId = null; // Clear coupon filter
+                        });
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        // Summary Cards
+        if (_analyticsSummary != null) ...[
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Expanded(child: _buildAnalyticsCard('จำนวนครั้งที่ใช้', '${_analyticsSummary!['total_usage'] ?? 0}', Icons.receipt)),
+                const SizedBox(width: 12),
+                Expanded(child: _buildAnalyticsCard('ส่วนลดรวม', '${(_analyticsSummary!['total_discount'] ?? 0).toStringAsFixed(2)}', Icons.discount)),
+                const SizedBox(width: 12),
+                Expanded(child: _buildAnalyticsCard('ออเดอร์ที่เกี่ยวข้อง', '${_analyticsSummary!['total_orders'] ?? 0}', Icons.shopping_cart)),
+              ],
+            ),
+          ),
+        ],
+        // Usage Data Table
+        Expanded(
+          child: _isLoadingAnalytics
+              ? const Center(child: CircularProgressIndicator(color: Colors.white))
+              : _usageData.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.analytics_outlined, size: 64, color: Colors.white.withOpacity(0.5)),
+                          const SizedBox(height: 16),
+                          Text(
+                            'ไม่มีข้อมูลการใช้งาน',
+                            style: TextStyle(fontSize: 16, color: Colors.white.withOpacity(0.7)),
+                          ),
+                        ],
+                      ),
+                    )
+                  : Container(
+                      margin: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: ListView.builder(
+                        itemCount: _usageData.length,
+                        itemBuilder: (context, index) {
+                          final usage = _usageData[index];
+                          return ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: usage['type'] == 'coupon' ? AppDesignSystem.primary : AppDesignSystem.secondary,
+                              child: Icon(
+                                usage['type'] == 'coupon' ? Icons.local_offer : Icons.card_giftcard,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                            ),
+                            title: Text(
+                              usage['name'] ?? '',
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                            ),
+                            subtitle: Text(
+                              'ใช้ ${usage['usage_count']} ครั้ง | ส่วนลด ${(usage['total_discount'] ?? 0).toStringAsFixed(2)}',
+                              style: TextStyle(color: Colors.white.withOpacity(0.7)),
+                            ),
+                            trailing: Text(
+                              '${'${DateTime.parse(usage['last_used']).day}/${DateTime.parse(usage['last_used']).month}/${DateTime.parse(usage['last_used']).year + 543}'}',
+                              style: TextStyle(color: Colors.white.withOpacity(0.7)),
+                            ),
+                            onTap: () => _showUsageDetails(usage),
+                          );
+                        },
+                      ),
+                    ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAnalyticsCard(String title, String value, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: Colors.white.withOpacity(0.7), size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _selectDate(BuildContext context, bool isStartDate) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: isStartDate ? _analyticsStartDate ?? DateTime.now() : _analyticsEndDate ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+    );
+    
+    if (picked != null) {
+      setState(() {
+        if (isStartDate) {
+          _analyticsStartDate = picked;
+        } else {
+          _analyticsEndDate = picked;
+        }
+      });
+    }
+  }
+
+  Future<void> _loadAnalyticsData() async {
+    setState(() => _isLoadingAnalytics = true);
+    
+    try {
+      // Load analytics summary
+      final summary = await PosDiscountService.getAnalyticsSummary(
+        startDate: _analyticsStartDate,
+        endDate: _analyticsEndDate,
+        discountId: _selectedCouponId,
+        promotionId: _selectedPromotionId,
+      );
+      
+      // Load detailed usage data
+      final usageData = await PosDiscountService.getUsageAnalytics(
+        startDate: _analyticsStartDate,
+        endDate: _analyticsEndDate,
+        discountId: _selectedCouponId,
+        promotionId: _selectedPromotionId,
+        limit: 100,
+      );
+      
+      setState(() {
+        _analyticsSummary = summary;
+        _usageData = usageData;
+        _isLoadingAnalytics = false;
+      });
+    } catch (e) {
+      setState(() => _isLoadingAnalytics = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('เกิดข้อผิดพลาด: $e')),
+      );
+    }
+  }
+
+  void _showUsageDetails(Map<String, dynamic> usage) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(usage['name'] ?? ''),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('ประเภท: ${usage['type'] == 'coupon' ? 'คูปอง' : 'โปรโมชั่น'}'),
+            const SizedBox(height: 8),
+            Text('จำนวนครั้งที่ใช้: ${usage['usage_count']}'),
+            const SizedBox(height: 8),
+            Text('ส่วนลดรวม: ${(usage['total_discount'] ?? 0).toStringAsFixed(2)}'),
+            const SizedBox(height: 8),
+            Text('จำนวนออเดอร์: ${usage['order_count'] ?? 0}'),
+            const SizedBox(height: 8),
+            Text('ลูกค้าที่ใช้: ${usage['unique_customers'] ?? 0}'),
+            const SizedBox(height: 8),
+            Text('ใช้ครั้งล่าสุด: ${usage['last_used_at'] != null ? '${DateTime.parse(usage['last_used_at']).day}/${DateTime.parse(usage['last_used_at']).month}/${DateTime.parse(usage['last_used_at']).year + 543}' : '-'}'),
+            if (usage['avg_discount_per_use'] != null) ...[
+              const SizedBox(height: 8),
+              Text('ส่วนลดเฉลี่ยต่อครั้ง: ${usage['avg_discount_per_use'].toStringAsFixed(2)}'),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('ปิด'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _showOrderDetails(usage);
+            },
+            child: const Text('ดูรายละเอียดออเดอร์'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showOrderDetails(Map<String, dynamic> usage) async {
+    setState(() => _isLoadingAnalytics = true);
+    
+    try {
+      final orderDetails = await PosDiscountService.getOrderDetailsForDiscount(
+        discountId: usage['type'] == 'coupon' ? usage['id'] : null,
+        promotionId: usage['type'] == 'promotion' ? usage['id'] : null,
+        startDate: _analyticsStartDate,
+        endDate: _analyticsEndDate,
+      );
+      
+      setState(() => _isLoadingAnalytics = false);
+      
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => Dialog(
+            child: Container(
+              width: MediaQuery.of(context).size.width * 0.8,
+              height: MediaQuery.of(context).size.height * 0.7,
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'รายละเอียดออเดอร์: ${usage['name']}',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: orderDetails.isEmpty
+                        ? const Center(child: Text('ไม่มีข้อมูลออเดอร์'))
+                        : ListView.builder(
+                            itemCount: orderDetails.length,
+                            itemBuilder: (context, index) {
+                              final order = orderDetails[index];
+                              return Card(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            'ออเดอร์ #${order['order_number'] ?? 'N/A'}',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          Text(
+                                            '${(order['discount_amount'] ?? 0).toStringAsFixed(2)}',
+                                            style: TextStyle(
+                                              color: Colors.red[700],
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'วันที่: ${order['order_date'] != null ? '${DateTime.parse(order['order_date']).day}/${DateTime.parse(order['order_date']).month}/${DateTime.parse(order['order_date']).year + 543}' : '-'}',
+                                        style: TextStyle(
+                                          color: Colors.grey[600],
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                      if (order['customer_name'] != null) ...[
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'ลูกค้า: ${order['customer_name']}',
+                                          style: TextStyle(
+                                            color: Colors.grey[600],
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                      if (order['product_name'] != null) ...[
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'สินค้า: ${order['product_name']}',
+                                          style: TextStyle(
+                                            color: Colors.grey[600],
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                      if (order['applied_by_name'] != null) ...[
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'ผู้ใช้: ${order['applied_by_name']}',
+                                          style: TextStyle(
+                                            color: Colors.grey[600],
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() => _isLoadingAnalytics = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('เกิดข้อผิดพลาด: $e')),
+        );
+      }
     }
   }
 }
