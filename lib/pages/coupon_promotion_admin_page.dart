@@ -12,6 +12,7 @@ import '../utils/date_picker_helper.dart';
 import '../utils/permission_helpers.dart';
 import 'promotion_form_page.dart';
 import 'promotion_product_picker_page.dart';
+import '../widgets/promotion_formula_tab_widget.dart';
 
 class CouponPromotionAdminPage extends StatefulWidget {
   const CouponPromotionAdminPage({super.key});
@@ -279,6 +280,14 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
                                 isSelected: _selectedTabIndex == 4,
                               ),
                             ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _buildTabButton(
+                                label: 'ตั้งค่าสูตรแนะนำ',
+                                index: 5,
+                                isSelected: _selectedTabIndex == 5,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -289,7 +298,9 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
                     ],
                   ),
                 ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: _selectedTabIndex == 5
+          ? null // ซ่อน FAB ในหน้าตั้งค่าสูตร (มีปุ่มในตัว widget เอง)
+          : FloatingActionButton(
         onPressed: () {
           if (_selectedTabIndex == 0) {
             checkPermissionAndExecute(
@@ -335,6 +346,7 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
             _loadAnalyticsData();
           }
         }
+        // Phase 8: Formula tab - no auto-load needed, widget handles its own state
       },
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
@@ -372,6 +384,8 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
         return _buildExpiringIngredientsTab();
       case 4:
         return _buildAnalyticsTab();
+      case 5:
+        return const PromotionFormulaTabWidget();
       default:
         return const SizedBox.shrink();
     }

@@ -69,6 +69,8 @@ final List<Map<String, dynamic>> _systemTabs = [
   {'id': 'coupon_promotion_promotions', 'page_id': 'coupon_promotion', 'name': 'จัดการโปรโมชั่น', 'icon': Icons.celebration},
   {'id': 'coupon_promotion_analytics', 'page_id': 'coupon_promotion', 'name': 'วิเคราะห์การใช้งาน', 'icon': Icons.analytics},
   {'id': 'coupon_promotion_main', 'page_id': 'coupon_promotion', 'name': 'จัดการคูปองและโปรโมชั่น (Admin)', 'icon': Icons.local_offer},
+  // Tab: ตั้งค่าสูตรแนะนำ (formula_config)
+  {'id': 'coupon_promotion_formula', 'page_id': 'coupon_promotion', 'name': 'ตั้งค่าสูตรแนะนำ', 'icon': Icons.functions},
 ];
 
 /// รายการ Action/ปุ่มทั้งหมดในแต่ละ Tab
@@ -200,6 +202,12 @@ final List<Map<String, dynamic>> _systemActions = [
   {'id': 'coupon_promotion_delete_coupon', 'tab_id': 'coupon_promotion_main', 'name': 'ลบคูปอง', 'icon': Icons.delete},
   {'id': 'coupon_promotion_edit_promotion', 'tab_id': 'coupon_promotion_main', 'name': 'แก้ไขโปรโมชั่น', 'icon': Icons.edit},
   {'id': 'coupon_promotion_delete_promotion', 'tab_id': 'coupon_promotion_main', 'name': 'ลบโปรโมชั่น', 'icon': Icons.delete},
+  // Tab: ตั้งค่าสูตรแนะนำ (coupon_promotion_formula)
+  {'id': 'formula_view', 'tab_id': 'coupon_promotion_formula', 'name': 'ดูสูตรทั้งหมด', 'icon': Icons.visibility},
+  {'id': 'formula_create', 'tab_id': 'coupon_promotion_formula', 'name': 'สร้างสูตรใหม่', 'icon': Icons.add_circle},
+  {'id': 'formula_edit', 'tab_id': 'coupon_promotion_formula', 'name': 'แก้ไขสูตร', 'icon': Icons.edit},
+  {'id': 'formula_delete', 'tab_id': 'coupon_promotion_formula', 'name': 'ลบสูตร', 'icon': Icons.delete},
+  {'id': 'formula_activate', 'tab_id': 'coupon_promotion_formula', 'name': 'เปิด/ปิดใช้งานสูตร', 'icon': Icons.toggle_on},
 ];
 
 class UserPermissionsPage extends StatefulWidget {

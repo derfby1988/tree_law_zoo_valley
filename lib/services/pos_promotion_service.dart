@@ -1,10 +1,147 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/pos_promotion_model.dart';
+import '../models/recommended_product_model.dart';
 import 'inventory_service.dart';
 
 class PosPromotionService {
   static final _client = Supabase.instance.client;
+
+  // =============================================
+  // Recommended Products API
+  // =============================================
+
+  /// ดึงข้อมูลสินค้าแนะนำตาม Priority Score - ใช้งานแบบง่ายๆ ก่อน compile
+  static Future<List<RecommendedProduct>> getRecommendedProducts({
+    int? limit,
+    String? priorityLevel,
+    String? categoryId,
+    int? minScore,
+    int? maxScore,
+    bool? expiringOnly,
+    bool? highMarginOnly,
+    bool? inSeasonOnly,
+  }) async {
+    try {
+      debugPrint('🔍 getRecommendedProducts: Querying with filters');
+      
+      // Simple query without filters first
+      var query = _client
+          .from('promotion_recommended_targets')
+          .select('*')
+          .order('priority_score', ascending: false)
+          .order('overall_rank', ascending: true);
+
+      // Apply limit first
+      if (limit != null && limit > 0) {
+        query = query.limit(limit);
+      }
+
+      final response = await query;
+      
+      debugPrint('🔍 getRecommendedProducts: Found ${response.length} products');
+      
+      return (response as List)
+          .map((item) => RecommendedProduct.fromSupabase(Map<String, dynamic>.from(item)))
+          .toList();
+    } catch (e) {
+      debugPrint('❌ getRecommendedProducts: $e');
+      return [];
+    }
+  }
+
+  /// ดึงข้อมูลสินค้าแนะนำด่วน (Critical/High)
+  static Future<List<RecommendedProduct>> getUrgentRecommendedProducts({int? limit}) async {
+    return getRecommendedProducts(
+      priorityLevel: 'critical',
+      limit: limit ?? 20,
+    );
+  }
+
+  /// ดึงข้อมูลสินค้าแนะนำที่ใกล้หมดอายุ
+  static Future<List<RecommendedProduct>> getExpiringRecommendedProducts({int? limit}) async {
+    return getRecommendedProducts(
+      expiringOnly: true,
+      limit: limit ?? 20,
+    );
+  }
+
+  /// ดึงข้อมูลสินค้าแนะนำที่มีกำไรสูง
+  static Future<List<RecommendedProduct>> getHighMarginRecommendedProducts({int? limit}) async {
+    return getRecommendedProducts(
+      highMarginOnly: true,
+      limit: limit ?? 20,
+    );
+  }
+
+  /// ดึงข้อมูลสินค้าแนะนำตามฤดูกาล
+  static Future<List<RecommendedProduct>> getSeasonalRecommendedProducts({int? limit}) async {
+    return getRecommendedProducts(
+      inSeasonOnly: true,
+      limit: limit ?? 20,
+    );
+  }
+
+  /// ดึงข้อมูลสินค้าแนะนำตามหมวดหมู่
+  static Future<List<RecommendedProduct>> getRecommendedProductsByCategory(
+    String categoryId, {
+    int? limit,
+  }) async {
+    return getRecommendedProducts(
+      categoryId: categoryId,
+      limit: limit ?? 20,
+    );
+  }
+
+  /// ดึงข้อมูลสินค้าแนะนำ Top N
+  static Future<List<RecommendedProduct>> getTopRecommendedProducts(int count) async {
+    return getRecommendedProducts(limit: count);
+  }
+
+  /// ดึงข้อมูลสินค้าแนะนำตามช่วงคะแนน
+  static Future<List<RecommendedProduct>> getRecommendedProductsByScoreRange(
+    int minScore,
+    int maxScore, {
+    int? limit,
+  }) async {
+    return getRecommendedProducts(
+      minScore: minScore,
+      maxScore: maxScore,
+      limit: limit,
+    );
+  }
+
+  /// คำนวณ Priority Score สำหรับสินค้าเดี่ยว
+  static Future<double> calculateProductPriorityScore(String productId) async {
+    try {
+      final response = await _client
+          .from('promotion_recommended_targets')
+          .select('priority_score')
+          .eq('product_id', productId)
+          .maybeSingle();
+
+      if (response != null) {
+        return (response['priority_score'] as num).toDouble();
+      }
+      return 0.0;
+    } catch (e) {
+      debugPrint('❌ calculateProductPriorityScore: $e');
+      return 0.0;
+    }
+  }
+
+  /// รีเฟรชข้อมูลสินค้าแนะนำ (ถ้ามี materialized view)
+  static Future<bool> refreshRecommendedProducts() async {
+    try {
+      // ถ้าใช้ materialized view สามารถเรียก RPC function
+      await _client.rpc('refresh_promotion_recommended_targets');
+      debugPrint('✅ refreshRecommendedProducts: Success');
+      return true;
+    } catch (e) {
+      debugPrint('❌ refreshRecommendedProducts: $e');
+      return false;
+    }
+  }
 
   // =============================================
   // Promotion Management

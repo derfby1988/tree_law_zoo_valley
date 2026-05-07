@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:tree_law_zoo_valley/services/inventory_service.dart';
+import 'package:tree_law_zoo_valley/services/pos_promotion_service.dart';
 import 'package:tree_law_zoo_valley/theme/app_design_system.dart';
 import 'package:tree_law_zoo_valley/models/pagination_model.dart';
+import 'package:tree_law_zoo_valley/models/recommended_product_model.dart';
 
 class PromotionProductPickerPage extends StatefulWidget {
   final List<Map<String, dynamic>> initiallySelectedProducts;
@@ -30,7 +32,7 @@ class _PromotionProductPickerPageState extends State<PromotionProductPickerPage>
   List<Map<String, dynamic>> _highMarginProducts = [];
   List<Map<String, dynamic>> _seasonalProducts = [];
   List<Map<String, dynamic>> _festivalProducts = [];
-  List<Map<String, dynamic>> _recommendedProducts = [];
+  List<RecommendedProduct> _recommendedProducts = [];
   
   // Loading states
   bool _isLoading = true;
@@ -226,44 +228,22 @@ class _PromotionProductPickerPageState extends State<PromotionProductPickerPage>
 
   Future<void> _loadRecommendedProducts() async {
     try {
-      // Phase 3: Combine multiple criteria for recommendations
-      final expiring = await InventoryService.getExpiringProductsForPicker(daysThreshold: 14);
-      final highMargin = await InventoryService.getHighMarginProductsForPicker(marginLevel: 'high');
-      final available = await InventoryService.getAvailableProductsForPicker();
-
-      // Merge and deduplicate, prioritizing expiring products
-      final productMap = <String, Map<String, dynamic>>{};
-
-      for (final p in expiring) {
-        final id = p['id']?.toString();
-        if (id != null) {
-          productMap[id] = {...p, 'recommendation_reason': 'ใกล้หมดอายุ'};
-        }
-      }
-
-      for (final p in highMargin) {
-        final id = p['id']?.toString();
-        if (id != null && !productMap.containsKey(id)) {
-          productMap[id] = {...p, 'recommendation_reason': 'กำไรสูง'};
-        }
-      }
-
-      for (final p in available) {
-        final id = p['id']?.toString();
-        if (id != null && !productMap.containsKey(id)) {
-          final hasStock = p['availability']?['has_stock'] ?? false;
-          if (hasStock) {
-            productMap[id] = {...p, 'recommendation_reason': 'พร้อมขาย'};
-          }
-        }
-      }
+      debugPrint('🔍 Loading recommended products with Priority Score...');
+      
+      // Phase 8: Use new Priority Score algorithm
+      final recommended = await PosPromotionService.getRecommendedProducts(
+        limit: 50,
+        minScore: 20, // แสดงเฉพาะที่มีคะแนน >= 20
+      );
 
       setState(() {
-        _recommendedProducts = productMap.values.toList();
+        _recommendedProducts = recommended;
         _tabLoading['recommended'] = false;
       });
+      
+      debugPrint('✅ Loaded ${recommended.length} recommended products');
     } catch (e) {
-      debugPrint('Error loading recommended products: $e');
+      debugPrint('❌ Error loading recommended products: $e');
       setState(() => _tabLoading['recommended'] = false);
     }
   }
@@ -596,7 +576,7 @@ class _PromotionProductPickerPageState extends State<PromotionProductPickerPage>
       case 5:
         return _festivalProducts;
       case 6:
-        return _recommendedProducts;
+        return _recommendedProducts.map((p) => p.toMap()).toList();
       default:
         return _allProducts;
     }
@@ -1067,28 +1047,113 @@ class _PromotionProductPickerPageState extends State<PromotionProductPickerPage>
   }
 
   Widget _buildRecommendedSubtitle(Map<String, dynamic> product) {
+    // Convert back to RecommendedProduct if needed
+    final recommendedProduct = RecommendedProduct.fromSupabase(product);
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-          decoration: BoxDecoration(
-            color: AppDesignSystem.primary.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Text(
-            product['reason'] ?? 'แนะนำโดยระบบ',
-            style: TextStyle(
-              fontSize: 11,
-              color: AppDesignSystem.primary,
-              fontWeight: FontWeight.w600,
+        // Priority Score and Level
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Color(int.parse(recommendedProduct.priorityLevelColor.replaceAll('#', '0xFF'))),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                '${recommendedProduct.priorityScore.toStringAsFixed(1)} (${recommendedProduct.priorityLevelText})',
+                style: const TextStyle(
+                  fontSize: 10,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
-          ),
+            const SizedBox(width: 6),
+            // Rank
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey[400]!),
+                borderRadius: BorderRadius.circular(3),
+              ),
+              child: Text(
+                '#${recommendedProduct.overallRank}',
+                style: TextStyle(
+                  fontSize: 9,
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 4),
+        
+        // Recommendation Reasons
+        if (recommendedProduct.recommendationReasons.isNotEmpty)
+          Wrap(
+            spacing: 4,
+            runSpacing: 2,
+            children: recommendedProduct.recommendationReasons.map((reason) {
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+                child: Text(
+                  reason,
+                  style: TextStyle(
+                    fontSize: 9,
+                    color: Colors.blue[700],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        
+        const SizedBox(height: 4),
+        
+        // Stock and Expiry Info
+        Row(
+          children: [
+            Text(
+              'คงเหลือ: ${recommendedProduct.stockQuantity} หน่วย',
+              style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+            ),
+            if (recommendedProduct.daysRemaining != null) ...[
+              const SizedBox(width: 8),
+              Text(
+                recommendedProduct.isExpired 
+                    ? 'หมดอายุแล้ว'
+                    : 'เหลือ ${recommendedProduct.daysRemaining} วัน',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: recommendedProduct.isExpiringSoon 
+                      ? Colors.red[600] 
+                      : Colors.grey[600],
+                  fontWeight: recommendedProduct.isExpiringSoon 
+                      ? FontWeight.w600 
+                      : FontWeight.normal,
+                ),
+              ),
+            ],
+          ],
+        ),
+        
+        // Suggested Discount
+        const SizedBox(height: 2),
         Text(
-          'Score: ${product['priority_score'] ?? 0}/100',
-          style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+          'ส่วนลดที่แนะนำ: ${recommendedProduct.suggestedDiscountPct.toStringAsFixed(0)}%',
+          style: TextStyle(
+            fontSize: 9,
+            color: Colors.green[600],
+            fontWeight: FontWeight.w500,
+          ),
         ),
       ],
     );

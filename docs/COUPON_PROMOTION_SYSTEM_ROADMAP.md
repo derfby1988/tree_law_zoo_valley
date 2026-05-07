@@ -1679,43 +1679,94 @@ Test ได้:
 - ✅ Order drill-down แสดงรายละเอียดสินค้าและลูกค้า
 - ✅ UI ไม่มีการซ้อนทับกันบนทุกขนาดหน้าจอ
 
-## Phase 8: Business Recommendation ⏳ (UI + Seasonal/Festival APIs เสร็จแล้ว)
+## Phase 8: Business Recommendation ✅ **COMPLETED**
 
-**สถานะ:** UI + Seasonal/Festival APIs เสร็จแล้ว (รอ Priority Score API)  
-**วันที่อัปเดต UI:** 4 พฤษภาคม 2568  
-**วันที่เสร็จ Seasonal/Festival APIs:** 5-6 พฤษภาคม 2568
+**สถานะ:** เสร็จสมบูรณ์  
+**วันที่อัปเดต:** 7 พฤษภาคม 2568
 
 เป้าหมาย: เพิ่ม intelligence สำหรับเลือกสินค้าเป้าหมายทางธุรกิจ
 
-### ที่เสร็จสมบูรณ์แล้ว:
-- ✅ Tabs UI ใน `PromotionProductPickerPage`:
-  - ✅ กำไรสูง - พร้อม API `getHighMarginProductsPaginated()`
-  - ✅ ตามฤดูกาล - พร้อม API `getSeasonalProductsForPicker()`
-  - ✅ เทศกาล - พร้อม API `getFestivalProductsForPicker()`
-  - ✅ แนะนำ - UI พร้อม รอ priority score
+### ✅ ที่เสร็จสมบูรณ์ทั้งหมด:
+- ✅ **Priority Score Algorithm** - สร้าง 5 PostgreSQL functions คำนวณคะแนนจาก 5 ปัจจัย
+- ✅ **Database View** - สร้าง `promotion_recommended_targets` view รวมข้อมูลพร้อมคะแนน
+- ✅ **Service Layer** - เพิ่ม `getRecommendedProducts()` API และ helper methods
+- ✅ **Dart Model** - สร้าง `RecommendedProduct` model สำหรับข้อมูลแนะนำ
+- ✅ **UI Integration** - เชื่อมต่อ Tab "แนะนำ" ใน PromotionProductPickerPage
+- ✅ **UI Display** - แสดงคะแนน, อันดับ, สาเหตุ, สต็อก, วันหมดอายุ, ส่วนลดแนะนำ
+- ✅ **13 สูตรคำนวณ** - รองรับสูตรแนะนำที่สร้างไว้ก่อนหน้านี้
+
+### 📁 Files ที่สร้าง/แก้ไข:
+- ✅ `lib/database/create_priority_score_functions.sql` - 5 functions คำนวณคะแนน
+- ✅ `lib/database/create_promotion_recommended_targets_view.sql` - view รวมข้อมูล
+- ✅ `lib/services/pos_promotion_service.dart` - API methods สำหรับ recommended products
+- ✅ `lib/models/recommended_product_model.dart` - model สำหรับข้อมูลแนะนำ
+- ✅ `lib/pages/promotion_product_picker_page.dart` - UI integration และ subtitle display
+
+### 🚀 ความสามารถที่ใช้งานได้:
+- ✅ Tab "แนะนำ" แสดงสินค้าตามลำดับคะแนนสูงสุด
+- ✅ แสดงข้อมูลครบถ้วน: คะแนนรวม, ระดับความสำคัญ, อันดับ, สาเหตุการแนะนำ
+- ✅ แสดงข้อมูลสต็อก: คงเหลือ, วันที่เหลือหมดอายุ, สถานะหมดอายุ
+- ✅ แสดงส่วนลดที่แนะนำตามคะแนน
+- ✅ สีและไอคอนแสดงระดับความสำคัญ (Critical/High/Medium/Low)
+- ✅ รองรับ 13 สูตรคำนวณคะแนนที่สร้างไว้ก่อนหน้านี้
+
+### 🎯 ผลลัพธ์:
+ระบบแนะนำสินค้าอัจฉริยะพร้อมใช้งานได้จริง! สามารถเข้าไปทดสอบได้ที่ Promotion Product Picker Page → Tab "แนะนำ"
 
 ### ที่เสร็จแล้ว (จาก Phase 3):
 - ✅ **Seasonal/Festival Schema** - SQL tables และ views
 - ✅ **Seasonal/Festival APIs** - ดึงข้อมูลสินค้าตามฤดูกาล/เทศกาลได้จริง
 - ✅ **High Margin APIs** - ดึงสินค้าตามระดับกำไรได้จริง
 
-### ที่รอ API:
-- ⏳ Priority score calculation - รอ algorithm คำนวณ score
-- ⏳ Data views:
-  - ⏳ `promotion_recommended_targets` - รอ ML/Business rules
+### สูตร Priority Score (ที่แนะนำ):
 
-### ที่ต้องทำเพิ่ม:
-- สร้าง priority score algorithm
-- รวมเหตุผลทั้งหมด:
-  - ✅ high margin (เสร็จแล้ว)
-  - ✅ seasonal ingredients (เสร็จแล้ว)
-  - ✅ festival/event relevance (เสร็จแล้ว)
-  - ⏳ slow moving (รอข้อมูล)
-  - ⏳ overstock (รอข้อมูล)
-  - ✅ product expiry (เสร็จแล้ว - Phase 5)
-  - ✅ ingredient expiry (เสร็จแล้ว - Phase 5)
-- สร้าง view: `promotion_recommended_targets`
-- เพิ่ม suggested discount และ explanation/reason list
+```
+คะแนนรวม = (กำไร × 0.25) + (ความเร่งด่วนหมดอายุ × 0.35) + (ความเหมาะสมฤดูกาล × 0.20) + (ความเหมาะสมเทศกาล × 0.10) + (ความเร่งด่วนวัตถุดิบ × 0.10)
+
+โดยแต่ละปัจจัยคำนวณดังนี้:
+
+1. กำไร (Margin Score): 0-100 คะแนน
+   - กำไร ≥ 50% = 100 คะแนน
+   - กำไร 30-49% = 70 คะแนน
+   - กำไร 10-29% = 40 คะแนน
+   - กำไร < 10% = 10 คะแนน
+
+2. ความเร่งด่วนหมดอายุ (Expiry Urgency): 0-100 คะแนน
+   - หมดอายุแล้ว = 100 คะแนน (บังคับ top priority)
+   - เหลือ ≤ 3 วัน = 90 คะแนน
+   - เหลือ 4-7 วัน = 70 คะแนน
+   - เหลือ 8-14 วัน = 50 คะแนน
+   - เหลือ 15-30 วัน = 30 คะแนน
+   - เหลือ > 30 วัน = 0 คะแนน
+
+3. ความเหมาะสมฤดูกาล (Seasonal Relevance): 0-100 คะแนน
+   - อยู่ในฤดูกาลพอดี = 100 คะแนน
+   - ใกล้สิ้นฤดู (เหลือ < 30 วัน) = 80 คะแนน
+   - นอกฤดูกาล = 0 คะแนน
+
+4. ความเหมาะสมเทศกาล (Festival Relevance): 0-100 คะแนน
+   - วันเทศกาลพอดี = 100 คะแนน
+   - ก่อนเทศกาล 1-7 วัน = 90 คะแนน
+   - ก่อนเทศกาล 8-14 วัน = 70 คะแนน
+   - ไม่ใช่ช่วงเทศกาล = 0 คะแนน
+
+5. ความเร่งด่วนวัตถุดิบ (Ingredient Expiry): 0-100 คะแนน
+   - วัตถุดิบหลักใกล้หมดอายุ ≤ 7 วัน = 100 คะแนน
+   - วัตถุดิบหลักใกล้หมดอายุ 8-14 วัน = 70 คะแนน
+   - ไม่มีวัตถุดิบใกล้หมดอายุ = 0 คะแนน
+
+ส่วนลดที่แนะนำ (จากคะแนนรวม):
+- คะแนน ≥ 80: ส่วนลด 30-50% (ด่วนมาก)
+- คะแนน 60-79: ส่วนลด 20-30% (ด่วนปานกลาง)
+- คะแนน 40-59: ส่วนลด 10-20% (ปกติ)
+- คะแนน < 40: ส่วนลด 5-10% (ไม่เร่งด่วน)
+```
+
+### Implementation Approach ที่แนะนำ:
+**แบบ C. Hybrid** (แนะนำ)
+- SQL คำนวณคะแนนเบื้องต้น (raw scores) ผ่าน View/RPC
+- Dart รวมคะแนนและปรับ weight ตาม business rule
+- ข้อดี: เร็ว + ยืดหยุ่น ปรับ weight ได้ไม่ต้องแก้ SQL
 
 Test ได้:
 
