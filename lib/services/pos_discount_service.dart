@@ -478,7 +478,7 @@ class PosDiscountService {
   // Phase 7: Analytics Methods
   // =============================================
 
-  /// Get analytics summary for the dashboard cards
+  /// Get analytics summary for dashboard cards
   static Future<Map<String, dynamic>> getAnalyticsSummary({
     DateTime? startDate,
     DateTime? endDate,
@@ -486,37 +486,69 @@ class PosDiscountService {
     String? promotionId,
   }) async {
     try {
-      final response = await _client.rpc('get_analytics_summary', params: {
-        'p_start_date': startDate?.toIso8601String().split('T')[0],
-        'p_end_date': endDate?.toIso8601String().split('T')[0],
-        'p_discount_id': discountId,
-        'p_promotion_id': promotionId,
-      });
+      // Use basic query to get summary data
+      var query = _client
+          .from('pos_order_discounts')
+          .select('''
+            discount_id,
+            promotion_id,
+            discount_amount,
+            applied_at,
+            order_id,
+            pos_orders!inner(
+              customer_id
+            )
+          ''');
 
-      final data = response as List<dynamic>;
-      if (data.isEmpty) {
-        return {
-          'total_usage': 0,
-          'total_discount': 0.0,
-          'total_orders': 0,
-          'total_customers': 0,
-          'coupon_usage': 0,
-          'promotion_usage': 0,
-          'coupon_discount': 0.0,
-          'promotion_discount': 0.0,
-        };
+      // Apply date filters
+      if (startDate != null) {
+        query = query.gte('applied_at', startDate.toIso8601String());
+      }
+      if (endDate != null) {
+        query = query.lte('applied_at', endDate.toIso8601String());
+      }
+      if (discountId != null) {
+        query = query.eq('discount_id', discountId);
+      }
+      if (promotionId != null) {
+        query = query.eq('promotion_id', promotionId);
       }
 
-      final summary = data.first as Map<String, dynamic>;
+      final response = await query;
+      final discounts = (response as List)
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+
+      // Calculate summary
+      final totalUsage = discounts.length;
+      final totalDiscount = discounts.fold<double>(
+        0,
+        (sum, d) => sum + ((d['discount_amount'] ?? 0) as num).toDouble(),
+      );
+      final totalOrders = discounts.map((d) => d['order_id']).toSet().length;
+      final totalCustomers = discounts
+          .where((d) => d['pos_orders'] != null && d['pos_orders']['customer_id'] != null)
+          .map((d) => d['pos_orders']['customer_id'])
+          .toSet()
+          .length;
+      final couponUsage = discounts.where((d) => d['discount_id'] != null).length;
+      final promotionUsage = discounts.where((d) => d['promotion_id'] != null).length;
+      final couponDiscount = discounts
+          .where((d) => d['discount_id'] != null)
+          .fold<double>(0, (sum, d) => sum + ((d['discount_amount'] ?? 0) as num).toDouble());
+      final promotionDiscount = discounts
+          .where((d) => d['promotion_id'] != null)
+          .fold<double>(0, (sum, d) => sum + ((d['discount_amount'] ?? 0) as num).toDouble());
+
       return {
-        'total_usage': summary['total_usage_count'] ?? 0,
-        'total_discount': (summary['total_discount_amount'] ?? 0).toDouble(),
-        'total_orders': summary['total_orders_with_discount'] ?? 0,
-        'total_customers': summary['total_unique_customers'] ?? 0,
-        'coupon_usage': summary['coupon_usage_count'] ?? 0,
-        'promotion_usage': summary['promotion_usage_count'] ?? 0,
-        'coupon_discount': (summary['coupon_discount_amount'] ?? 0).toDouble(),
-        'promotion_discount': (summary['promotion_discount_amount'] ?? 0).toDouble(),
+        'total_usage': totalUsage,
+        'total_discount': totalDiscount,
+        'total_orders': totalOrders,
+        'total_customers': totalCustomers,
+        'coupon_usage': couponUsage,
+        'promotion_usage': promotionUsage,
+        'coupon_discount': couponDiscount,
+        'promotion_discount': promotionDiscount,
       };
     } catch (e) {
       debugPrint('Error getAnalyticsSummary: $e');
@@ -533,7 +565,7 @@ class PosDiscountService {
     }
   }
 
-  /// Get detailed usage analytics for the table
+  /// Get detailed usage analytics for table
   static Future<List<Map<String, dynamic>>> getUsageAnalytics({
     DateTime? startDate,
     DateTime? endDate,
@@ -543,17 +575,39 @@ class PosDiscountService {
     int offset = 0,
   }) async {
     try {
-      final response = await _client.rpc('get_usage_analytics', params: {
-        'p_start_date': startDate?.toIso8601String().split('T')[0],
-        'p_end_date': endDate?.toIso8601String().split('T')[0],
-        'p_discount_id': discountId,
-        'p_promotion_id': promotionId,
-        'p_limit': limit,
-        'p_offset': offset,
-      });
+      // Use basic query with joins to get usage data
+      final response = await _client
+          .from('pos_order_discounts')
+          .select('''
+            discount_id,
+            promotion_id,
+            discount_name,
+            discount_amount,
+            applied_at,
+            pos_discounts!inner(
+              name,
+              discount_type
+            ),
+            pos_promotions!inner(
+              name,
+              min_quantity,
+              free_quantity
+            )
+          ''')
+          .order('applied_at', ascending: false)
+          .limit(limit);
 
       return (response as List)
-          .map((item) => Map<String, dynamic>.from(item))
+          .map((item) {
+            final data = Map<String, dynamic>.from(item);
+            // Determine type and name
+            final isCoupon = data['discount_id'] != null;
+            data['type'] = isCoupon ? 'coupon' : 'promotion';
+            data['name'] = isCoupon 
+                ? (data['pos_discounts']?['name'] ?? data['discount_name'] ?? 'Unknown')
+                : (data['pos_promotions']?['name'] ?? data['discount_name'] ?? 'Unknown');
+            return data;
+          })
           .toList();
     } catch (e) {
       debugPrint('Error getUsageAnalytics: $e');
@@ -569,25 +623,33 @@ class PosDiscountService {
     DateTime? endDate,
   }) async {
     try {
-      var query = _client
-          .from('order_discount_details')
-          .select()
-          .order('order_date', ascending: false);
+      // Use basic query without views for now
+      final response = await _client
+          .from('pos_order_discounts')
+          .select('''
+            id,
+            discount_id,
+            promotion_id,
+            discount_name,
+            discount_type,
+            discount_value,
+            discount_amount,
+            applied_at,
+            applied_by,
+            order_id,
+            pos_orders!inner(
+              order_number,
+              total_amount,
+              final_amount,
+              created_at,
+              customer_id,
+              pos_customers!inner(
+                display_name
+              )
+            )
+          ''')
+          .order('applied_at', ascending: false);
 
-      if (discountId != null) {
-        query = query.eq('discount_id', discountId);
-      }
-      if (promotionId != null) {
-        query = query.eq('promotion_id', promotionId);
-      }
-      if (startDate != null) {
-        query = query.gte('order_date', startDate.toIso8601String());
-      }
-      if (endDate != null) {
-        query = query.lte('order_date', endDate.toIso8601String());
-      }
-
-      final response = await query;
       return (response as List)
           .map((item) => Map<String, dynamic>.from(item))
           .toList();
@@ -605,15 +667,13 @@ class PosDiscountService {
     try {
       var query = _client
           .from('top_performing_discounts')
-          .select()
-          .order('usage_rank', ascending: true)
-          .limit(limit);
+          .select();
 
       if (type != null) {
         query = query.eq('type', type);
       }
 
-      final response = await query;
+      final response = await query.order('usage_rank', ascending: true).limit(limit);
       return (response as List)
           .map((item) => Map<String, dynamic>.from(item))
           .toList();
@@ -631,15 +691,13 @@ class PosDiscountService {
     try {
       var query = _client
           .from('customer_discount_usage')
-          .select()
-          .order('total_discount_received', ascending: false)
-          .limit(limit);
+          .select();
 
       if (customerId != null) {
         query = query.eq('customer_id', customerId);
       }
 
-      final response = await query;
+      final response = await query.order('total_discount_received', ascending: false).limit(limit);
       return (response as List)
           .map((item) => Map<String, dynamic>.from(item))
           .toList();

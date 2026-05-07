@@ -2897,46 +2897,58 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
   // =============================================
 
   Widget _buildAnalyticsTab() {
-    return Column(
-      children: [
-        // Date Range Filter
-        Container(
-          margin: const EdgeInsets.all(16),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => _selectDate(context, true),
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.white.withOpacity(0.3)),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.calendar_today, color: Colors.white.withOpacity(0.7), size: 20),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                _analyticsStartDate != null
-                                    ? '${_analyticsStartDate!.day}/${_analyticsStartDate!.month}/${_analyticsStartDate!.year + 543}'
-                                    : 'วันที่เริ่มต้น',
-                                style: TextStyle(color: Colors.white.withOpacity(0.9)),
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          // Date Range Filter
+          Container(
+            margin: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'กรองข้อมูล',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.9),
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                // Date Range Row
+                Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => _selectDate(context, true),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.white.withOpacity(0.3)),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.calendar_today, color: Colors.white.withOpacity(0.7), size: 20),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _analyticsStartDate != null
+                                      ? '${_analyticsStartDate!.day}/${_analyticsStartDate!.month}/${_analyticsStartDate!.year + 543}'
+                                      : 'วันที่เริ่มต้น',
+                                  style: TextStyle(color: Colors.white.withOpacity(0.9)),
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: GestureDetector(
@@ -2970,79 +2982,85 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppDesignSystem.primary,
                       foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                     ),
                     child: const Text('ค้นหา'),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               // Coupon/Promotion Filter
-              Row(
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      value: _selectedCouponId,
-                      decoration: InputDecoration(
-                        labelText: 'กรองตามคูปอง',
-                        labelStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
-                        ),
+                  // Coupon Filter
+                  DropdownButtonFormField<String>(
+                    value: _selectedCouponId,
+                    decoration: InputDecoration(
+                      labelText: 'กรองตามคูปอง',
+                      labelStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
                       ),
-                      dropdownColor: AppDesignSystem.surface,
-                      style: TextStyle(color: Colors.white),
-                      items: [
-                        DropdownMenuItem(value: null, child: Text('ทั้งหมด', style: TextStyle(color: Colors.white))),
-                        ..._coupons.map((coupon) => DropdownMenuItem(
-                          value: coupon.id,
-                          child: Text(coupon.name ?? '', style: TextStyle(color: Colors.white)),
-                        )),
-                      ],
-                      onChanged: (value) {
-                        setState(() {
-                          _selectedCouponId = value;
-                          _selectedPromotionId = null; // Clear promotion filter
-                        });
-                      },
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                      ),
+                      filled: true,
+                      fillColor: Colors.white.withOpacity(0.05),
                     ),
+                    dropdownColor: AppDesignSystem.surface,
+                    style: TextStyle(color: Colors.white),
+                    isExpanded: true,
+                    items: [
+                      DropdownMenuItem(value: null, child: Text('ทั้งหมด', style: TextStyle(color: Colors.white))),
+                      ..._coupons.map((coupon) => DropdownMenuItem(
+                        value: coupon.id,
+                        child: Text(coupon.name ?? '', style: TextStyle(color: Colors.white)),
+                      )),
+                    ],
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedCouponId = value;
+                        _selectedPromotionId = null; // Clear promotion filter
+                      });
+                    },
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      value: _selectedPromotionId,
-                      decoration: InputDecoration(
-                        labelText: 'กรองตามโปรโมชั่น',
-                        labelStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
-                        ),
+                  const SizedBox(height: 12),
+                  // Promotion Filter
+                  DropdownButtonFormField<String>(
+                    value: _selectedPromotionId,
+                    decoration: InputDecoration(
+                      labelText: 'กรองตามโปรโมชัน',
+                      labelStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
                       ),
-                      dropdownColor: AppDesignSystem.surface,
-                      style: TextStyle(color: Colors.white),
-                      items: [
-                        DropdownMenuItem(value: null, child: Text('ทั้งหมด', style: TextStyle(color: Colors.white))),
-                        ..._promotions.map((promotion) => DropdownMenuItem(
-                          value: promotion.id,
-                          child: Text(promotion.name ?? '', style: TextStyle(color: Colors.white)),
-                        )),
-                      ],
-                      onChanged: (value) {
-                        setState(() {
-                          _selectedPromotionId = value;
-                          _selectedCouponId = null; // Clear coupon filter
-                        });
-                      },
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                      ),
+                      filled: true,
+                      fillColor: Colors.white.withOpacity(0.05),
                     ),
+                    dropdownColor: AppDesignSystem.surface,
+                    style: TextStyle(color: Colors.white),
+                    isExpanded: true,
+                    items: [
+                      DropdownMenuItem(value: null, child: Text('ทั้งหมด', style: TextStyle(color: Colors.white))),
+                      ..._promotions.map((promotion) => DropdownMenuItem(
+                        value: promotion.id,
+                        child: Text(promotion.name ?? '', style: TextStyle(color: Colors.white)),
+                      )),
+                    ],
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedPromotionId = value;
+                        _selectedCouponId = null; // Clear coupon filter
+                      });
+                    },
                   ),
                 ],
               ),
@@ -3052,20 +3070,66 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
         // Summary Cards
         if (_analyticsSummary != null) ...[
           Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                Expanded(child: _buildAnalyticsCard('จำนวนครั้งที่ใช้', '${_analyticsSummary!['total_usage'] ?? 0}', Icons.receipt)),
-                const SizedBox(width: 12),
-                Expanded(child: _buildAnalyticsCard('ส่วนลดรวม', '${(_analyticsSummary!['total_discount'] ?? 0).toStringAsFixed(2)}', Icons.discount)),
-                const SizedBox(width: 12),
-                Expanded(child: _buildAnalyticsCard('ออเดอร์ที่เกี่ยวข้อง', '${_analyticsSummary!['total_orders'] ?? 0}', Icons.shopping_cart)),
-              ],
+            margin: const EdgeInsets.all(16),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                // Responsive layout for summary cards
+                final screenWidth = constraints.maxWidth;
+                final isMobile = screenWidth < 600;
+                final isTablet = screenWidth < 900;
+                
+                if (isMobile) {
+                  // Mobile: Vertical stack
+                  return Column(
+                    children: [
+                      _buildAnalyticsCard('จำนวนครั้งที่ใช้', '${_analyticsSummary!['total_usage'] ?? 0}', Icons.receipt),
+                      const SizedBox(height: 12),
+                      _buildAnalyticsCard('ส่วนลดรวม', '${(_analyticsSummary!['total_discount'] ?? 0).toStringAsFixed(2)}', Icons.discount),
+                      const SizedBox(height: 12),
+                      _buildAnalyticsCard('ออเดอร์ที่เกี่ยวข้อง', '${_analyticsSummary!['total_orders'] ?? 0}', Icons.shopping_cart),
+                    ],
+                  );
+                } else if (isTablet) {
+                  // Tablet: 2x2 grid
+                  return Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(child: _buildAnalyticsCard('จำนวนครั้งที่ใช้', '${_analyticsSummary!['total_usage'] ?? 0}', Icons.receipt)),
+                          const SizedBox(width: 12),
+                          Expanded(child: _buildAnalyticsCard('ส่วนลดรวม', '${(_analyticsSummary!['total_discount'] ?? 0).toStringAsFixed(2)}', Icons.discount)),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(child: _buildAnalyticsCard('ออเดอร์ที่เกี่ยวข้อง', '${_analyticsSummary!['total_orders'] ?? 0}', Icons.shopping_cart)),
+                          const SizedBox(width: 12),
+                          Expanded(child: Container()), // Empty space for balance
+                        ],
+                      ),
+                    ],
+                  );
+                } else {
+                  // Desktop: Horizontal row
+                  return Row(
+                    children: [
+                      Expanded(child: _buildAnalyticsCard('จำนวนครั้งที่ใช้', '${_analyticsSummary!['total_usage'] ?? 0}', Icons.receipt)),
+                      const SizedBox(width: 12),
+                      Expanded(child: _buildAnalyticsCard('ส่วนลดรวม', '${(_analyticsSummary!['total_discount'] ?? 0).toStringAsFixed(2)}', Icons.discount)),
+                      const SizedBox(width: 12),
+                      Expanded(child: _buildAnalyticsCard('ออเดอร์ที่เกี่ยวข้อง', '${_analyticsSummary!['total_orders'] ?? 0}', Icons.shopping_cart)),
+                    ],
+                  );
+                }
+              },
             ),
           ),
         ],
         // Usage Data Table
-        Expanded(
+        Container(
+          margin: const EdgeInsets.all(16),
+          height: 400, // Fixed height to prevent overflow
           child: _isLoadingAnalytics
               ? const Center(child: CircularProgressIndicator(color: Colors.white))
               : _usageData.isEmpty
@@ -3083,7 +3147,6 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
                       ),
                     )
                   : Container(
-                      margin: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(12),
@@ -3119,7 +3182,8 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
                       ),
                     ),
         ),
-      ],
+        ],
+      ),
     );
   }
 

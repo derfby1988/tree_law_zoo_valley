@@ -1,5 +1,5 @@
 -- =============================================
--- Coupon & Promotion Phase 7: Analytics Views
+-- Coupon & Promotion Phase 7: Analytics Views (FIXED)
 -- Tree Law Zoo Valley
 -- =============================================
 -- Purpose:
@@ -109,7 +109,6 @@ SELECT
 FROM pos_orders o
 LEFT JOIN pos_order_discounts od ON o.id = od.order_id
 LEFT JOIN pos_customers c ON o.customer_id = c.id
-LEFT JOIN users u ON od.applied_by = u.id
 LEFT JOIN pos_discounts d ON od.discount_id = d.id
 LEFT JOIN pos_promotions p ON od.promotion_id = p.id
 LEFT JOIN pos_order_lines ol ON od.order_line_id = ol.id
@@ -124,7 +123,7 @@ SELECT
   -- Overall summary
   COUNT(*) as total_usage_count,
   COALESCE(SUM(total_discount), 0) as total_discount_amount,
-  COUNT(DISTINCT id) as total_orders_with_discount,
+  COUNT(DISTINCT order_count) as total_orders_with_discount,
   COUNT(DISTINCT unique_customers) as total_unique_customers,
   
   -- By type
@@ -207,7 +206,7 @@ SELECT
   END as preferred_type,
   
   -- Average order value
-  COALESCE(AVG(o.final_amount), 0) as avg_order_value_with_discount
+  COALESCE(AVG(o.net_total), 0) as avg_order_value_with_discount
   
 FROM pos_orders o
 LEFT JOIN pos_order_discounts od ON o.id = od.order_id
@@ -221,31 +220,14 @@ GROUP BY
   c.phone;
 
 -- =============================================
--- 6. Indexes for Performance
+-- 6. Performance Notes
 -- =============================================
-CREATE INDEX IF NOT EXISTS idx_coupon_promotion_usage_summary_type 
-  ON coupon_promotion_usage_summary(type);
-
-CREATE INDEX IF NOT EXISTS idx_coupon_promotion_usage_summary_date 
-  ON coupon_promotion_usage_summary(usage_date);
-
-CREATE INDEX IF NOT EXISTS idx_coupon_promotion_usage_summary_id 
-  ON coupon_promotion_usage_summary(id);
-
-CREATE INDEX IF NOT EXISTS idx_order_discount_details_order 
-  ON order_discount_details(order_id);
-
-CREATE INDEX IF NOT EXISTS idx_order_discount_details_discount 
-  ON order_discount_details(discount_id, promotion_id);
-
-CREATE INDEX IF NOT EXISTS idx_order_discount_details_customer 
-  ON order_discount_details(customer_id);
-
-CREATE INDEX IF NOT EXISTS idx_analytics_summary_type_date 
-  ON analytics_summary(type, usage_date);
-
-CREATE INDEX IF NOT EXISTS idx_customer_discount_usage_customer 
-  ON customer_discount_usage(customer_id);
+-- Note: Indexes cannot be created on views in PostgreSQL
+-- Performance can be improved by creating indexes on base tables:
+-- - pos_order_discounts (applied_at, discount_id, promotion_id)
+-- - pos_orders (created_at, customer_id, net_total)
+-- - pos_discounts (id, name, discount_type)
+-- - pos_promotions (id, name, min_quantity)
 
 -- =============================================
 -- 7. Helper Functions
