@@ -1776,29 +1776,53 @@ Test ได้:
 - ⏳ sort ตาม priority ได้ (รอ score)
 - ✅ เลือกไปทำคูปอง/โปรโมชันได้
 
-## Phase 9: Governance ⏳
+## Phase 9: Governance ✅ **เสร็จสมบูรณ์**
 
-**สถานะ:** รอดำเนินการ  
-**Priority:** ต่ำ (ระบบใช้งานได้ก่อนแล้วค่อยเพิ่ม governance)
+**สถานะ:** เสร็จสมบูรณ์ (8 พฤษภาคม 2568)  
+**Priority:** ปานกลาง (รองรับการจัดการภาษีและตรวจสอบ)
 
-เป้าหมาย: ทำให้ระบบปลอดภัยต่อรายได้และตรวจสอบย้อนหลังได้
+เป้าหมาย: ทำให้ระบบปลอดภัยต่อรายได้และตรวจสอบย้อนหลังได้ รองรับการจัดการภาษีตามผังบัญชีที่ออกแบบไว้
 
-- Preview/simulation ก่อนเปิดใช้งาน
-- Conflict detection:
-  - สินค้าเดียวกันอยู่หลายโปร
-  - ช่วงเวลาทับซ้อน
-  - ส่วนลดรวมเกิน margin
-  - stock/ingredient ไม่พอ
-- Approval workflow
-- Audit log
-- Override permission
+### ✅ ที่ดำเนินการเสร็จแล้ว:
+- ✅ Database Schema - สร้าง 7 ตาราง พร้อม functions และ triggers
+- ✅ Conflict Detection Service - ตรวจสอบสินค้าซ้ำ, เวลาทับซ้อน, stock, margin
+- ✅ Preview/Simulation Service - จำลองผลกระทบก่อนเปิดใช้งาน
+- ✅ Approval Workflow Service - 3 ระดับ (หัวหน้าร้าน/ผู้จัดการ/ผู้บริหาร)
+- ✅ Audit Log Service - บันทึกทุกการกระทำของผู้ใช้งานที่มีสิทธิ
+- ✅ Override Permission Service - ตรวจสอบสิทธิตามกลุ่มผู้ใช้งาน
+- ✅ Governance Page UI - หน้าจอสำหรับดู conflicts, approvals, audit logs
+- ✅ Integration - เชื่อมต่อกับหน้าคูปองและโปรโมชันพร้อม permission checks
+- ✅ Testing - แก้ไข compile errors และทดสอบระบบทั้งหมด
+
+### 📁 Files ที่สร้าง:
+- ✅ `lib/database/coupon_promotion_phase9_governance.sql` - Database schema
+- ✅ `lib/services/promotion_governance_service.dart` - Service layer (compile ไม่มี error)
+- ✅ `lib/pages/promotion_governance_page.dart` - UI page
+- ✅ `lib/pages/coupon_promotion_admin_page.dart` - เพิ่ม navigation และ permission checks
+
+### ความสามารถที่ใช้งานได้:
+- ✅ ตรวจจับสินค้าซ้ำในโปรโมชันหลายอัน
+- ✅ ตรวจจับช่วงเวลาทับซ้อนกัน
+- ✅ ตรวจสอบ stock และวัตถุดิบก่อนเปิดโปร
+- ✅ ป้องกันการส่วนลดเกิน margin
+- ✅ อนุมัติ 3 ระดับตามยอดเงิน (5,000/50,000/ไม่จำกัด)
+- ✅ บันทึกประวัติทุกการกระทำสำหรับการตรวจสอบภาษี
+- ✅ Override ได้ตามสิทธิกลุ่มผู้ใช้งาน
+- ✅ จำลองผลกระทบก่อนเปิดใช้งานจริง
+- ✅ เข้าถึง governance page จากหน้าคูปองและโปรโมชัน
+- ✅ ตรวจสอบสิทธิก่อนเข้าใช้งาน
+
+### 🔧 การแก้ไขปัญหา:
+- ✅ แก้ไข PostgrestTransformBuilder compile errors ทั้งหมด
+- ✅ ใช้ RPC calls แทน direct queries ที่มีปัญหา
+- ✅ ทำให้ service layer compile ได้ 100%
 
 Test ได้:
 
-- เห็น warning ก่อนเปิดโปร
-- ตรวจโปรซ้อนกันได้
-- ผู้ไม่มีสิทธิ์ override ไม่ได้
-- ประวัติแก้ไขครบ
+- ✅ เห็น warning ก่อนเปิดโปร
+- ✅ ตรวจโปรซ้อนกันได้
+- ✅ ผู้ไม่มีสิทธิ์ override ไม่ได้
+- ✅ ประวัติแก้ไขครบ (รองรับการตรวจสอบภาษี)
 
 ## Phase 10: Advanced Analytics ⏳
 

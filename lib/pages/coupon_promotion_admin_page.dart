@@ -4,6 +4,7 @@ import '../services/pos_discount_service.dart';
 import '../services/pos_promotion_service.dart';
 import '../services/inventory_service.dart';
 import '../services/user_group_service.dart';
+import '../services/promotion_governance_service.dart';
 import '../models/pos_discount_model.dart';
 import '../models/pos_promotion_model.dart';
 import '../models/user_group_model.dart';
@@ -12,6 +13,8 @@ import '../utils/date_picker_helper.dart';
 import '../utils/permission_helpers.dart';
 import 'promotion_form_page.dart';
 import 'promotion_product_picker_page.dart';
+import 'promotion_governance_page.dart';
+import '../services/permission_service.dart';
 import '../widgets/promotion_formula_tab_widget.dart';
 
 class CouponPromotionAdminPage extends StatefulWidget {
@@ -183,6 +186,22 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
         title: const Text('จัดการคูปอง & โปรโมชั่น'),
         backgroundColor: AppDesignSystem.primary,
         elevation: 0,
+        actions: [
+          // Phase 9: Governance menu
+          IconButton(
+            icon: const Icon(Icons.shield),
+            tooltip: 'การควบคุมและตรวจสอบ',
+            onPressed: () => _navigateToGovernancePage(),
+          ),
+          IconButton(
+            icon: const Icon(Icons.analytics),
+            tooltip: 'วิเคราะห์การใช้งาน',
+            onPressed: () {
+              setState(() => _selectedTabIndex = 4); // Analytics tab
+            },
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: _isLoading
           ? Center(
@@ -3461,6 +3480,48 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('เกิดข้อผิดพลาด: $e')),
+        );
+      }
+    }
+  }
+
+  // =============================================
+  // Phase 9: Governance Navigation
+  // =============================================
+
+  void _navigateToGovernancePage() async {
+    try {
+      // Check if user has governance permissions
+      final hasPermission = await PermissionService.hasPermission('governance_view');
+      
+      if (!hasPermission) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('คุณไม่มีสิทธิเข้าถึงการควบคุมและตรวจสอบ'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Navigate to governance page
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const PromotionGovernancePage(),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('เกิดข้อผิดพลาด: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
