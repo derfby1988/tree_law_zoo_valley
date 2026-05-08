@@ -5,14 +5,18 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 import '../models/pos_discount_model.dart';
+import '../models/pos_promotion_model.dart';
 
-/// Service สำหรับจัดการ QR Code ของคูปอง
+/// Service สำหรับจัดการ QR Code ของคูปองและโปรโมชัน
 /// รองรับการสร้าง QR, validation และบันทึกประวัติการ scan
 class PosCouponQRService {
   static final SupabaseClient _client = Supabase.instance.client;
   
-  /// Secret key สำหรับ HMAC signature (ควรเก็บใน environment variable)
+  /// Secret key สำหรับ HMAC signature - คูปอง (ควรเก็บใน environment variable)
   static const String _secretKey = 'tlz_coupon_secret_2026';
+  
+  /// Secret key สำหรับ HMAC signature - โปรโมชัน
+  static const String _promotionSecretKey = 'tlz_promotion_secret_2026';
   
   /// Version ของ QR Code format
   static const int _qrVersion = 1;
@@ -421,6 +425,204 @@ class PosCouponQRService {
       return null;
     }
   }
+
+  // ============================================================================
+  // Promotion QR Code Methods
+  // ============================================================================
+
+  /// สร้าง QR Code content จากโปรโมชัน
+  static Map<String, dynamic> generatePromotionQRContent(PosPromotion promotion) {
+    final promotionCode = promotion.code ?? 'PROMO_${promotion.id.substring(0, 8).toUpperCase()}';
+    final signature = _generatePromotionSignature(
+      promotion.id,
+      promotionCode,
+      promotion.endAt,
+    );
+
+    return {
+      'v': _qrVersion,
+      'type': 'tlz_promotion',
+      'code': promotionCode,
+      'promotion_id': promotion.id,
+      'promotion_type': promotion.promotionType,
+      'exp': promotion.endAt?.toIso8601String().split('T')[0],
+      'sig': signature,
+    };
+  }
+
+  /// สร้าง HMAC signature สำหรับ Promotion QR
+  static String _generatePromotionSignature(String promotionId, String promotionCode, DateTime? expiryDate) {
+    final payload = '$promotionId|$promotionCode|${expiryDate?.toIso8601String().split('T')[0] ?? ''}';
+    final bytes = utf8.encode(payload + _promotionSecretKey);
+    return base64Encode(bytes);
+  }
+
+  /// สร้าง QR Code widget สำหรับแสดงใน Promotion Card
+  static Widget buildPromotionQRCode({
+    required PosPromotion promotion,
+    double size = 160,
+    bool showCode = true,
+  }) {
+    final qrContent = generatePromotionQRContent(promotion);
+    final qrData = jsonEncode(qrContent);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // QR Code
+          buildQRCode(
+            data: qrData,
+            size: size,
+            showLogo: true,
+          ),
+          
+          const SizedBox(height: 12),
+          
+          // รหัสโปรโมชัน
+          if (showCode)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF9800).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    'รหัสโปรโมชัน',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    qrContent['code'] as String,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFFFF9800),
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// ตรวจสอบ QR Code โปรโมชันที่ scan ได้
+  static Future<PromotionQRValidationResult> validatePromotionQRCode(
+    String qrData, {
+    String? scannedBy,
+    String? orderId,
+  }) async {
+    try {
+      // Parse QR data
+      final Map<String, dynamic> qrContent;
+      try {
+        qrContent = jsonDecode(qrData);
+      } catch (e) {
+        return PromotionQRValidationResult(
+          isValid: false,
+          status: 'invalid_format',
+          errorMessage: 'QR Code ไม่ถูกต้อง (ไม่สามารถอ่านข้อมูลได้)',
+        );
+      }
+
+      // ตรวจสอบ type
+      if (qrContent['type'] != 'tlz_promotion') {
+        return PromotionQRValidationResult(
+          isValid: false,
+          status: 'invalid_type',
+          errorMessage: 'QR Code ไม่ใช่โปรโมชัน',
+        );
+      }
+
+      // เรียก RPC function สำหรับ validation แบบครบวงจร
+      final response = await _client.rpc(
+        'validate_promotion_by_qr',
+        params: {
+          'p_qr_json': qrContent,
+          'p_scanned_by': scannedBy,
+          'p_order_id': orderId,
+        },
+      );
+
+      if (response == null) {
+        return PromotionQRValidationResult(
+          isValid: false,
+          status: 'rpc_error',
+          errorMessage: 'ไม่สามารถตรวจสอบโปรโมชันได้',
+        );
+      }
+
+      final result = response as Map<String, dynamic>;
+
+      return PromotionQRValidationResult(
+        isValid: result['valid'] == true,
+        promotionId: result['promotion_id']?.toString(),
+        promotionCode: result['code']?.toString(),
+        promotionName: result['name']?.toString(),
+        promotionType: result['promotion_type']?.toString(),
+        status: result['status']?.toString() ?? 'unknown',
+        errorMessage: result['error']?.toString(),
+      );
+
+    } catch (e) {
+      debugPrint('❌ Promotion QR validation error: $e');
+      return PromotionQRValidationResult(
+        isValid: false,
+        status: 'error',
+        errorMessage: 'เกิดข้อผิดพลาด: $e',
+      );
+    }
+  }
+
+  /// ดึงรหัสโปรโมชันจาก QR data
+  static String? extractPromotionCode(String qrData) {
+    try {
+      final content = jsonDecode(qrData);
+      return content['code'] as String?;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// ดึง promotion ID จาก QR data
+  static String? extractPromotionId(String qrData) {
+    try {
+      final content = jsonDecode(qrData);
+      return content['promotion_id'] as String?;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// ตรวจสอบว่า QR Code เป็นโปรโมชันหรือไม่
+  static bool isPromotionQR(String qrData) {
+    try {
+      final content = jsonDecode(qrData);
+      return content['type'] == 'tlz_promotion';
+    } catch (e) {
+      return false;
+    }
+  }
 }
 
 /// ผลลัพธ์การตรวจสอบ QR Code
@@ -448,5 +650,31 @@ class QRValidationResult {
   @override
   String toString() {
     return 'QRValidationResult(isValid: $isValid, status: $status, code: $couponCode)';
+  }
+}
+
+/// ผลลัพธ์การตรวจสอบ Promotion QR Code
+class PromotionQRValidationResult {
+  final bool isValid;
+  final String? promotionId;
+  final String? promotionCode;
+  final String? promotionName;
+  final String? promotionType;
+  final String status;
+  final String? errorMessage;
+
+  PromotionQRValidationResult({
+    required this.isValid,
+    this.promotionId,
+    this.promotionCode,
+    this.promotionName,
+    this.promotionType,
+    required this.status,
+    this.errorMessage,
+  });
+
+  @override
+  String toString() {
+    return 'PromotionQRValidationResult(isValid: $isValid, status: $status, code: $promotionCode)';
   }
 }

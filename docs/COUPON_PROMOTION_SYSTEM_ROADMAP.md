@@ -1907,6 +1907,102 @@ Test ได้:
 
 ---
 
+# Phase 11: QR Code System (8 พฤษภาคม 2568)
+
+## เป้าหมาย
+เพิ่ม QR Code support สำหรับคูปองและโปรโมชันทุกประเภท พร้อมระบบ scan และ validation ครบวงจร
+
+## ฟีเจอร์ที่ implement
+
+### 1. QR Code Generation
+- **คูปอง:** JSON format พร้อม HMAC signature (`tlz_coupon`)
+- **โปรโมชัน:** JSON format พร้อม HMAC signature (`tlz_promotion`)
+- **Auto-generation:** สร้างอัตโนมัติเมื่อสร้างคูปอง/โปรโมชันใหม่
+- **Unique codes:** สร้างรหัสสั้น (เช่น `PROMO_ABC12345`) จาก UUID
+
+### 2. QR Code Display
+- **Coupon Card:** แสดง QR Code ขนาด 140x140px พร้อมรหัสคูปอง
+- **Promotion Card:** แสดง QR Code พร้อมรหัสโปรโมชัน
+- **TLZ Logo:** แสดงโลโก้ตรงกลาง QR Code
+- **Color scheme:** ใช้สี theme ของระบบ
+
+### 3. QR Scanner & Validation
+- **POS Integration:** ช่องส่วนลดรองรับ QR Scanner
+- **Auto-fill:** แสกนแล้วกรอกรหัสอัตโนมัติ
+- **Type Detection:** ตรวจสอบว่าเป็นคูปองหรือโปรโมชัน
+- **Backend Validation:** ตรวจสอบผ่าน RPC functions ใน database
+
+### 4. Security & Logging
+- **HMAC-SHA256:** ป้องกัน QR Code ปลอม
+- **Separate Logs:** แยก log การ scan (coupons vs promotions)
+- **Timestamp:** เก็บเวลา scan และ device info
+- **Status Tracking:** valid/invalid/expired/used
+
+## Files ที่สร้าง/แก้ไข
+
+| ไฟล์ | รายละเอียด |
+|------|-----------|
+| `lib/database/add_qr_code_to_coupons.sql` | QR Code สำหรับคูปอง |
+| `lib/database/add_qr_code_to_promotions.sql` | QR Code สำหรับโปรโมชัน |
+| `lib/services/pos_coupon_qr_service.dart` | QR generation + validation service |
+| `lib/pages/coupon_promotion_page.dart` | แสดง QR Code ใน cards |
+| `lib/models/pos_promotion_model.dart` | เพิ่ม QR fields |
+
+## Database Schema
+
+### Tables
+- `pos_coupons` เพิ่ม: `qr_code`, `qr_signature`, `qr_generated_at`
+- `pos_promotions` เพิ่ม: `qr_code`, `qr_signature`, `qr_generated_at`, `code`
+- `pos_coupon_qr_scan_logs` เก็บประวัติ scan คูปอง
+- `pos_promotion_qr_scan_logs` เก็บประวัติ scan โปรโมชัน
+
+### Functions
+- `generate_coupon_qr_signature()` / `generate_promotion_qr_signature()`
+- `validate_coupon_by_qr()` / `validate_promotion_by_qr()`
+- `auto_generate_coupon_qr()` / `auto_generate_promotion_qr()`
+
+## การใช้งาน
+
+### สร้าง QR Code
+```sql
+-- Auto-generate เมื่อสร้างคูปอง/โปรโมชันใหม่
+INSERT INTO pos_coupons (name, ...) VALUES (...);
+-- QR Code สร้างอัตโนมัติผ่าน trigger
+```
+
+### Scan QR Code
+```dart
+// ใน POS page
+final result = await PosCouponQRService.validateCouponQRCode(qrData);
+if (result.isValid) {
+  promotionCodeCtrl.text = result.couponCode!;
+}
+```
+
+### แสดง QR Code
+```dart
+// ใน Coupon/Promotion card
+PosCouponQRService.buildCouponQRCode(coupon: coupon);
+PosCouponQRService.buildPromotionQRCode(promotion: promotion);
+```
+
+## ทดสอบระบบ
+
+1. **สร้างคูปองใหม่** → QR Code ปรากฏใน card
+2. **สร้างโปรโมชันใหม่** → QR Code ปรากฏใน card  
+3. **ทดสอบ QR Scanner** → แสกนแล้วกรอกรหัสอัตโนมัติ
+4. **ตรวจสอบ scan logs** → ดูประวัติการใช้งาน
+
+## ข้อดีของระบบ
+
+✅ **ไม่ต้องพิมพ์รหัส** - แค่แสกน QR Code  
+✅ **ป้องกันปลอมแปลง** - HMAC signature validation  
+✅ **รองรับทุกประเภท** - คูปองและโปรโมชันทุกชนิด  
+✅ **เก็บประวัติครบ** - แยก log สำหรับ analytics  
+✅ **ใช้งานง่าย** - แสกนแล้วใช้งานได้ทันที  
+
+---
+
 # Summary: ความคืบหน้าโครงการ
 
 | Phase | สถานะ | ความสมบูรณ์ | หมายเหตุ |
@@ -1922,5 +2018,6 @@ Test ได้:
 | Phase 8: Business Intelligence | ✅ เสร็จ | 100% | Priority Score + Recommended Products |
 | Phase 9: Governance | ✅ เสร็จ | 100% | Tax Rules + Permission System |
 | Phase 10: Advanced Analytics | ⏸️ On Hold | 0% | รอข้อมูลสะสม 3-6 เดือน |
+| Phase 11: QR Code System | ✅ เสร็จ | 100% | QR Code สำหรับคูปอง + โปรโมชัน |
 
-**สรุป:** ✅ Phase 0-9 เสร็จสมบูรณ์ (100%) - ระบบ Coupon & Promotion พร้อมใช้งานจริง!
+**สรุป:** ✅ Phase 0-9, 11 เสร็จสมบูรณ์ (100%) - ระบบ Coupon & Promotion พร้อมใช้งานจริง!

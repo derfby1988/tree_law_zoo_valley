@@ -14,6 +14,11 @@ class PosPromotion {
   final bool requireInStock;
   final bool requireSufficientIngredients;
   final bool includePendingProcurement;
+  // QR Code support
+  final String? code;
+  final String? qrCode;
+  final String? qrSignature;
+  final DateTime? qrGeneratedAt;
 
   PosPromotion({
     required this.id,
@@ -31,6 +36,11 @@ class PosPromotion {
     this.requireInStock = false,
     this.requireSufficientIngredients = false,
     this.includePendingProcurement = false,
+    // QR Code support
+    this.code,
+    this.qrCode,
+    this.qrSignature,
+    this.qrGeneratedAt,
   });
 
   static List<String> _stringList(dynamic value) {
@@ -56,6 +66,11 @@ class PosPromotion {
       requireInStock: map['require_in_stock'] ?? false,
       requireSufficientIngredients: map['require_sufficient_ingredients'] ?? false,
       includePendingProcurement: map['include_pending_procurement'] ?? false,
+      // QR Code support
+      code: map['code'],
+      qrCode: map['qr_code'],
+      qrSignature: map['qr_signature'],
+      qrGeneratedAt: map['qr_generated_at'] != null ? DateTime.parse(map['qr_generated_at']) : null,
     );
   }
 
@@ -76,6 +91,11 @@ class PosPromotion {
       'require_in_stock': requireInStock,
       'require_sufficient_ingredients': requireSufficientIngredients,
       'include_pending_procurement': includePendingProcurement,
+      // QR Code support
+      'code': code,
+      'qr_code': qrCode,
+      'qr_signature': qrSignature,
+      'qr_generated_at': qrGeneratedAt?.toIso8601String(),
     };
   }
 

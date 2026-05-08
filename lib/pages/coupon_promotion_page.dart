@@ -277,6 +277,7 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
         return Column(
           children: [
             _buildPromotionCard(
+              promotion: promotion,
               title: promotion.name,
               description: promotion.description ?? 'โปรโมชั่นพิเศษ',
               icon: _getPromotionIcon(promotion.promotionType),
@@ -528,11 +529,14 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
   }
 
   Widget _buildPromotionCard({
+    required PosPromotion promotion,
     required String title,
     required String description,
     required IconData icon,
     required Color color,
   }) {
+    final promotionCode = promotion.code ?? 'PROMO_${promotion.id.substring(0, 8).toUpperCase()}';
+    
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -547,48 +551,111 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    icon,
+                    color: color,
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        description,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            
+            // QR Code Display
+            const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: Colors.grey[50],
                 borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: color.withOpacity(0.2),
+                  width: 1,
+                ),
               ),
-              child: Icon(
-                icon,
-                color: color,
-                size: 28,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.qr_code,
+                        size: 16,
+                        color: color,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'QR Code สำหรับสแกน',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey[700],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Center(
+                    child: PosCouponQRService.buildPromotionQRCode(
+                      promotion: promotion,
+                      size: 140,
+                      showCode: false,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    description,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
+                  const SizedBox(height: 8),
+                  // รหัสโปรโมชัน
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      promotionCode,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: color,
+                        letterSpacing: 0.5,
+                      ),
                     ),
                   ),
                 ],
               ),
-            ),
-            Icon(
-              Icons.arrow_forward_ios,
-              color: Colors.grey[400],
-              size: 16,
             ),
           ],
         ),
