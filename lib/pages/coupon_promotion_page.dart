@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_design_system.dart';
 import '../services/pos_promotion_service.dart';
 import '../services/pos_discount_service.dart';
+import '../services/pos_coupon_qr_service.dart';
 import '../services/user_group_service.dart';
 import '../models/pos_promotion_model.dart';
 import '../models/pos_discount_model.dart';
@@ -222,10 +223,16 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
             ? '${coupon.value.toStringAsFixed(0)}%'
             : '${coupon.value.toStringAsFixed(0)} บาท';
 
+        // ใช้รหัสคูปองที่ผู้ใช้กำหนดเอง ถ้าไม่มีให้แสดงข้อความแจ้ง
+        final displayCode = coupon.couponCode?.isNotEmpty == true
+            ? coupon.couponCode!
+            : 'ไม่มีรหัส';
+
         return Column(
           children: [
             _buildCouponCard(
-              code: coupon.id.substring(0, 8).toUpperCase(),
+              coupon: coupon,
+              code: displayCode,
               title: coupon.name,
               description: coupon.description ?? '',
               discount: discountText,
@@ -314,6 +321,7 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
   }
 
   Widget _buildCouponCard({
+    required PosDiscount coupon,
     required String code,
     required String title,
     required String description,
@@ -433,6 +441,57 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
                 ),
               ],
             ),
+            // QR Code Display (สำหรับคูปองที่มีรหัส)
+            if (coupon.couponCode?.isNotEmpty == true)
+              Column(
+                children: [
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[50],
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppDesignSystem.primary.withOpacity(0.2),
+                        width: 1,
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        // Title
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.qr_code,
+                              size: 16,
+                              color: AppDesignSystem.primary,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'QR Code สำหรับสแกน',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey[700],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        // QR Code
+                        Center(
+                          child: PosCouponQRService.buildCouponQRCode(
+                            coupon: coupon,
+                            size: 160,
+                            showCode: false, // ไม่แสดงรหัสซ้ำ
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,

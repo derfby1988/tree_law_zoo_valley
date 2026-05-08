@@ -68,6 +68,9 @@ dependencies:
   # Internationalization for date/number formatting
   intl: ^0.20.2
 
+  # QR Code generation for coupons
+  qr_flutter: ^4.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -1824,32 +1824,35 @@ Test ได้:
 - ✅ ผู้ไม่มีสิทธิ์ override ไม่ได้
 - ✅ ประวัติแก้ไขครบ (รองรับการตรวจสอบภาษี)
 
-## Phase 10: Advanced Analytics ⏳
+## Phase 10: Advanced Analytics 📅 **เลื่อนไปทำในอนาคต**
 
-**สถานะ:** รอดำเนินการ  
-**Priority:** ต่ำ (ทำหลังระบบใช้งานเสถียรแล้ว)
+**สถานะ:** ⏸️ On Hold (รอข้อมูลสะสม)  
+**Priority:** ต่ำ  
+**วันที่ตัดสินใจ:** 8 พฤษภาคม 2568
 
-เป้าหมาย: วัดผลระดับบริหารและ export รายงานได้
+**เหตุผลที่เลื่อน:**
+- ต้องรอข้อมูลยอดขายสะสมย้อนหลังอย่างน้อย 3-6 เดือน
+- ระบบหลัก Phase 0-9 เสร็จสมบูรณ์แล้ว ควรนำไปใช้งานจริงก่อน
+- Analytics ไม่จำเป็นสำหรับการใช้งานระบบ Coupon & Promotion เบื้องต้น
 
-- Graphs
-- Top 10 coupon/promotion
-- Top 10 target products
-- Margin impact
-- Before/during/after comparison
-- Campaign comparison
+**งานที่จะทำในอนาคต:**
+- Graphs และ data visualization
+- Top 10 coupon/promotion report
+- Top 10 target products analysis
+- Margin impact analysis
+- Before/during/after campaign comparison
 - Export CSV/Excel/PDF
-- วิเคราะห์:
+- วิเคราะห์เชิงลึก:
   - ยอดขายที่เกิดจากโปรโมชัน
   - ปริมาณสินค้าที่ระบายได้
   - วัตถุดิบที่ใช้ไป
   - กำไรขั้นต้นหลังหักส่วนลด
   - ผลลัพธ์ตามฤดูกาลหรือเทศกาล
 
-Test ได้:
-
-- export ได้
-- กราฟตรงข้อมูลจริง
-- วิเคราะห์ campaign ได้
+**เงื่อนไขที่จะกลับมาทำ:**
+- มีข้อมูลยอดขายสะสมอย่างน้อย 90 วัน
+- ระบบ Phase 0-9 ใช้งานเสถียรใน production
+- มีความต้องการจากผู้ใช้งานจริง
 
 ---
 
@@ -1872,31 +1875,35 @@ Test ได้:
 
 ---
 
-# Recommended Next Step
+# ✅ ระบบพร้อมใช้งานจริง!
 
-**สถานะปัจจุบัน:** Phase 0, 1, 3, 6 เสร็จสมบูรณ์ ✅
+**สถานะปัจจุบัน:** Phase 0-9 เสร็จสมบูรณ์ 100% ✅  
+**วันที่อัปเดต:** 8 พฤษภาคม 2568
 
-## ขั้นตอนต่อไปที่แนะนำ:
+ระบบ Coupon & Promotion พร้อมใช้งานใน production แล้ว! มีความสามารถครบถ้วนตั้งแต่สร้างคูปอง ไปจนถึงวิเคราะห์การใช้งาน
 
-### ทางเลือก 1: ไปต่อ Phase 2 (POS Integration)
-เหมาะถ้าต้องการให้คูปองใช้งานได้จริงใน POS ทันที
-1. เพิ่มช่องกรอก coupon code ใน `pos_page.dart`
-2. คืนค่า `_applyCouponCode()` พร้อม validation
-3. คืนค่า `recordDiscountUsage()` บันทึกการใช้
-4. ทดสอบใช้คูปองใน order จริง
+## 🚀 ขั้นตอนแนะนำต่อไป:
 
-### ทางเลือก 2: รอ API สำหรับ Phase 4-5
-เหมาะถ้าต้องการให้ Product Picker แสดงข้อมูลจริง
-- รอ API: stock balance, recipe ingredient balance
-- รอ API: expiry dates สินค้าและวัตถุดิบ
-- รอ API: priority score calculation
+### 1. ทดสอบระบบใน Production (สำคัญที่สุด)
+- ทดสอบสร้างคูปองหลายประเภท (เปอร์เซ็นต์, จำนวนเงิน, buy X get Y)
+- ทดสอบใช้คูปองผ่าน POS หน้าร้านจริง
+- ทดสอบสิทธิ์การเข้าถึงกับพนักงานแต่ละระดับ
+- ตรวจสอบการบันทึก usage log และ analytics
 
-### ทางเลือก 3: ทดสอบและแก้ไข Phase 1 ให้เสถียร
-เหมาะก่อนไป Phase 2
-1. ทดสอบสร้างคูปอง/โปรโมชั่นหลายๆ อัน
-2. ทดสอบเลือกสินค้าผ่าน `PromotionProductPickerPage`
-3. ทดสอบ Permission กับ user ที่มีสิทธิ์ต่างกัน
-4. แก้ไข bug ที่พบ (ถ้ามี)
+### 2. ฝึกอบรมพนักงาน
+- วิธีสร้างคูปองและโปรโมชัน
+- วิธีใช้ Product Picker แบบต่างๆ (แนะนำ, ใกล้หมดอายุ, กำไรสูง)
+- วิธีใช้คูปองใน POS
+- การดูรายงานและ analytics
+
+### 3. เก็บ Feedback และปรับปรุง
+- เก็บ feedback จากผู้ใช้งานจริง 1-2 สัปดาห์
+- แก้ไข bug ที่พบ (ถ้ามี)
+- ปรับ UX/UI ตาม feedback
+
+### 4. วางแผน Phase 10 (อนาคต)
+- รอสะสมข้อมูลยอดขาย 3-6 เดือน
+- ค่อยกลับมาทำ Advanced Analytics เมื่อมีข้อมูลพอ
 
 ---
 
@@ -1911,9 +1918,9 @@ Test ได้:
 | Phase 4: Availability Rules | ✅ เสร็จ | 100% | SQL RPC + Service + UI ครบ |
 | Phase 5: Expiry Targeting | ✅ เสร็จ | 100% | SQL + Service + UI Tabs ครบ |
 | Phase 6: Promotion CRUD | ✅ เสร็จ | 100% | รวมกับ Phase 1 |
-| Phase 7: Analytics MVP | ⏳ รอ | 10% | มี Tab แต่ไม่มี UI |
-| Phase 8: Business Intelligence | 🔄 部分เสร็จ | 70% | Seasonal/Festival/HighMargin APIs เสร็จแล้ว รอ Priority Score |
-| Phase 9: Governance | ⏳ รอ | 0% | Priority ต่ำ |
-| Phase 10: Advanced Analytics | ⏳ รอ | 0% | Priority ต่ำ |
+| Phase 7: Analytics MVP | ✅ เสร็จ | 100% | Usage Analytics พร้อมใช้งาน |
+| Phase 8: Business Intelligence | ✅ เสร็จ | 100% | Priority Score + Recommended Products |
+| Phase 9: Governance | ✅ เสร็จ | 100% | Tax Rules + Permission System |
+| Phase 10: Advanced Analytics | ⏸️ On Hold | 0% | รอข้อมูลสะสม 3-6 เดือน |
 
-**สรุป:** Phase 0-6 เสร็จสมบูรณ์ (100%) - เหลือ Phase 7 (Analytics) และ Phase 8 (Priority Score)
+**สรุป:** ✅ Phase 0-9 เสร็จสมบูรณ์ (100%) - ระบบ Coupon & Promotion พร้อมใช้งานจริง!

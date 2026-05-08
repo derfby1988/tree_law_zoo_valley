@@ -92,9 +92,8 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
       // Load coupons for discount linker
       _coupons = await PosDiscountService.getAllDiscounts();
       
-      // Load user groups - TODO: implement getUserGroups in UserGroupService
-      // _userGroups = await UserGroupService.getUserGroups();
-      _userGroups = [];  // Temporary empty list
+      // Load user groups
+      _userGroups = await UserGroupService.getAllGroups();
 
       // Load existing promotion if editing
       if (widget.promotionId != null) {
@@ -484,30 +483,61 @@ class _PromotionFormPageState extends State<PromotionFormPage> {
                     title: 'กลุ่มผู้ใช้ที่ใช้ได้',
                     subtitle: 'ไม่เลือก = ใช้ได้ทุกกลุ่ม',
                     children: [
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          ..._userGroups.map((group) {
-                            final isSelected = _selectedUserGroupIds.contains(group.id);
-                            return FilterChip(
-                              selected: isSelected,
-                              label: Text(group.groupName),
-                              onSelected: (selected) {
-                                setState(() {
-                                  if (selected) {
-                                    _selectedUserGroupIds.add(group.id);
-                                  } else {
-                                    _selectedUserGroupIds.remove(group.id);
-                                  }
-                                });
-                              },
-                              selectedColor: AppDesignSystem.primary.withOpacity(0.2),
-                              checkmarkColor: AppDesignSystem.primary,
-                            );
-                          }),
-                        ],
-                      ),
+                      _isLoading
+                          ? const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(16),
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                            )
+                          : _userGroups.isEmpty
+                              ? Container(
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: Colors.orange.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.warning_amber, color: Colors.orange[700], size: 20),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          'ไม่พบกลุ่มผู้ใช้ในระบบ กรุณาตรวจสอบตาราง user_groups',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: Colors.orange[800],
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    ..._userGroups.map((group) {
+                                      final isSelected = _selectedUserGroupIds.contains(group.id);
+                                      return FilterChip(
+                                        selected: isSelected,
+                                        label: Text(group.groupName),
+                                        onSelected: (selected) {
+                                          setState(() {
+                                            if (selected) {
+                                              _selectedUserGroupIds.add(group.id);
+                                            } else {
+                                              _selectedUserGroupIds.remove(group.id);
+                                            }
+                                          });
+                                        },
+                                        selectedColor: AppDesignSystem.primary.withOpacity(0.2),
+                                        checkmarkColor: AppDesignSystem.primary,
+                                      );
+                                    }),
+                                  ],
+                                ),
                     ],
                   ),
 

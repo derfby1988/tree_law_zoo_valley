@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/pos_discount_model.dart';
 import '../services/pos_discount_service.dart';
+import '../services/pos_coupon_qr_service.dart';
 import '../theme/app_design_system.dart';
 
 typedef DiscountAppliedCallback = void Function(
@@ -218,6 +219,173 @@ class _PosDiscountPanelWidgetState extends State<PosDiscountPanelWidget> {
     );
   }
 
+  /// แสดง dialog สำหรับสแกน QR Code
+  void _showQRScannerDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.qr_code_scanner, color: Color(0xFF2AD49B)),
+            SizedBox(width: 8),
+            Text('สแกน QR Code'),
+          ],
+        ),
+        content: SizedBox(
+          width: 400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // คำอธิบาย
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  'วาง QR Code ไว้ในกรอบ หรือกรอกข้อมูล JSON ด้านล่าง',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, color: Colors.grey),
+                ),
+              ),
+              const SizedBox(height: 16),
+              // ช่องกรอกข้อมูล QR (สำหรับทดสอบ)
+              TextField(
+                maxLines: 4,
+                decoration: InputDecoration(
+                  hintText: 'วางข้อมูล QR Code ที่นี่...',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                onChanged: (value) async {
+                  if (value.isNotEmpty) {
+                    await _processQRCode(value.trim());
+                  }
+                },
+              ),
+              const SizedBox(height: 12),
+              // หรือกรอกรหัสคูปองโดยตรง
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      decoration: InputDecoration(
+                        hintText: 'หรือกรอกรหัสคูปอง',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        prefixIcon: const Icon(Icons.local_offer),
+                      ),
+                      textCapitalization: TextCapitalization.characters,
+                      onSubmitted: (code) {
+                        if (code.isNotEmpty) {
+                          Navigator.pop(context);
+                          _couponController.text = code;
+                          _applyCouponCode();
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('ยกเลิก'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// ประมวลผล QR Code ที่ scan ได้
+  Future<void> _processQRCode(String qrData) async {
+    Navigator.pop(context);
+    
+    setState(() => _isApplyingCoupon = true);
+
+    // Validate QR Code ผ่าน service
+    final result = await PosCouponQRService.validateQRCode(
+      qrData,
+      scannedBy: null, // จะถูกเติมใน backend
+    );
+
+    setState(() => _isApplyingCoupon = false);
+
+    if (!result.isValid) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ ${result.errorMessage ?? 'QR Code ไม่ถูกต้อง'}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // ตรวจสอบว่า coupon ถูกใช้แล้วหรือไม่
+    final alreadyApplied = widget.appliedDiscounts.any(
+      (d) => d['coupon_code']?.toString().toUpperCase() == result.couponCode?.toUpperCase(),
+    );
+    if (alreadyApplied) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('คูปองนี้ถูกใช้แล้วในออเดอร์นี้'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // ดึงข้อมูลคูปอง
+    final discount = await PosDiscountService.validateCouponCode(
+      couponCode: result.couponCode!,
+      orderAmount: widget.orderAmount,
+      channel: 'pos',
+    );
+
+    if (discount == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('ไม่พบคูปองในระบบ'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Calculate discount
+    final discountAmount = discount.calculateDiscount(widget.orderAmount);
+    if (discountAmount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('ไม่สามารถใช้คูปองนี้กับยอดปัจจุบัน'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Apply discount
+    widget.onDiscountApplied(
+      discount,
+      discountAmount,
+      couponCode: result.couponCode,
+    );
+    _couponController.clear();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('✅ ใช้คูปอง ${discount.name} สำเร็จ (฿${discountAmount.toStringAsFixed(2)})'),
+        backgroundColor: AppDesignSystem.primary,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -257,12 +425,23 @@ class _PosDiscountPanelWidgetState extends State<PosDiscountPanelWidget> {
                           horizontal: 12,
                           vertical: 10,
                         ),
-                        suffixIcon: _couponController.text.isNotEmpty
-                            ? IconButton(
+                        suffixIcon: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // QR Scanner button
+                            IconButton(
+                              icon: const Icon(Icons.qr_code_scanner, size: 20, color: Color(0xFF2AD49B)),
+                              onPressed: _isApplyingCoupon ? null : _showQRScannerDialog,
+                              tooltip: 'สแกน QR Code',
+                            ),
+                            // Clear button (ถ้ามีข้อความ)
+                            if (_couponController.text.isNotEmpty)
+                              IconButton(
                                 icon: const Icon(Icons.clear, size: 18),
                                 onPressed: () => _couponController.clear(),
-                              )
-                            : null,
+                              ),
+                          ],
+                        ),
                       ),
                       textCapitalization: TextCapitalization.characters,
                       enabled: !_isApplyingCoupon,
