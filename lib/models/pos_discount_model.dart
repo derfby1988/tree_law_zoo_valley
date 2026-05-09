@@ -24,6 +24,8 @@ class PosDiscount {
   final bool requireSufficientIngredients;
   final bool includePendingProcurement;
   final String lifecycleStatus;
+  final bool showInCouponTab;
+  final bool showInPosDiscountDialog;
   final List<String> applicableChannels;
   final bool isActive;
   final DateTime? startAt;
@@ -57,6 +59,8 @@ class PosDiscount {
     this.requireSufficientIngredients = false,
     this.includePendingProcurement = false,
     this.lifecycleStatus = 'active',
+    this.showInCouponTab = false,
+    this.showInPosDiscountDialog = false,
     this.applicableChannels = const [],
     this.isActive = true,
     this.startAt,
@@ -104,6 +108,8 @@ class PosDiscount {
       requireSufficientIngredients: map['require_sufficient_ingredients'] ?? false,
       includePendingProcurement: map['include_pending_procurement'] ?? false,
       lifecycleStatus: map['lifecycle_status'] ?? 'active',
+      showInCouponTab: map['show_in_coupon_tab'] ?? false,
+      showInPosDiscountDialog: map['show_in_pos_discount_dialog'] ?? false,
       applicableChannels: _stringList(map['applicable_channels']),
       isActive: map['is_active'] ?? true,
       startAt: map['start_at'] != null ? DateTime.parse(map['start_at']) : null,
@@ -140,6 +146,8 @@ class PosDiscount {
       'require_sufficient_ingredients': requireSufficientIngredients,
       'include_pending_procurement': includePendingProcurement,
       'lifecycle_status': lifecycleStatus,
+      'show_in_coupon_tab': showInCouponTab,
+      'show_in_pos_discount_dialog': showInPosDiscountDialog,
       'applicable_channels': applicableChannels,
       'is_active': isActive,
       'start_at': startAt?.toIso8601String(),

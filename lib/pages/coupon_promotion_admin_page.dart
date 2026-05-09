@@ -955,6 +955,8 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
     bool requireInStock = existing?.requireInStock ?? false;
     bool requireSufficientIngredients = existing?.requireSufficientIngredients ?? false;
     bool includePendingProcurement = existing?.includePendingProcurement ?? false;
+    bool showInCouponTab = existing?.showInCouponTab ?? false;
+    bool showInPosDiscountDialog = existing?.showInPosDiscountDialog ?? false;
     DateTime? startAt = existing?.startAt;
     DateTime? endAt = existing?.endAt;
     bool isSaving = false;
@@ -1465,6 +1467,25 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
                       contentPadding: EdgeInsets.zero,
                       dense: true,
                     ),
+                    const Divider(height: 24),
+                    SwitchListTile(
+                      title: const Text('แสดงในแถบคูปอง (หน้าคูปอง & โปรโมชัน)', style: TextStyle(fontSize: 13)),
+                      subtitle: const Text('ลูกค้าจะเห็นคูปองนี้ในหน้าคูปอง', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                      value: showInCouponTab,
+                      onChanged: (v) => ds(() => showInCouponTab = v),
+                      activeColor: Colors.orange,
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                    ),
+                    SwitchListTile(
+                      title: const Text('แสดงใน POS (หน้าขาย)', style: TextStyle(fontSize: 13)),
+                      subtitle: const Text('พนักงานจะเห็นคูปองนี้ใน dialog เลือกส่วนลด', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                      value: showInPosDiscountDialog,
+                      onChanged: (v) => ds(() => showInPosDiscountDialog = v),
+                      activeColor: Colors.blue,
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                    ),
                   ],
                 ),
               ),
@@ -1524,6 +1545,8 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
                         requireInStock: requireInStock,
                         requireSufficientIngredients: requireSufficientIngredients,
                         includePendingProcurement: includePendingProcurement,
+                        showInCouponTab: showInCouponTab,
+                        showInPosDiscountDialog: showInPosDiscountDialog,
                         startAt: startAt,
                         endAt: endAt,
                       );
@@ -1547,6 +1570,8 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
                         requireInStock: requireInStock,
                         requireSufficientIngredients: requireSufficientIngredients,
                         includePendingProcurement: includePendingProcurement,
+                        showInCouponTab: showInCouponTab,
+                        showInPosDiscountDialog: showInPosDiscountDialog,
                         startAt: startAt,
                         endAt: endAt,
                       );
@@ -2045,6 +2070,8 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
     bool requireInStock = false,
     bool requireSufficientIngredients = false,
     bool includePendingProcurement = false,
+    bool showInCouponTab = false,
+    bool showInPosDiscountDialog = false,
     DateTime? startAt,
     DateTime? endAt,
   }) async {
@@ -2069,6 +2096,8 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
       requireInStock: requireInStock,
       requireSufficientIngredients: requireSufficientIngredients,
       includePendingProcurement: includePendingProcurement,
+      showInCouponTab: showInCouponTab,
+      showInPosDiscountDialog: showInPosDiscountDialog,
       startAt: startAt,
       endAt: endAt,
     );
@@ -2102,6 +2131,8 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
     bool requireInStock = false,
     bool requireSufficientIngredients = false,
     bool includePendingProcurement = false,
+    bool showInCouponTab = false,
+    bool showInPosDiscountDialog = false,
     DateTime? startAt,
     DateTime? endAt,
   }) async {
@@ -2125,6 +2156,8 @@ class _CouponPromotionAdminPageState extends State<CouponPromotionAdminPage> {
       requireInStock: requireInStock,
       requireSufficientIngredients: requireSufficientIngredients,
       includePendingProcurement: includePendingProcurement,
+      showInCouponTab: showInCouponTab,
+      showInPosDiscountDialog: showInPosDiscountDialog,
       startAt: startAt,
       endAt: endAt,
     );

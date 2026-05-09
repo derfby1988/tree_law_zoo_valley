@@ -48,7 +48,8 @@ class _PosDiscountPanelWidgetState extends State<PosDiscountPanelWidget> {
 
   Future<void> _loadDiscounts() async {
     setState(() => _isLoading = true);
-    final discounts = await PosDiscountService.getActiveDiscounts();
+    // ดึงคูปองที่แสดงใน POS เท่านั้น (filter ตาม visibility)
+    final discounts = await PosDiscountService.getVisibleCouponsForPOS();
     setState(() {
       _availableDiscounts = discounts;
       _isLoading = false;

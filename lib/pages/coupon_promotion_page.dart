@@ -36,16 +36,17 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
     });
 
     try {
-      // ดึงข้อมูลทั้งหมด (ไม่กรองตามวันที่) เพื่อให้เห็นข้อมูลที่มี
-      final coupons = await PosDiscountService.getAllDiscounts();
-      final promotions = await PosPromotionService.getAllPromotions();
-      
-      debugPrint('Loaded ${coupons.length} coupons');
-      debugPrint('Loaded ${promotions.length} promotions');
-      
-      // โหลดสีกลุ่มผู้ใช้งานปัจจุบัน
+      // โหลดสีกลุ่มผู้ใช้งานปัจจุบันก่อน
       final userGroup = await UserGroupService.getCurrentUserGroup();
       final groupColor = userGroup?.colorValue ?? AppDesignSystem.primary;
+      final userGroupId = userGroup?.id;
+      
+      // ดึงคูปองที่แสดงในแถบคูปองเท่านั้น (filter ตาม visibility)
+      final coupons = await PosDiscountService.getVisibleCouponsForCouponTab(userGroupId: userGroupId);
+      final promotions = await PosPromotionService.getAllPromotions();
+      
+      debugPrint('Loaded ${coupons.length} coupons (visible in coupon tab)');
+      debugPrint('Loaded ${promotions.length} promotions');
 
       setState(() {
         _coupons = coupons;

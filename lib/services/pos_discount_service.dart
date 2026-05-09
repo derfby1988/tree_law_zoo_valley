@@ -61,6 +61,68 @@ class PosDiscountService {
     }
   }
 
+  /// ดึงคูปองที่แสดงในแถบคูปอง (หน้าคูปอง & โปรโมชัน)
+  static Future<List<PosDiscount>> getVisibleCouponsForCouponTab({String? userGroupId}) async {
+    try {
+      final response = await _client
+          .from('pos_discounts')
+          .select()
+          .eq('show_in_coupon_tab', true)
+          .eq('is_active', true)
+          .or('start_at.is.null,start_at.lte.${DateTime.now().toIso8601String()}')
+          .or('end_at.is.null,end_at.gte.${DateTime.now().toIso8601String()}')
+          .order('name');
+
+      var coupons = (response as List)
+          .map((item) => PosDiscount.fromMap(Map<String, dynamic>.from(item)))
+          .toList();
+
+      // Filter by user group if provided
+      if (userGroupId != null) {
+        coupons = coupons.where((c) {
+          if (c.customerGroupId == null) return true;
+          return c.customerGroupId == userGroupId;
+        }).toList();
+      }
+
+      return coupons;
+    } catch (e) {
+      debugPrint('Error getVisibleCouponsForCouponTab: $e');
+      return [];
+    }
+  }
+
+  /// ดึงคูปองที่แสดงใน POS (หน้าขาย)
+  static Future<List<PosDiscount>> getVisibleCouponsForPOS({String? userGroupId}) async {
+    try {
+      final response = await _client
+          .from('pos_discounts')
+          .select()
+          .eq('show_in_pos_discount_dialog', true)
+          .eq('is_active', true)
+          .or('start_at.is.null,start_at.lte.${DateTime.now().toIso8601String()}')
+          .or('end_at.is.null,end_at.gte.${DateTime.now().toIso8601String()}')
+          .order('name');
+
+      var coupons = (response as List)
+          .map((item) => PosDiscount.fromMap(Map<String, dynamic>.from(item)))
+          .toList();
+
+      // Filter by user group if provided
+      if (userGroupId != null) {
+        coupons = coupons.where((c) {
+          if (c.customerGroupId == null) return true;
+          return c.customerGroupId == userGroupId;
+        }).toList();
+      }
+
+      return coupons;
+    } catch (e) {
+      debugPrint('Error getVisibleCouponsForPOS: $e');
+      return [];
+    }
+  }
+
   static Future<PosDiscount?> getDiscountById(String id) async {
     try {
       final response = await _client
@@ -103,6 +165,8 @@ class PosDiscountService {
     bool includePendingProcurement = false,
     String lifecycleStatus = 'active',
     List<String> applicableChannels = const [],
+    bool showInCouponTab = false,
+    bool showInPosDiscountDialog = false,
     DateTime? startAt,
     DateTime? endAt,
   }) async {
@@ -132,6 +196,8 @@ class PosDiscountService {
         'include_pending_procurement': includePendingProcurement,
         'lifecycle_status': lifecycleStatus,
         'applicable_channels': applicableChannels,
+        'show_in_coupon_tab': showInCouponTab,
+        'show_in_pos_discount_dialog': showInPosDiscountDialog,
         'start_at': startAt?.toIso8601String(),
         'end_at': endAt?.toIso8601String(),
         'is_active': isActive,
@@ -177,6 +243,8 @@ class PosDiscountService {
     bool? includePendingProcurement,
     String? lifecycleStatus,
     List<String>? applicableChannels,
+    bool? showInCouponTab,
+    bool? showInPosDiscountDialog,
     DateTime? startAt,
     DateTime? endAt,
   }) async {
@@ -207,6 +275,8 @@ class PosDiscountService {
       if (includePendingProcurement != null) payload['include_pending_procurement'] = includePendingProcurement;
       if (lifecycleStatus != null) payload['lifecycle_status'] = lifecycleStatus;
       if (applicableChannels != null) payload['applicable_channels'] = applicableChannels;
+      if (showInCouponTab != null) payload['show_in_coupon_tab'] = showInCouponTab;
+      if (showInPosDiscountDialog != null) payload['show_in_pos_discount_dialog'] = showInPosDiscountDialog;
       if (startAt != null) payload['start_at'] = startAt.toIso8601String();
       if (endAt != null) payload['end_at'] = endAt.toIso8601String();
 

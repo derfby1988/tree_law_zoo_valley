@@ -2003,6 +2003,105 @@ PosCouponQRService.buildPromotionQRCode(promotion: promotion);
 
 ---
 
+# Phase 12: Coupon Visibility Control (9 พฤษภาคม 2568)
+
+## เป้าหมาย
+เพิ่มการควบคุมการแสดงคูปองในแต่ละส่วนของ UI อย่างอิสระ โดยให้ผู้ดูแลระบบสามารถกำหนดได้ว่าคูปองแต่ละรายการจะแสดงในหน้าไหนได้บ้าง
+
+## ฟีเจอร์ที่ implement
+
+### 1. Visibility Flags
+- **show_in_coupon_tab:** ควบคุมการแสดงในหน้าคูปอง & โปรโมชัน
+- **show_in_pos_discount_dialog:** ควบคุมการแสดงใน dialog เลือกส่วนลด หน้า POS
+- **Default Values:** ทั้งสองค่า default เป็น `false` (ไม่แสดง)
+- **Backward Compatibility:** คูปอง active ที่มีอยู่แล้วตั้งค่าเป็น `true` ทั้งสอง
+
+### 2. UI Controls
+- **Dialog สร้าง/แก้ไขคูปอง:** เพิ่ม 2 SwitchListTile พร้อม label ภาษาไทย
+  - "แสดงในแถบคูปอง (หน้าคูปอง & โปรโมชัน)"
+  - "แสดงใน POS (หน้าขาย)"
+- **Color Coding:** ใช้สีเขียวสำหรับ ON, สีเทาสำหรับ OFF
+- **State Management:** โหลดค่าเริ่มต้นจากข้อมูลคูปอง หรือ default false
+
+### 3. Backend Integration
+- **Database Schema:** เพิ่ม 2 boolean columns ใน `pos_discounts`
+- **Service Methods:** อัปเดต `addDiscount` และ `updateDiscount` รับพารามิเตอร์ใหม่
+- **Query Methods:** เพิ่ม 2 methods สำหรับ filter ตาม visibility
+  - `getVisibleCouponsForCouponTab()` - สำหรับหน้าคูปอง
+  - `getVisibleCouponsForPOS()` - สำหรับ POS
+
+### 4. Filter Logic
+- **หน้าคูปอง:** แสดงเฉพาะคูปองที่ `show_in_coupon_tab = true`
+- **POS:** แสดงเฉพาะคูปองที่ `show_in_pos_discount_dialog = true`
+- **User Group Filter:** รองรับการกรองตาม user group เหมือนเดิม
+
+## Files ที่สร้าง/แก้ไข
+
+| ไฟล์ | รายละเอียด |
+|------|-----------|
+| `lib/database/add_coupon_visibility_flags.sql` | SQL migration เพิ่ม 2 columns + functions |
+| `lib/models/pos_discount_model.dart` | เพิ่ม 2 boolean fields |
+| `lib/pages/coupon_promotion_admin_page.dart` | เพิ่ม 2 SwitchListTile ใน dialog |
+| `lib/services/pos_discount_service.dart` | อัปเดต methods รองรับ visibility flags |
+| `lib/pages/coupon_promotion_page.dart` | ใช้ getVisibleCouponsForCouponTab() |
+| `lib/widgets/pos_discount_panel_widget.dart` | ใช้ getVisibleCouponsForPOS() |
+
+## Database Schema
+
+### Table Changes
+```sql
+ALTER TABLE pos_discounts 
+ADD COLUMN show_in_coupon_tab BOOLEAN DEFAULT false,
+ADD COLUMN show_in_pos_discount_dialog BOOLEAN DEFAULT false;
+```
+
+### Functions
+- `get_visible_coupons_for_coupon_tab(p_user_group_id)`
+- `get_visible_coupons_for_pos(p_user_group_id)`
+
+## การใช้งาน
+
+### สร้างคูปองพร้อม visibility
+```dart
+// ใน dialog สร้าง/แก้ไขคูปอง
+bool showInCouponTab = false; // default
+bool showInPosDiscountDialog = false; // default
+
+// บันทึกค่าไป backend
+await PosDiscountService.addDiscount(
+  // ... พารามิเตอร์อื่นๆ
+  showInCouponTab: showInCouponTab,
+  showInPosDiscountDialog: showInPosDiscountDialog,
+);
+```
+
+### ดึงคูปองตาม visibility
+```dart
+// หน้าคูปอง & โปรโมชัน
+final coupons = await PosDiscountService.getVisibleCouponsForCouponTab();
+
+// POS dialog
+final coupons = await PosDiscountService.getVisibleCouponsForPOS();
+```
+
+## ทดสอบระบบ
+
+1. **สร้างคูปองใหม่** → ทั้ง 2 toggles default เป็น OFF
+2. **เปิด toggle แรก** → แสดงในหน้าคูปองเท่านั้น
+3. **เปิด toggle สอง** → แสดงใน POS เท่านั้น
+4. **เปิดทั้งสอง** → แสดงในทั้งสองที่
+5. **ตรวจสอบคูปองเก่า** → ควรแสดงในทั้งสองที่ (backward compatibility)
+
+## ข้อดีของระบบ
+
+✅ **ควบคุมแยกกัน** - คูปองแต่ละรายการกำหนดการแสดงได้อิสระ  
+✅ **Default ปลอดภัย** - ไม่แสดงโดยอัตโนมัติ ต้องเจตนาโดยเจตนา  
+✅ **Backward Compatible** - คูปองเก่ายังแสดงตามเดิม  
+✅ **UI ชัดเจน** - ใช้ SwitchListTile พร้อม label ภาษาไทย  
+✅ **Performance** - Query ตาม visibility ลดข้อมูลที่ไม่จำเป็น  
+
+---
+
 # Summary: ความคืบหน้าโครงการ
 
 | Phase | สถานะ | ความสมบูรณ์ | หมายเหตุ |
@@ -2019,5 +2118,6 @@ PosCouponQRService.buildPromotionQRCode(promotion: promotion);
 | Phase 9: Governance | ✅ เสร็จ | 100% | Tax Rules + Permission System |
 | Phase 10: Advanced Analytics | ⏸️ On Hold | 0% | รอข้อมูลสะสม 3-6 เดือน |
 | Phase 11: QR Code System | ✅ เสร็จ | 100% | QR Code สำหรับคูปอง + โปรโมชัน |
+| Phase 12: Coupon Visibility Control | ✅ เสร็จ | 100% | ควบคุมการแสดงคูปองในแต่ละหน้า UI |
 
-**สรุป:** ✅ Phase 0-9, 11 เสร็จสมบูรณ์ (100%) - ระบบ Coupon & Promotion พร้อมใช้งานจริง!
+**สรุป:** ✅ Phase 0-9, 11-12 เสร็จสมบูรณ์ (100%) - ระบบ Coupon & Promotion พร้อมใช้งานจริง!
