@@ -66,12 +66,6 @@ class HomeEndDrawer extends StatelessWidget {
               ),
             _item(
               context,
-              title: 'คูปอง/โปรโมชั่น',
-              icon: Icons.local_offer,
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CouponPromotionPage())),
-            ),
-            _item(
-              context,
               title: 'จัดการคูปอง/โปรโมชั่น',
               icon: Icons.admin_panel_settings,
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CouponPromotionAdminPage())),

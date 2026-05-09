@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../pages/coupon_promotion_page.dart';
 
 class HomeLeftDrawer extends StatelessWidget {
   const HomeLeftDrawer({
@@ -64,7 +65,15 @@ class HomeLeftDrawer extends StatelessWidget {
               onTap: onTableBookingTap,
             ),
             _menuItem(context, title: 'จองที่พัก', icon: Icons.bed),
-            _menuItem(context, title: 'คูปอง', icon: Icons.local_offer),
+            _menuItem(
+              context,
+              title: 'คูปอง/โปรโมชัน',
+              icon: Icons.local_offer,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const CouponPromotionPage()),
+              ),
+            ),
             _menuItem(context, title: 'เรียกพนักงาน / ให้ทิป', icon: Icons.people),
             _menuItem(context, title: 'ข้อมูลส่วนตัว', icon: Icons.person),
             _menuItem(context, title: 'ร่วมงานกับเรา', icon: Icons.work),

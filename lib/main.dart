@@ -12,6 +12,7 @@ import 'pages/restaurant_menu_page.dart';
 import 'pages/table_booking_page.dart';
 import 'pages/room_booking_page.dart';
 import 'pages/database_test_page.dart';
+import 'pages/coupon_promotion_page.dart';
 import 'widgets/glass_drawer_components.dart';
 import 'reset_password_page.dart';
 import 'auth_state_observer.dart';
@@ -683,6 +684,7 @@ class _MyHomePageState extends State<MyHomePage> {
       {'icon': Icons.restaurant, 'title': 'สั่งอาหาร', 'guestAllowed': true, 'pageId': 'restaurant_menu'},
       {'icon': Icons.table_restaurant, 'title': 'จองโต๊ะ', 'guestAllowed': true, 'pageId': 'table_booking'},
       {'icon': Icons.bed, 'title': 'จองที่พัก', 'guestAllowed': true, 'pageId': 'room_booking'},
+      {'icon': Icons.local_offer, 'title': 'คูปอง/โปรโมชั่น', 'guestAllowed': true, 'pageId': 'coupon_promotion'},
       {'icon': Icons.history, 'title': 'ติดตามคิว / ข้อมูลการจอง (โต๊ะ/ที่พัก)', 'guestAllowed': false, 'pageId': ''},
       {'icon': Icons.storage, 'title': 'Database Test', 'guestAllowed': false, 'pageId': ''},
     ];
@@ -800,6 +802,13 @@ class _MyHomePageState extends State<MyHomePage> {
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => TableBookingPage(isGuestMode: widget.isGuestMode),
+          ),
+        );
+        break;
+      case 'คูปอง/โปรโมชั่น':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => CouponPromotionPage(),
           ),
         );
         break;
