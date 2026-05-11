@@ -113,12 +113,46 @@ class InventoryService {
   // Products
   // =============================================
 
+  /// ดึงสินค้าพร้อม shelf_id และ warehouse_id (จาก inventory_shelves)
+  static Future<List<Map<String, dynamic>>> getProductsWithShelfAndWarehouse() async {
+    try {
+      final response = await _client
+          .from('inventory_products')
+          .select('''
+            *,
+            shelf:inventory_shelves!inner(id, code, warehouse_id, warehouse:inventory_warehouses(id, name))
+          ''')
+          .order('name');
+      
+      final products = List<Map<String, dynamic>>.from(response);
+      
+      // Flatten the shelf and warehouse info
+      return products.map((p) {
+        final shelf = p['shelf'] as Map<String, dynamic>?;
+        final warehouse = shelf?['warehouse'] as Map<String, dynamic>?;
+        return {
+          ...p,
+          'shelf_id': shelf?['id'],
+          'shelf_code': shelf?['code'],
+          'warehouse_id': shelf?['warehouse_id'] ?? warehouse?['id'],
+          'warehouse_name': warehouse?['name'],
+        };
+      }).toList();
+    } catch (e) {
+      debugPrint('❌ Error getProductsWithShelfAndWarehouse: $e');
+      return [];
+    }
+  }
+
   static Future<List<Map<String, dynamic>>> getProducts({bool useCache = false}) async {
     try {
       // Try to get from cache
       if (useCache) {
         final cached = _getCachedData<List<Map<String, dynamic>>>('getProducts');
-        if (cached != null) return cached;
+        if (cached != null) {
+          debugPrint('📦 getProducts: Returning ${cached.length} products from cache');
+          return cached;
+        }
       }
 
       final response = await _client

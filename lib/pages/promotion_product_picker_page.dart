@@ -54,6 +54,13 @@ class _PromotionProductPickerPageState extends State<PromotionProductPickerPage>
   String _searchQuery = '';
   bool _showFilters = false;
   
+  // Store & Shelf filters
+  String? _selectedStoreId;
+  String? _selectedShelfId;
+  List<Map<String, dynamic>> _stores = [];
+  List<Map<String, dynamic>> _shelves = [];
+  Map<String, List<Map<String, dynamic>>> _shelvesByStore = {};
+  
   // Sorting
   String _sortBy = 'name';
   bool _sortAscending = true;
@@ -89,9 +96,44 @@ class _PromotionProductPickerPageState extends State<PromotionProductPickerPage>
       _loadSeasonalProducts(),
       _loadFestivalProducts(),
       _loadRecommendedProducts(),
+      _loadStores(),
+      _loadShelves(),
     ]);
     
     setState(() => _isLoading = false);
+  }
+  
+  Future<void> _loadStores() async {
+    try {
+      final response = await InventoryService.getWarehouses();
+      setState(() {
+        _stores = response;
+      });
+    } catch (e) {
+      debugPrint('Error loading stores: $e');
+    }
+  }
+  
+  Future<void> _loadShelves() async {
+    try {
+      final response = await InventoryService.getShelves(
+        includeInactive: false,
+      );
+      setState(() {
+        _shelves = response;
+        // Group shelves by store
+        _shelvesByStore = {};
+        for (final shelf in response) {
+          final storeId = shelf['warehouse_id']?.toString() ?? 'unknown';
+          if (!_shelvesByStore.containsKey(storeId)) {
+            _shelvesByStore[storeId] = [];
+          }
+          _shelvesByStore[storeId]!.add(shelf);
+        }
+      });
+    } catch (e) {
+      debugPrint('Error loading shelves: $e');
+    }
   }
 
   Future<void> _loadAllProducts() async {
@@ -106,8 +148,49 @@ class _PromotionProductPickerPageState extends State<PromotionProductPickerPage>
         ascending: _sortAscending,
         useCache: true,
       );
+      
+      // ดึง shelf_id จาก inventory_products และ join กับ inventory_shelves
+      // เพื่อได้ warehouse_id ที่ถูกต้อง
+      final productsWithShelf = await InventoryService.getProductsWithShelfAndWarehouse();
+      
+      debugPrint('📦 Loaded ${productsWithShelf.length} products with shelf/warehouse info');
+      if (productsWithShelf.isNotEmpty) {
+        debugPrint('🔍 First product: ${productsWithShelf.first}');
+      }
+      
+      // Create a map of product_id to warehouse_id and shelf_id
+      final productLocationMap = <String, Map<String, String?>>{};
+      for (final product in productsWithShelf) {
+        final productId = product['id']?.toString();
+        final warehouseId = product['warehouse_id']?.toString();
+        final shelfId = product['shelf_id']?.toString();
+        
+        if (productId != null) {
+          productLocationMap[productId] = {
+            'warehouse_id': warehouseId,
+            'shelf_id': shelfId,
+          };
+          if (warehouseId != null) {
+            debugPrint('✅ Mapped product $productId to warehouse $warehouseId, shelf $shelfId');
+          }
+        }
+      }
+      
+      debugPrint('📊 Total products with location: ${productLocationMap.length}');
+      debugPrint('📊 Total products loaded: ${result.data.length}');
+      
+      // Enrich product data with warehouse_id and shelf_id
+      final productsWithLocation = result.data.map((product) {
+        final productId = product['id']?.toString();
+        final location = productLocationMap[productId];
+        final productMap = Map<String, dynamic>.from(product);
+        productMap['warehouse_id'] = location?['warehouse_id'];
+        productMap['shelf_id'] = location?['shelf_id'];
+        return productMap;
+      }).toList();
+      
       setState(() {
-        _allProducts = result.data.cast<Map<String, dynamic>>();
+        _allProducts = productsWithLocation;
         _tabLoading['all'] = false;
       });
     } catch (e) {
@@ -253,7 +336,7 @@ class _PromotionProductPickerPageState extends State<PromotionProductPickerPage>
       final existingIndex = _selectedProducts.indexWhere(
         (p) => p['id'] == product['id'],
       );
-      
+
       if (existingIndex >= 0) {
         _selectedProducts.removeAt(existingIndex);
       } else {
@@ -263,6 +346,243 @@ class _PromotionProductPickerPageState extends State<PromotionProductPickerPage>
         });
       }
     });
+  }
+
+  /// เลือกสินค้าทั้งหมดในแท็บปัจจุบัน
+  void _selectAllProducts() {
+    final currentProducts = _getCurrentTabProducts();
+    final searchQuery = _searchCtrl.text.toLowerCase();
+
+    // กรองตามการค้นหาถ้ามี
+    final filteredProducts = searchQuery.isEmpty
+        ? currentProducts
+        : currentProducts.where((p) {
+            final name = (p['name'] ?? '').toString().toLowerCase();
+            return name.contains(searchQuery);
+          }).toList();
+
+    setState(() {
+      for (final product in filteredProducts) {
+        final existingIndex = _selectedProducts.indexWhere(
+          (p) => p['id'] == product['id'],
+        );
+        if (existingIndex < 0) {
+          _selectedProducts.add({
+            ...product,
+            'quantity': 1,
+          });
+        }
+      }
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('เลือกสินค้า ${filteredProducts.length} รายการ'),
+        duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+
+  /// ยกเลิกการเลือกทั้งหมดในแท็บปัจจุบัน
+  void _deselectAllProducts() {
+    final currentProducts = _getCurrentTabProducts();
+    final currentIds = currentProducts.map((p) => p['id']).toSet();
+
+    setState(() {
+      _selectedProducts.removeWhere((p) => currentIds.contains(p['id']));
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('ยกเลิกการเลือกทั้งหมด'),
+        duration: Duration(seconds: 1),
+      ),
+    );
+  }
+
+  /// ตรวจสอบว่าเลือกทั้งหมดแล้วหรือยัง
+  bool _isAllSelected() {
+    final currentProducts = _getCurrentTabProducts();
+    final searchQuery = _searchCtrl.text.toLowerCase();
+
+    final filteredProducts = searchQuery.isEmpty
+        ? currentProducts
+        : currentProducts.where((p) {
+            final name = (p['name'] ?? '').toString().toLowerCase();
+            return name.contains(searchQuery);
+          }).toList();
+
+    if (filteredProducts.isEmpty) return false;
+
+    for (final product in filteredProducts) {
+      final isSelected = _selectedProducts.any((p) => p['id'] == product['id']);
+      if (!isSelected) return false;
+    }
+    return true;
+  }
+
+  /// เลือกสินค้าทั้งหมดในคลังที่ระบุ
+  void _selectAllByStore(String storeId) {
+    final storeProducts = _allProducts.where((p) {
+      final productStoreId = p['warehouse_id']?.toString() ?? 
+                           p['store_id']?.toString() ?? 
+                           p['location_id']?.toString();
+      return productStoreId == storeId;
+    }).toList();
+
+    setState(() {
+      for (final product in storeProducts) {
+        final existingIndex = _selectedProducts.indexWhere(
+          (p) => p['id'] == product['id'],
+        );
+        if (existingIndex < 0) {
+          _selectedProducts.add({
+            ...product,
+            'quantity': 1,
+          });
+        }
+      }
+    });
+
+    final storeName = _stores.firstWhere(
+      (s) => s['id']?.toString() == storeId,
+      orElse: () => {'name': 'คลังนี้'},
+    )['name'];
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('เลือกสินค้าใน$storeName ${storeProducts.length} รายการ'),
+        duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+
+  /// ยกเลิกการเลือกสินค้าทั้งหมดในคลังที่ระบุ
+  void _deselectAllByStore(String storeId) {
+    final storeProducts = _allProducts.where((p) {
+      final productStoreId = p['warehouse_id']?.toString() ?? 
+                           p['store_id']?.toString() ?? 
+                           p['location_id']?.toString();
+      return productStoreId == storeId;
+    }).toList();
+
+    final storeProductIds = storeProducts.map((p) => p['id']).toSet();
+
+    setState(() {
+      _selectedProducts.removeWhere((p) => storeProductIds.contains(p['id']));
+    });
+
+    final storeName = _stores.firstWhere(
+      (s) => s['id']?.toString() == storeId,
+      orElse: () => {'name': 'คลังนี้'},
+    )['name'];
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('ยกเลิกการเลือกใน$storeName'),
+        duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+
+  /// เลือกสินค้าทั้งหมดในชั้นวางที่ระบุ
+  void _selectAllByShelf(String shelfId) {
+    final shelfProducts = _allProducts.where((p) {
+      final productShelfId = p['shelf_id']?.toString() ?? 
+                            p['rack_id']?.toString() ?? 
+                            p['location_shelf_id']?.toString();
+      return productShelfId == shelfId;
+    }).toList();
+
+    setState(() {
+      for (final product in shelfProducts) {
+        final existingIndex = _selectedProducts.indexWhere(
+          (p) => p['id'] == product['id'],
+        );
+        if (existingIndex < 0) {
+          _selectedProducts.add({
+            ...product,
+            'quantity': 1,
+          });
+        }
+      }
+    });
+
+    final shelfName = _shelves.firstWhere(
+      (s) => s['id']?.toString() == shelfId,
+      orElse: () => {'name': 'ชั้นวางนี้'},
+    )['name'];
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('เลือกสินค้าในชั้น$shelfName ${shelfProducts.length} รายการ'),
+        duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+
+  /// ยกเลิกการเลือกสินค้าทั้งหมดในชั้นวางที่ระบุ
+  void _deselectAllByShelf(String shelfId) {
+    final shelfProducts = _allProducts.where((p) {
+      final productShelfId = p['shelf_id']?.toString() ?? 
+                            p['rack_id']?.toString() ?? 
+                            p['location_shelf_id']?.toString();
+      return productShelfId == shelfId;
+    }).toList();
+
+    final shelfProductIds = shelfProducts.map((p) => p['id']).toSet();
+
+    setState(() {
+      _selectedProducts.removeWhere((p) => shelfProductIds.contains(p['id']));
+    });
+
+    final shelfName = _shelves.firstWhere(
+      (s) => s['id']?.toString() == shelfId,
+      orElse: () => {'name': 'ชั้นวางนี้'},
+    )['name'];
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('ยกเลิกการเลือกในชั้น$shelfName'),
+        duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+
+  /// ตรวจสอบว่าเลือกทั้งหมดในคลังแล้วหรือยัง
+  bool _isStoreAllSelected(String storeId) {
+    final storeProducts = _allProducts.where((p) {
+      final productStoreId = p['warehouse_id']?.toString() ?? 
+                           p['store_id']?.toString() ?? 
+                           p['location_id']?.toString();
+      return productStoreId == storeId;
+    }).toList();
+
+    if (storeProducts.isEmpty) return false;
+
+    for (final product in storeProducts) {
+      final isSelected = _selectedProducts.any((p) => p['id'] == product['id']);
+      if (!isSelected) return false;
+    }
+    return true;
+  }
+
+  /// ตรวจสอบว่าเลือกทั้งหมดในชั้นวางแล้วหรือยัง
+  bool _isShelfAllSelected(String shelfId) {
+    final shelfProducts = _allProducts.where((p) {
+      final productShelfId = p['shelf_id']?.toString() ?? 
+                            p['rack_id']?.toString() ?? 
+                            p['location_shelf_id']?.toString();
+      return productShelfId == shelfId;
+    }).toList();
+
+    if (shelfProducts.isEmpty) return false;
+
+    for (final product in shelfProducts) {
+      final isSelected = _selectedProducts.any((p) => p['id'] == product['id']);
+      if (!isSelected) return false;
+    }
+    return true;
   }
 
   void _updateQuantity(String productId, int quantity) {
@@ -465,7 +785,400 @@ class _PromotionProductPickerPageState extends State<PromotionProductPickerPage>
               );
             },
           ),
+          const SizedBox(height: 16),
+          
+          // Store Filter
+          _buildStoreFilter(),
+          
+          // Shelf Filter (shown when store is selected)
+          if (_selectedStoreId != null) ...[
+            const SizedBox(height: 16),
+            _buildShelfFilter(),
+          ],
         ],
+      ),
+    );
+  }
+
+  /// สร้างตัวกรองคลังพร้อมปุ่มเลือกทั้งหมด
+  Widget _buildStoreFilter() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Expanded(
+              child: Text('คลังสินค้า', style: TextStyle(fontWeight: FontWeight.w600)),
+            ),
+            if (_selectedStoreId != null)
+              TextButton.icon(
+                onPressed: () {
+                  if (_isStoreAllSelected(_selectedStoreId!)) {
+                    _deselectAllByStore(_selectedStoreId!);
+                  } else {
+                    _selectAllByStore(_selectedStoreId!);
+                  }
+                },
+                icon: Icon(
+                  _isStoreAllSelected(_selectedStoreId!) ? Icons.deselect : Icons.select_all,
+                  size: 16,
+                ),
+                label: Text(
+                  _isStoreAllSelected(_selectedStoreId!) ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด',
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String?>(
+          value: _selectedStoreId,
+          decoration: const InputDecoration(
+            hintText: 'เลือกคลัง',
+          ),
+          items: [
+            const DropdownMenuItem(value: null, child: Text('ทุกคลัง')),
+            ..._stores.map((store) => DropdownMenuItem(
+              value: store['id']?.toString(),
+              child: Row(
+                children: [
+                  Expanded(child: Text(store['name'] ?? 'ไม่ระบุชื่อ')),
+                  if (_selectedStoreId == store['id']?.toString())
+                    IconButton(
+                      icon: Icon(
+                        _isStoreAllSelected(store['id']!.toString()) 
+                            ? Icons.check_circle 
+                            : Icons.radio_button_unchecked,
+                        size: 20,
+                        color: AppDesignSystem.primary,
+                      ),
+                      onPressed: () {
+                        if (_isStoreAllSelected(store['id']!.toString())) {
+                          _deselectAllByStore(store['id']!.toString());
+                        } else {
+                          _selectAllByStore(store['id']!.toString());
+                        }
+                      },
+                    ),
+                ],
+              ),
+            )),
+          ],
+          onChanged: (value) {
+            setState(() {
+              _selectedStoreId = value;
+              _selectedShelfId = null; // Reset shelf when store changes
+            });
+            _refreshCurrentTab();
+          },
+        ),
+        if (_selectedStoreId != null && _isStoreAllSelected(_selectedStoreId!))
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Row(
+              children: [
+                Icon(Icons.check_circle, size: 14, color: Colors.green[600]),
+                const SizedBox(width: 4),
+                Text(
+                  'เลือกสินค้าทั้งหมดในคลังนี้แล้ว',
+                  style: TextStyle(fontSize: 12, color: Colors.green[600]),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// สร้างตัวกรองชั้นวางพร้อมปุ่มเลือกทั้งหมด
+  Widget _buildShelfFilter() {
+    final storeShelves = _shelvesByStore[_selectedStoreId] ?? [];
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Expanded(
+              child: Text('ชั้นวาง', style: TextStyle(fontWeight: FontWeight.w600)),
+            ),
+            if (_selectedShelfId != null)
+              TextButton.icon(
+                onPressed: () {
+                  if (_isShelfAllSelected(_selectedShelfId!)) {
+                    _deselectAllByShelf(_selectedShelfId!);
+                  } else {
+                    _selectAllByShelf(_selectedShelfId!);
+                  }
+                },
+                icon: Icon(
+                  _isShelfAllSelected(_selectedShelfId!) ? Icons.deselect : Icons.select_all,
+                  size: 16,
+                ),
+                label: Text(
+                  _isShelfAllSelected(_selectedShelfId!) ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด',
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (storeShelves.isEmpty)
+          Text(
+            'ไม่มีชั้นวางในคลังนี้',
+            style: TextStyle(color: Colors.grey[600], fontSize: 14),
+          )
+        else
+          DropdownButtonFormField<String?>(
+            value: _selectedShelfId,
+            decoration: const InputDecoration(
+              hintText: 'เลือกชั้นวาง',
+            ),
+            items: [
+              const DropdownMenuItem(value: null, child: Text('ทุกชั้น')),
+              ...storeShelves.map((shelf) => DropdownMenuItem(
+                value: shelf['id']?.toString(),
+                child: Row(
+                  children: [
+                    Expanded(child: Text(shelf['name'] ?? shelf['code'] ?? 'ไม่ระบุ')),
+                    if (_selectedShelfId == shelf['id']?.toString())
+                      IconButton(
+                        icon: Icon(
+                          _isShelfAllSelected(shelf['id']!.toString()) 
+                              ? Icons.check_circle 
+                              : Icons.radio_button_unchecked,
+                          size: 20,
+                          color: AppDesignSystem.primary,
+                        ),
+                        onPressed: () {
+                          if (_isShelfAllSelected(shelf['id']!.toString())) {
+                            _deselectAllByShelf(shelf['id']!.toString());
+                          } else {
+                            _selectAllByShelf(shelf['id']!.toString());
+                          }
+                        },
+                      ),
+                  ],
+                ),
+              )),
+            ],
+            onChanged: (value) {
+              setState(() {
+                _selectedShelfId = value;
+              });
+              _refreshCurrentTab();
+            },
+          ),
+        if (_selectedShelfId != null && _isShelfAllSelected(_selectedShelfId!))
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Row(
+              children: [
+                Icon(Icons.check_circle, size: 14, color: Colors.green[600]),
+                const SizedBox(width: 4),
+                Text(
+                  'เลือกสินค้าทั้งหมดในชั้นนี้แล้ว',
+                  style: TextStyle(fontSize: 12, color: Colors.green[600]),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// Dropdown คลังแบบ Compact (สำหรับแสดงเสมอ)
+  Widget _buildCompactStoreDropdown() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String?>(
+          value: _selectedStoreId,
+          isDense: true,
+          isExpanded: true,
+          hint: const Row(
+            children: [
+              Icon(Icons.warehouse, size: 18, color: Colors.grey),
+              SizedBox(width: 8),
+              Text('เลือกคลัง...', style: TextStyle(fontSize: 14)),
+            ],
+          ),
+          items: [
+            DropdownMenuItem(
+              value: null,
+              child: Row(
+                children: [
+                  const Icon(Icons.all_inclusive, size: 18, color: Colors.grey),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'ทุกคลัง (${_allProducts.length})',
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            ..._stores.map((store) {
+              final storeId = store['id']?.toString() ?? '';
+              final isAllSelected = _isStoreAllSelected(storeId);
+              // นับจำนวนสินค้าในคลังนี้
+              final productCount = _allProducts.where((p) {
+                final productStoreId = p['warehouse_id']?.toString() ?? 
+                                      p['store_id']?.toString() ?? 
+                                      p['location_id']?.toString();
+                return productStoreId == storeId;
+              }).length;
+              return DropdownMenuItem(
+                value: storeId,
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.warehouse,
+                      size: 18,
+                      color: isAllSelected ? AppDesignSystem.primary : Colors.grey,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '${store['name'] ?? 'ไม่ระบุชื่อ'} ($productCount)',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: isAllSelected ? FontWeight.bold : FontWeight.normal,
+                          color: isAllSelected ? AppDesignSystem.primary : Colors.black,
+                        ),
+                      ),
+                    ),
+                    if (isAllSelected)
+                      Icon(Icons.check_circle, size: 16, color: AppDesignSystem.primary),
+                  ],
+                ),
+              );
+            }),
+          ],
+          onChanged: (value) {
+            setState(() {
+              _selectedStoreId = value;
+              _selectedShelfId = null;
+            });
+          },
+        ),
+      ),
+    );
+  }
+
+  /// Dropdown ชั้นวางแบบ Compact (สำหรับแสดงเสมอ)
+  Widget _buildCompactShelfDropdown() {
+    final storeShelves = _shelvesByStore[_selectedStoreId] ?? [];
+    
+    if (storeShelves.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.grey[100],
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey[300]!),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.shelves, size: 18, color: Colors.grey),
+            SizedBox(width: 8),
+            Text('ไม่มีชั้นวาง', style: TextStyle(fontSize: 14, color: Colors.grey)),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String?>(
+          value: _selectedShelfId,
+          isDense: true,
+          isExpanded: true,
+          hint: const Row(
+            children: [
+              Icon(Icons.shelves, size: 18, color: Colors.grey),
+              SizedBox(width: 8),
+              Text('เลือกชั้น...', style: TextStyle(fontSize: 14)),
+            ],
+          ),
+          items: [
+            DropdownMenuItem(
+              value: null,
+              child: Row(
+                children: [
+                  const Icon(Icons.all_inclusive, size: 18, color: Colors.grey),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'ทุกชั้น (${_selectedStoreId != null 
+                          ? _allProducts.where((p) {
+                              final productStoreId = p['warehouse_id']?.toString() ?? 
+                                                  p['store_id']?.toString() ?? 
+                                                  p['location_id']?.toString();
+                              return productStoreId == _selectedStoreId;
+                            }).length 
+                          : _allProducts.length})',
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            ...storeShelves.map((shelf) {
+              final shelfId = shelf['id']?.toString() ?? '';
+              final isAllSelected = _isShelfAllSelected(shelfId);
+              // นับจำนวนสินค้าในชั้นนี้
+              final productCount = _allProducts.where((p) {
+                final productShelfId = p['shelf_id']?.toString() ?? 
+                                      p['rack_id']?.toString() ?? 
+                                      p['location_shelf_id']?.toString();
+                return productShelfId == shelfId;
+              }).length;
+              return DropdownMenuItem(
+                value: shelfId,
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.shelves,
+                      size: 18,
+                      color: isAllSelected ? AppDesignSystem.secondary : Colors.grey,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '${shelf['name'] ?? shelf['code'] ?? 'ไม่ระบุ'} ($productCount)',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: isAllSelected ? FontWeight.bold : FontWeight.normal,
+                          color: isAllSelected ? AppDesignSystem.secondary : Colors.black,
+                        ),
+                      ),
+                    ),
+                    if (isAllSelected)
+                      Icon(Icons.check_circle, size: 16, color: AppDesignSystem.secondary),
+                  ],
+                ),
+              );
+            }),
+          ],
+          onChanged: (value) {
+            setState(() {
+              _selectedShelfId = value;
+            });
+          },
+        ),
       ),
     );
   }
@@ -562,24 +1275,54 @@ class _PromotionProductPickerPageState extends State<PromotionProductPickerPage>
   }
 
   List<Map<String, dynamic>> _getCurrentTabProducts() {
+    List<Map<String, dynamic>> products;
     switch (_tabController.index) {
       case 0:
-        return _allProducts;
+        products = _allProducts;
+        break;
       case 1:
-        return _expiringProducts;
+        products = _expiringProducts;
+        break;
       case 2:
-        return _expiringIngredients;
+        products = _expiringIngredients;
+        break;
       case 3:
-        return _highMarginProducts;
+        products = _highMarginProducts;
+        break;
       case 4:
-        return _seasonalProducts;
+        products = _seasonalProducts;
+        break;
       case 5:
-        return _festivalProducts;
+        products = _festivalProducts;
+        break;
       case 6:
-        return _recommendedProducts.map((p) => p.toMap()).toList();
+        products = _recommendedProducts.map((p) => p.toMap()).toList();
+        break;
       default:
-        return _allProducts;
+        products = _allProducts;
     }
+    
+    // Apply store filter
+    if (_selectedStoreId != null) {
+      products = products.where((p) {
+        final productStoreId = p['warehouse_id']?.toString() ?? 
+                              p['store_id']?.toString() ?? 
+                              p['location_id']?.toString();
+        return productStoreId == _selectedStoreId;
+      }).toList();
+    }
+    
+    // Apply shelf filter
+    if (_selectedShelfId != null) {
+      products = products.where((p) {
+        final productShelfId = p['shelf_id']?.toString() ?? 
+                              p['rack_id']?.toString() ?? 
+                              p['location_shelf_id']?.toString();
+        return productShelfId == _selectedShelfId;
+      }).toList();
+    }
+    
+    return products;
   }
 
   bool _isTabLoading() {
@@ -623,6 +1366,22 @@ class _PromotionProductPickerPageState extends State<PromotionProductPickerPage>
           onTap: (_) => setState(() {}), // Refresh to show correct filter UI
         ),
         actions: [
+          // Select All / Deselect All Button
+          if (!_isTabLoading())
+            IconButton(
+              icon: Icon(
+                _isAllSelected() ? Icons.deselect : Icons.select_all,
+                color: AppDesignSystem.primary,
+              ),
+              onPressed: () {
+                if (_isAllSelected()) {
+                  _deselectAllProducts();
+                } else {
+                  _selectAllProducts();
+                }
+              },
+              tooltip: _isAllSelected() ? 'ยกเลิกเลือกทั้งหมด' : 'เลือกทั้งหมด',
+            ),
           IconButton(
             icon: Icon(
               _showFilters ? Icons.filter_list_off : Icons.filter_list,
@@ -651,11 +1410,121 @@ class _PromotionProductPickerPageState extends State<PromotionProductPickerPage>
       ),
       body: Column(
         children: [
-          // Filter Panel (collapsible)
+          // Filter Panel (collapsible) - หมวดหมู่และการเรียง
           if (_showFilters)
             Container(
               color: Colors.grey[50],
               child: _buildFilterControls(),
+            ),
+          
+          // Persistent Store & Shelf Filters (แสดงเสมอ)
+          if (_tabController.index == 0) // เฉพาะแท็บทั้งหมด
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border(
+                  bottom: BorderSide(color: Colors.grey[200]!),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.03),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Store Filter Row
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: _buildCompactStoreDropdown(),
+                      ),
+                      const SizedBox(width: 12),
+                      // Select All Store Button
+                      if (_selectedStoreId != null)
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            if (_isStoreAllSelected(_selectedStoreId!)) {
+                              _deselectAllByStore(_selectedStoreId!);
+                            } else {
+                              _selectAllByStore(_selectedStoreId!);
+                            }
+                          },
+                          icon: Icon(
+                            _isStoreAllSelected(_selectedStoreId!) 
+                                ? Icons.deselect 
+                                : Icons.select_all,
+                            size: 18,
+                          ),
+                          label: Text(
+                            _isStoreAllSelected(_selectedStoreId!) 
+                                ? 'ยกเลิก' 
+                                : 'เลือกทั้งคลัง',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _isStoreAllSelected(_selectedStoreId!)
+                                ? Colors.red[400]
+                                : AppDesignSystem.primary,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            minimumSize: const Size(0, 36),
+                          ),
+                        ),
+                    ],
+                  ),
+                  
+                  // Shelf Filter (เมื่อเลือกคลังแล้ว)
+                  if (_selectedStoreId != null) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 2,
+                          child: _buildCompactShelfDropdown(),
+                        ),
+                        const SizedBox(width: 12),
+                        // Select All Shelf Button
+                        if (_selectedShelfId != null)
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              if (_isShelfAllSelected(_selectedShelfId!)) {
+                                _deselectAllByShelf(_selectedShelfId!);
+                              } else {
+                                _selectAllByShelf(_selectedShelfId!);
+                              }
+                            },
+                            icon: Icon(
+                              _isShelfAllSelected(_selectedShelfId!) 
+                                  ? Icons.deselect 
+                                  : Icons.select_all,
+                              size: 18,
+                            ),
+                            label: Text(
+                              _isShelfAllSelected(_selectedShelfId!) 
+                                  ? 'ยกเลิก' 
+                                  : 'เลือกทั้งชั้น',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _isShelfAllSelected(_selectedShelfId!)
+                                  ? Colors.orange[400]
+                                  : AppDesignSystem.secondary,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              minimumSize: const Size(0, 36),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
             ),
           
           // Product List
@@ -880,15 +1749,77 @@ class _PromotionProductPickerPageState extends State<PromotionProductPickerPage>
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(12),
-      itemCount: filteredProducts.length,
-      itemBuilder: (context, index) {
-        final product = filteredProducts[index];
-        final isSelected = _selectedProducts.any((p) => p['id'] == product['id']);
-        
-        return _buildProductCard(product, isSelected);
-      },
+    return Column(
+      children: [
+        // Select All Header
+        if (filteredProducts.isNotEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border(
+                bottom: BorderSide(color: Colors.grey[200]!),
+              ),
+            ),
+            child: Row(
+              children: [
+                Checkbox(
+                  value: _isAllSelected(),
+                  onChanged: (_) {
+                    if (_isAllSelected()) {
+                      _deselectAllProducts();
+                    } else {
+                      _selectAllProducts();
+                    }
+                  },
+                  activeColor: AppDesignSystem.primary,
+                ),
+                Expanded(
+                  child: Text(
+                    _isAllSelected()
+                        ? 'ยกเลิกการเลือกทั้งหมด (${filteredProducts.length} รายการ)'
+                        : 'เลือกทั้งหมด (${filteredProducts.length} รายการ)',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () {
+                    if (_isAllSelected()) {
+                      _deselectAllProducts();
+                    } else {
+                      _selectAllProducts();
+                    }
+                  },
+                  icon: Icon(
+                    _isAllSelected() ? Icons.deselect : Icons.select_all,
+                    size: 18,
+                    color: AppDesignSystem.primary,
+                  ),
+                  label: Text(
+                    _isAllSelected() ? 'ยกเลิก' : 'เลือกทั้งหมด',
+                    style: TextStyle(color: AppDesignSystem.primary),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        // Product List
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: filteredProducts.length,
+            itemBuilder: (context, index) {
+              final product = filteredProducts[index];
+              final isSelected = _selectedProducts.any((p) => p['id'] == product['id']);
+
+              return _buildProductCard(product, isSelected);
+            },
+          ),
+        ),
+      ],
     );
   }
 
