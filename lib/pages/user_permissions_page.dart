@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
+import '../services/permission_service.dart';
 import '../widgets/glass_dialog.dart';
 import '../widgets/glass_button.dart';
 
@@ -970,6 +971,8 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> with SingleTi
           duration: const Duration(seconds: 1),
         ),
       );
+      
+      await PermissionService.refreshPermissions(); // รีเฟรช cache ให้มีผลทันที
     } catch (e) {
       setState(() {
         _updatingPageId = null;
@@ -1050,6 +1053,8 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> with SingleTi
           duration: const Duration(seconds: 1),
         ),
       );
+      
+      await PermissionService.refreshPermissions(); // รีเฟรช cache ให้มีผลทันที
     } catch (e) {
       setState(() {
         _updatingTabId = null;
@@ -1112,6 +1117,8 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> with SingleTi
           duration: const Duration(seconds: 1),
         ),
       );
+      
+      await PermissionService.refreshPermissions(); // รีเฟรช cache ให้มีผลทันที
     } catch (e) {
       setState(() {
         _updatingActionId = null;
@@ -1202,7 +1209,8 @@ class _UserPermissionsPageState extends State<UserPermissionsPage> with SingleTi
         ),
       );
 
-      _loadData();
+      await _loadData();
+      await PermissionService.refreshPermissions(); // รีเฟรช cache ให้มีผลทันที
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
