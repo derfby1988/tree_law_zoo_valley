@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'utils/buddhist_localizations.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'services/supabase_service.dart';
@@ -241,8 +242,50 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _logout() async {
+  // แสดง dialog ยืนยันการออกจากระบบ
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Row(
+        children: [
+          Icon(Icons.logout, color: Colors.red[600], size: 24),
+          const SizedBox(width: 8),
+          const Text(
+            'ออกจากระบบ',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+      content: const Text(
+        'คุณต้องการออกจากระบบใช่หรือไม่?',
+        style: TextStyle(fontSize: 16),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('ยกเลิก'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text(
+            'ออกจากระบบ',
+            style: TextStyle(color: Colors.red),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  // ถ้าผู้ใช้ยืนยันออกจากระบบ
+  if (confirmed == true) {
     await SupabaseService.signOut();
-  
+    
+    // Clear cache และ reset state
+    await _clearUserState();
+    
     // Navigate กลับไปหน้าแรก (Guest Mode)
     if (mounted) {
       Navigator.of(context).pushAndRemoveUntil(
@@ -256,6 +299,26 @@ class _MyHomePageState extends State<MyHomePage> {
       );
     }
   }
+}
+
+// Clear user state และ cache หลัง logout
+Future<void> _clearUserState() async {
+  try {
+    // Clear shared preferences
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+    
+    // Clear permission cache
+    PermissionService.clearCache();
+    
+    // Clear any global state
+    // TODO: Add any additional state clearing if needed
+    
+    print('User state and cache cleared successfully');
+  } catch (e) {
+    print('Error clearing user state: $e');
+  }
+}
 
   @override
   Widget build(BuildContext context) {

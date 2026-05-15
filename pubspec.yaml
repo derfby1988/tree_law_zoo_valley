@@ -71,6 +71,9 @@ dependencies:
   # QR Code generation for coupons
   qr_flutter: ^4.1.0
 
+  # State management
+  provider: ^6.1.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
