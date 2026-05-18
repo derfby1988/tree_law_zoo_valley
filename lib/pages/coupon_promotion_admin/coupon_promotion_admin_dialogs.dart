@@ -28,7 +28,7 @@ mixin CouponPromotionAdminDialogs {
     showCouponDialog(context, title: 'แก้ไขคูปอง', existing: coupon);
   }
 
-  void showCouponDialog(BuildContext context, {required String title, PosDiscount? existing}) {
+  void showCouponDialog(BuildContext context, {required String title, PosDiscount? existing, bool defaultDailyMode = false}) {
     showDialog(
       context: context,
       builder: (_) => CouponFormDialog(
@@ -36,6 +36,7 @@ mixin CouponPromotionAdminDialogs {
         existing: existing,
         categories: controller.categories,
         products: controller.allProducts,
+        defaultDailyMode: defaultDailyMode,
         onSubmit: (result) async {
           bool success;
           if (existing == null) {
@@ -64,6 +65,7 @@ mixin CouponPromotionAdminDialogs {
               showInPosDiscountDialog: result.showInPosDiscountDialog,
               startAt: result.startAt,
               endAt: result.endAt,
+              targetingRule: result.targetingRule,
             );
           } else {
             success = await controller.updateCoupon(
@@ -92,6 +94,7 @@ mixin CouponPromotionAdminDialogs {
               showInPosDiscountDialog: result.showInPosDiscountDialog,
               startAt: result.startAt,
               endAt: result.endAt,
+              targetingRule: result.targetingRule,
             );
           }
           if (context.mounted) {

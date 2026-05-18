@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../theme/app_design_system.dart';
 import '../services/pos_promotion_service.dart';
 import '../services/pos_discount_service.dart';
+import '../services/daily_coupon_entry_service.dart';
 import '../services/pos_coupon_qr_service.dart';
 import '../services/user_group_service.dart';
 import '../models/pos_promotion_model.dart';
@@ -27,6 +29,222 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
   void initState() {
     super.initState();
     _loadData();
+  }
+
+  Map<String, dynamic> _getTargetingRule(PosDiscount coupon) {
+    final rule = coupon.targetingRule;
+    if (rule is Map<String, dynamic>) return rule;
+    if (rule is Map) return Map<String, dynamic>.from(rule);
+    return const {};
+  }
+
+  bool _isDailyCoupon(PosDiscount coupon) {
+    final rule = _getTargetingRule(coupon);
+    return rule['daily_unified_enabled'] == true;
+  }
+
+  Widget _buildDailyBadge({
+    required String label,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _shareDailyCoupon(PosDiscount coupon) async {
+    final payload = coupon.couponCode ?? coupon.id;
+    await Clipboard.setData(ClipboardData(text: payload));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('คัดลอกข้อมูลแชร์สำหรับ ${coupon.name} แล้ว'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  Future<void> _showDailyHistorySheet(PosDiscount coupon) async {
+    final start = DateTime.now().subtract(const Duration(days: 7));
+    final end = DateTime.now();
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          expand: false,
+          builder: (context, scrollController) {
+            return FutureBuilder<List<dynamic>>(
+              future: Future.wait([
+                DailyCouponEntryService.getEntryLogs(
+                  discountId: coupon.id,
+                  startDate: start,
+                  endDate: end,
+                  limit: 100,
+                ),
+                PosDiscountService.getUsageAnalytics(
+                  startDate: start,
+                  endDate: end,
+                  discountId: coupon.id,
+                  limit: 100,
+                ),
+              ]),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError || !snapshot.hasData) {
+                  return Center(
+                    child: Text('ไม่สามารถโหลดประวัติ: ${snapshot.error ?? 'ไม่ทราบสาเหตุ'}'),
+                  );
+                }
+                final entryLogs = (snapshot.data![0] as List).cast<Map<String, dynamic>>();
+                final posLogs = (snapshot.data![1] as List).cast<Map<String, dynamic>>();
+
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                  ),
+                  child: ListView(
+                    controller: scrollController,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 45,
+                          height: 4,
+                          margin: const EdgeInsets.only(bottom: 16),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[300],
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                      ),
+                      Text(
+                        'ประวัติการใช้พื้นที่ / ส่วนลด (${coupon.name})',
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text('เข้า/ออกพื้นที่ (Gate)', style: TextStyle(fontWeight: FontWeight.w600)),
+                      if (entryLogs.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8.0),
+                          child: Text('ยังไม่มีประวัติในช่วง 7 วันล่าสุด', style: TextStyle(color: Colors.black54)),
+                        )
+                      else
+                        ...entryLogs.map((log) => _buildEntryHistoryTile(log)),
+                      const SizedBox(height: 16),
+                      const Text('การใช้ส่วนลด (POS)', style: TextStyle(fontWeight: FontWeight.w600)),
+                      if (posLogs.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8.0),
+                          child: Text('ยังไม่มีการใช้ส่วนลดในช่วง 7 วันล่าสุด', style: TextStyle(color: Colors.black54)),
+                        )
+                      else
+                        ...posLogs.map((log) => _buildPosHistoryTile(log)),
+                      const SizedBox(height: 24),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildEntryHistoryTile(Map<String, dynamic> log) {
+    final scannedAt = DateTime.tryParse(log['scanned_at']?.toString() ?? '');
+    final member = log['member_identifier'] ?? '-';
+    final area = log['entry_area'] ?? '-';
+    final status = (log['status'] ?? 'pending').toString();
+    final direction = (log['direction'] ?? 'enter').toString();
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(direction == 'enter' ? 'เข้า' : 'ออก', style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text(
+                scannedAt != null ? _formatDate(scannedAt) : '-',
+                style: const TextStyle(fontSize: 11, color: Colors.black54),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text('สมาชิก: $member', style: const TextStyle(fontSize: 12)),
+          Text('พื้นที่: $area', style: const TextStyle(fontSize: 12)),
+          Text('สถานะ: ${status.toUpperCase()}', style: const TextStyle(fontSize: 12, color: Colors.blueGrey)),
+          if ((log['reason_code'] ?? '').toString().isNotEmpty)
+            Text('เหตุผล: ${log['reason_code']}', style: const TextStyle(fontSize: 11, color: Colors.black54)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPosHistoryTile(Map<String, dynamic> log) {
+    final appliedAt = DateTime.tryParse(log['applied_at']?.toString() ?? '');
+    final amount = (log['discount_amount'] ?? 0).toString();
+    final orderId = log['order_id']?.toString() ?? '-';
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('POS', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text(
+                appliedAt != null ? _formatDate(appliedAt) : '-',
+                style: const TextStyle(fontSize: 11, color: Colors.black54),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text('Order: $orderId', style: const TextStyle(fontSize: 12)),
+          Text('ลดไป: $amount บาท', style: const TextStyle(fontSize: 12, color: Colors.green)),
+        ],
+      ),
+    );
   }
 
   Future<void> _loadData() async {
@@ -330,6 +548,13 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
     required String discount,
     required String expiryDate,
   }) {
+    final isDailyCoupon = _isDailyCoupon(coupon);
+    final rule = _getTargetingRule(coupon);
+    final audience = (rule['coupon_audience'] ?? 'individual').toString();
+    final isGroup = audience == 'group';
+    final groupSize = rule['group_size'];
+    final entryArea = (rule['entry_area_name'] ?? '-').toString();
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -394,6 +619,31 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
                 ),
               ],
             ),
+            if (isDailyCoupon) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _buildDailyBadge(
+                    label: isGroup ? 'รายวัน • รายกลุ่ม' : 'รายวัน • รายบุคคล',
+                    icon: isGroup ? Icons.groups_2 : Icons.person,
+                    color: AppDesignSystem.primary,
+                  ),
+                  if (isGroup && groupSize != null)
+                    _buildDailyBadge(
+                      label: 'สมาชิก ${groupSize ?? '-'} คน',
+                      icon: Icons.badge_outlined,
+                      color: AppDesignSystem.secondary,
+                    ),
+                  _buildDailyBadge(
+                    label: 'พื้นที่: $entryArea',
+                    icon: Icons.place_outlined,
+                    color: Colors.indigo,
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -495,6 +745,26 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
                 ],
               ),
             const SizedBox(height: 12),
+            if (isDailyCoupon && isGroup)
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _shareDailyCoupon(coupon),
+                  icon: const Icon(Icons.share_outlined),
+                  label: const Text('แชร์ให้สมาชิก'),
+                ),
+              ),
+            if (isDailyCoupon && isGroup) const SizedBox(height: 8),
+            if (isDailyCoupon)
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _showDailyHistorySheet(coupon),
+                  icon: const Icon(Icons.schedule_outlined),
+                  label: const Text('ดูประวัติการใช้พื้นที่'),
+                ),
+              ),
+            if (isDailyCoupon) const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(

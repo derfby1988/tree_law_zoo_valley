@@ -31,7 +31,7 @@
 หน้าจัดการคูปองและโปรโมชันควรแบ่งเป็นแถบหลัก:
 
 ```text
-[คูปอง] [โปรโมชัน] [สินค้าใกล้หมดอายุ] [วัตถุดิบใกล้หมดอายุ] [วิเคราะห์การใช้งาน]
+[คูปอง] [โปรโมชัน] [สินค้าใกล้หมดอายุ] [วัตถุดิบใกล้หมดอายุ] [วิเคราะห์การใช้งาน] [คูปองรายวันแบบรวมสิทธิ์]
 ```
 
 ### แถบคูปอง
@@ -66,6 +66,15 @@
 - แสดงตารางสรุป
 - แสดงกราฟแนวโน้ม
 - drill-down ไปดูรายละเอียด order และสินค้า
+
+### แถบคูปองรายวันแบบรวมสิทธิ์ (Phase 13 - Planned)
+
+- แอดมินกำหนดคูปองใบเดียวที่รวมสิทธิ์ `ส่วนลด + สิทธิ์เข้าพื้นที่`
+- แอดมินตั้งค่าการใช้งานได้เองทั้งหมด: lifecycle, time window, usage limits, stackable, override
+- แอดมินกำหนดกติกาแยกตาม event type ได้: `discount`, `entry`
+- แอดมินกำหนด QR security policy ได้: expiry, nonce, replay policy, key version
+- แอดมินกำหนด monitoring thresholds และ go-live gate ได้จากหน้าเดียว
+- มี preview/simulation ก่อน publish ทุกครั้ง
 
 ## 1. Coupon Dialog
 
@@ -879,7 +888,10 @@ Column ที่ควรมี:
   - มี `tier` เช่น `standard`, `silver`, `gold`, `vip`
 - `pos_loyalty_transactions`
 
-## Gaps ที่ต้องเพิ่มก่อนใช้แผนใหม่แบบครบถ้วน
+## Gaps เริ่มต้นก่อนเริ่มโครงการ (Historical Baseline)
+
+> หมายเหตุ: รายการด้านล่างเป็นช่องว่างที่ระบุไว้ก่อนเริ่มลงมือทำ Phase 0 เป็นต้นไป
+> ให้ยึดสถานะล่าสุดจากหัวข้อ `Development Phases` และ `Summary: ความคืบหน้าโครงการ`
 
 ### Discount/Promotion
 
@@ -1155,6 +1167,188 @@ class PromotionTargetingService {
 
 ---
 
+# Operational Standards (Single Standard)
+
+ส่วนนี้เป็นมาตรฐานกลางสำหรับทุกทีม (DB/Service/UI/POS/Admin) เพื่อป้องกันกฎซ้ำซ้อนและผลลัพธ์ไม่ตรงกัน
+
+## Admin-first Configuration Policy (บังคับใช้ทุกข้อ)
+
+- ทุกมาตรฐานใน section นี้ต้องถูกตั้งค่าได้ผ่าน UI ของแอดมินในแถบ `คูปองรายวันแบบรวมสิทธิ์`
+- ห้าม hardcode กติกาธุรกิจใน widget หรือ client โดยไม่มีตัวเลือกจากแอดมิน
+- หากค่าใดไม่มีใน UI ถือว่าใช้ค่า default ที่ประกาศชัดเจนและแสดงในหน้าเดียวกัน
+- การเปลี่ยนค่าจากแอดมินต้องมี audit log, ผู้แก้ไข, เวลาแก้ไข, และเหตุผล
+
+### Admin Config Matrix (สำหรับแถบใหม่)
+
+| กลุ่มการตั้งค่า | ตัวอย่างค่า | ผลกับระบบ |
+|------------------|-------------|------------|
+| Rule Matrix | lifecycle/time/channel/target/scope/usage | ใช้กับ validator กลางทั้ง POS และ Gate |
+| Conflict Precedence | ลำดับ type, priority, tie-breaker | ใช้กับ `resolveDiscountConflicts()` |
+| Concurrency/Idempotency | idempotency TTL, retry policy, lock mode | ป้องกันการใช้สิทธิ์ซ้ำ/ชนกัน |
+| QR Security | key_id, signature_version, expires_at, replay window | เพิ่มความปลอดภัยการสแกน |
+| Monitoring | threshold ต่อ reason code, latency alert | แจ้งเตือนและติดตามคุณภาพระบบ |
+| UAT/Go-live | pass criteria, rollout gate, rollback owner | ควบคุมการปล่อยระบบอย่างปลอดภัย |
+
+## 1) Rule Matrix (มาตรฐานเดียวทั้งระบบ)
+
+| ลำดับตรวจ | Rule Group | เงื่อนไขหลัก | Data Source | เมื่อไม่ผ่าน | Error/Reason Code |
+|-----------|------------|---------------|-------------|--------------|-------------------|
+| 1 | Lifecycle | `draft/scheduled/paused/expired/archived` ใช้งานไม่ได้ | `pos_discounts`, `pos_promotions` | block | `LIFECYCLE_INVALID` |
+| 2 | Time Window | `start_at <= now <= end_at` | `pos_discounts`, `pos_promotions` | block | `OUTSIDE_TIME_WINDOW` |
+| 3 | Visibility | ต้องแสดงในช่องทางที่เรียกใช้งาน | `show_in_coupon_tab`, `show_in_pos_discount_dialog` | hide | `VISIBILITY_BLOCKED` |
+| 4 | Channel Targeting | ช่องทางขายต้องอยู่ใน `applicable_channels` | discount/promotion fields | block | `CHANNEL_NOT_ALLOWED` |
+| 5 | User Group / Customer Targeting | ต้องอยู่ในกลุ่มที่กำหนด | user group + customer segment | block | `TARGET_NOT_ELIGIBLE` |
+| 6 | Scope Matching | order/item/category ต้องตรง scope ที่กำหนด | `scope`, `applicable_*` | block | `SCOPE_NOT_MATCHED` |
+| 7 | Usage Limits | รวม/ต่อวัน/ต่อลูกค้า/ต่อออเดอร์ ต้องไม่เกิน | usage logs + counters | block | `USAGE_LIMIT_EXCEEDED` |
+| 8 | Availability | stock/ingredients/procurement ต้องผ่าน policy | RPC availability checks | block หรือ warn ตาม policy | `AVAILABILITY_FAILED` |
+| 9 | Stackable Policy | ใช้ร่วมกับส่วนลดอื่นได้หรือไม่ | `stackable` + order discounts | block | `STACK_NOT_ALLOWED` |
+| 10 | Governance Override | ถ้าเกิน margin/ผิด policy ต้องได้รับอนุมัติ | governance tables/services | block จนกว่าจะ approve | `OVERRIDE_REQUIRED` |
+
+ข้อกำหนด:
+- Service layer ต้องเป็นผู้ประเมิน Rule Matrix กลางเพียงจุดเดียว (single evaluator)
+- UI แสดงผลตาม reason code เดียวกัน ห้ามนิยามข้อความขัดกับ service
+- ทุกการ block/warn ต้องมี reason code บันทึกใน log
+
+### 1.1 Reason Code Catalog (UI/Service Standard)
+
+| Reason Code | ระดับ | UI Message (TH) | UI Message (EN) |
+|------------|-------|-----------------|-----------------|
+| `LIFECYCLE_INVALID` | block | โปรนี้ยังไม่พร้อมใช้งาน | This promotion is not active yet. |
+| `OUTSIDE_TIME_WINDOW` | block | อยู่นอกช่วงเวลาที่กำหนด | Outside allowed time window. |
+| `VISIBILITY_BLOCKED` | hide | ไม่แสดงในหน้าปัจจุบัน | Not visible in this screen. |
+| `CHANNEL_NOT_ALLOWED` | block | ช่องทางขายนี้ไม่รองรับโปรนี้ | This channel is not allowed. |
+| `TARGET_NOT_ELIGIBLE` | block | ผู้ใช้งาน/ลูกค้าไม่เข้าเงื่อนไข | Target is not eligible. |
+| `SCOPE_NOT_MATCHED` | block | รายการสินค้าไม่ตรงขอบเขตโปร | Scope does not match current order. |
+| `USAGE_LIMIT_EXCEEDED` | block | ใช้สิทธิ์ครบตามจำนวนที่กำหนดแล้ว | Usage limit has been reached. |
+| `AVAILABILITY_FAILED` | block/warn | สินค้าหรือวัตถุดิบไม่พร้อมตามเงื่อนไข | Availability requirement failed. |
+| `STACK_NOT_ALLOWED` | block | โปรนี้ใช้ร่วมกับส่วนลดอื่นไม่ได้ | Not stackable with other discounts. |
+| `OVERRIDE_REQUIRED` | block | ต้องได้รับอนุมัติก่อนใช้งาน | Approval required before apply. |
+
+กติกา:
+- ให้แอปใช้ข้อความจากตารางนี้เป็นค่ามาตรฐาน
+- หากต้องการปรับคำใน UI ให้คง `Reason Code` เดิมเสมอ
+- log ต้องเก็บ `reason_code`, `reason_message_th`, `reason_message_en` สำหรับ analytics
+
+## 2) Conflict Precedence (มาตรฐานการตัดสินโปรชนกัน)
+
+เมื่อมีคูปอง/โปรโมชันหลายรายการที่เข้าเงื่อนไขพร้อมกัน ให้เรียงลำดับดังนี้:
+
+1. โปรที่ผ่าน Rule Matrix ครบก่อน (ตัดรายการไม่ผ่านออกทั้งหมด)
+2. นโยบายไม่ให้ซ้อน (`stackable = false`) มีสิทธิ์ตัดรายการอื่นทันที
+3. ประเภทส่วนลดเชิงโครงสร้างก่อนส่วนลดเชิงราคา:
+   - `buy_x_get_y` / `bundle` / item-level promotion
+   - fixed amount
+   - percentage
+4. `priority` (สูงชนะต่ำ)
+5. มูลค่าส่วนลดจริงสุทธิสูงกว่าเป็นผู้ชนะ
+6. ถ้าเท่ากัน ให้ใช้ deterministic tie-breaker: `created_at` เก่ากว่า > `id` น้อยกว่า
+
+ข้อกำหนด:
+- POS, Admin preview, Simulation ต้องใช้ algorithm เดียวกัน 100%
+- ต้องมี RPC/Service method เดียวเช่น `resolveDiscountConflicts()` และห้ามเขียนกติกาซ้ำใน widget
+
+## 3) Concurrency & Idempotency Standard
+
+### 3.1 Idempotency
+- ทุกคำสั่ง apply coupon/promotion และ scan QR ต้องมี `idempotency_key`
+- กำหนด unique key ที่ระดับธุรกรรม: `(order_id, idempotency_key, action_type)`
+- คำขอซ้ำ key เดิมต้องคืนผลลัพธ์เดิม (ไม่บันทึกซ้ำ)
+
+### 3.2 Concurrency Control
+- ตอน checkout ให้ lock การใช้งานส่วนลดระดับ order (`SELECT ... FOR UPDATE` หรือเทียบเท่า RPC transaction)
+- การเพิ่ม `used_count` ต้องเป็น atomic operation ใน DB function
+- ป้องกัน oversubscribe limit โดยตรวจและอัปเดตใน transaction เดียว
+
+### 3.3 Retry Policy
+- retry เฉพาะข้อผิดพลาดชั่วคราว (network timeout/5xx)
+- ห้าม retry อัตโนมัติเมื่อเป็น business rule fail (`*_NOT_ALLOWED`, `*_EXCEEDED`)
+- ทุก retry ต้องใช้ `idempotency_key` เดิม
+
+## 4) QR Security Hardening Standard
+
+- รองรับ `signature_version` และ `key_id` ใน payload
+- ทุก QR ต้องมี `issued_at`, `expires_at`, `nonce`
+- validation ต้องตรวจ 4 ชั้น:
+  - signature ถูกต้อง
+  - ไม่หมดอายุ
+  - nonce ไม่เคยถูกใช้ซ้ำในช่วงเวลาที่กำหนด
+  - coupon/promotion lifecycle ยังใช้งานได้
+- ใช้ key rotation ตามรอบ (เช่น รายไตรมาส) โดยรองรับ active key + previous key ชั่วคราว
+- scan rate limit ต่ออุปกรณ์/ผู้ใช้/ช่วงเวลา
+- log สถานะละเอียด: `valid`, `invalid_signature`, `expired`, `replay_detected`, `rule_blocked`
+
+## 5) Monitoring & Alerting
+
+ต้องมี dashboard กลางและ alert thresholds ชัดเจน
+
+Core metrics:
+- apply success rate
+- validation fail rate แยกตาม reason code
+- average discount per order
+- override request rate และ approval rate
+- QR invalid/replay rate
+- latency ของ RPC สำคัญ (`validate`, `resolve conflict`, `record usage`)
+
+ตัวอย่าง alert:
+- `USAGE_LIMIT_EXCEEDED` พุ่งเกิน baseline > 3 เท่าใน 15 นาที
+- QR invalid signature > 5% ใน 10 นาที
+- discount apply latency p95 > 1.5s ต่อเนื่อง 10 นาที
+
+## 6) UAT Pack (ก่อนขึ้น production)
+
+### Scenario Group A: Functional
+- ใช้ coupon ได้เมื่อครบเงื่อนไข
+- coupon หมดอายุ/paused ใช้งานไม่ได้
+- channel/user group targeting ทำงานถูกต้อง
+- stackable และ conflict precedence ให้ผลตรงตาม spec
+
+### Scenario Group B: Edge Cases
+- ใช้พร้อมกันหลายเครื่องใน order เดียว (concurrency)
+- ส่งคำขอซ้ำด้วย idempotency key เดิม (ต้องไม่ถูกคิดซ้ำ)
+- usage limit ใกล้เต็ม/เต็มพอดี
+- stock เปลี่ยนระหว่างกำลัง checkout
+
+### Scenario Group C: Security
+- QR ปลอมลายเซ็นต้องถูกปฏิเสธ
+- QR หมดอายุต้องถูกปฏิเสธ
+- QR เดิมสแกนซ้ำต้องจับ replay ได้
+
+### Scenario Group D: Audit
+- มี log reason code ครบทุกกรณี block/warn
+- ตรวจสอบย้อนหลัง order → discount → approver ได้ครบสาย
+
+## 7) Go-live Checklist
+
+### Owner & SLA Matrix
+
+| งาน | Owner หลัก | SLA เป้าหมาย |
+|-----|------------|--------------|
+| Migration + Backfill + Dry-run | DBA/Backend | เสร็จก่อน Go-live อย่างน้อย 3 วัน |
+| Permission Matrix Review | Product Owner + Admin System | เสร็จก่อน Go-live อย่างน้อย 2 วัน |
+| UAT Execution + Sign-off | QA Lead + Business Owner | Pass rate ≥ 95% ก่อน Go-live 1 วัน |
+| Monitoring/Alert Setup | DevOps/Backend | ติดตั้งและทดสอบก่อน Go-live 1 วัน |
+| Rollback Plan + Runbook | Tech Lead | อนุมัติก่อน Go-live 1 วัน |
+| Hypercare (7 วันแรก) | On-call Team (Backend + POS) | ตอบสนอง Critical ≤ 15 นาที, High ≤ 1 ชั่วโมง |
+
+### ก่อนขึ้นระบบ
+- migration ครบและผ่าน dry-run
+- backfill/compatibility script รันครบ
+- permission matrix review ผ่าน
+- UAT pass rate ≥ 95% และไม่มี critical issue ค้าง
+- dashboard และ alerts เปิดใช้งานแล้ว
+
+### วันขึ้นระบบ
+- เปิด feature flags ตามลำดับ (admin → pilot store → all stores)
+- เฝ้าดู metrics 2 ชั่วโมงแรกแบบ real-time
+- มี rollback plan พร้อม owner ชัดเจน
+
+### หลังขึ้นระบบ 7 วันแรก
+- daily review ของ fail reasons top 10
+- daily review ของ override และ conflict resolution
+- สรุป incident และ action items เข้าสู่ Version History
+
+---
+
 # Development Phases
 
 ## สรุปความคืบหน้าภาพรวม
@@ -1168,9 +1362,12 @@ class PromotionTargetingService {
 | 4: Availability & Procurement Rules | ✅ เสร็จสมบูรณ์ | 100% | RPC + Service + UI + POS Validation ครบ |
 | 5: Expiry Targeting | ✅ เสร็จสมบูรณ์ | 100% | RPC + Views + Service + UI Tabs ครบ |
 | 6: Promotion CRUD | ✅ เสร็จสมบูรณ์ | 100% | รวมกับ Phase 1 |
-| 7: Usage Analytics Tab | ⏳ รอดำเนินการ | 0% | มี Tab แต่ยังไม่มี UI |
-| 8: Business Recommendation | 🔄 部分เสร็จ | 70% | UI + Seasonal/Festival/HighMargin APIs เสร็จแล้ว |
-| 9: Governance | ⏳ รอดำเนินการ | 0% | Priority ต่ำ |
+| 7: Usage Analytics Tab | ✅ เสร็จสมบูรณ์ | 100% | Analytics MVP พร้อมใช้งานจริง |
+| 8: Business Recommendation | ✅ เสร็จสมบูรณ์ | 100% | Priority Score + Recommended Products พร้อมใช้งาน |
+| 9: Governance | ✅ เสร็จสมบูรณ์ | 100% | Conflict/Approval/Audit/Override ครบ |
+| 10: Advanced Analytics | ⏸️ On Hold | 0% | รอข้อมูลสะสม 3-6 เดือน |
+| 11: QR Code System | ✅ เสร็จสมบูรณ์ | 100% | QR generation + validation + logs ครบ |
+| 12: Coupon Visibility Control | ✅ เสร็จสมบูรณ์ | 100% | ควบคุมการแสดงคูปองแยกตามหน้าได้ |
 
 **งานที่เสร็จสมบูรณ์แล้ว:**
 1. ✅ **Phase 0-1:** Schema, Permission, Coupon/Promotion CRUD ครบ
@@ -1192,11 +1389,13 @@ class PromotionTargetingService {
    - ✅ Expiry filters: 3/7/14/30 วัน + หมดอายุแล้ว
    - ✅ Quick promotion creation from expiring items
 6. ✅ **Phase 6:** Promotion CRUD (รวมกับ Phase 1)
-7. 🔄 **Phase 8:** Seasonal/Festival/HighMargin เสร็จแล้ว (รอ Priority Score)
+7. ✅ **Phase 7:** Usage Analytics MVP เสร็จสมบูรณ์
+8. ✅ **Phase 8:** Business Recommendation เสร็จสมบูรณ์ (รวม Priority Score)
+9. ✅ **Phase 9:** Governance เสร็จสมบูรณ์
+10. ✅ **Phase 11-12:** QR Code System และ Coupon Visibility Control เสร็จสมบูรณ์
 
-**งานที่ยังค้าง (Priority สูง):**
-1. ⏳ **Phase 7:** Analytics Tab UI
-2. ⏳ **Phase 8:** Priority score calculation (รอ algorithm)
+**งานที่ยังค้าง (Priority ต่ำ/อนาคต):**
+1. ⏸️ **Phase 10:** Advanced Analytics (รอข้อมูลสะสมขั้นต่ำ 90 วัน)
 
 ---
 
@@ -1773,7 +1972,7 @@ Test ได้:
 - ✅ เห็นรายการ High Margin พร้อมเหตุผล
 - ✅ เห็นรายการ Seasonal พร้อมเหตุผล
 - ✅ เห็นรายการ Festival พร้อมเหตุผล
-- ⏳ sort ตาม priority ได้ (รอ score)
+- ✅ sort ตาม priority score ได้
 - ✅ เลือกไปทำคูปอง/โปรโมชันได้
 
 ## Phase 9: Governance ✅ **เสร็จสมบูรณ์**
@@ -1826,11 +2025,12 @@ Test ได้:
 
 ## Phase 10: Advanced Analytics 📅 **เลื่อนไปทำในอนาคต**
 
-**สถานะ:** ⏸️ On Hold (รอข้อมูลสะสม)  
+**สถานะ:** ⏸️ On Hold (พักไว้ก่อนเพราะยังไม่มีข้อมูลสำหรับทดสอบ)  
 **Priority:** ต่ำ  
 **วันที่ตัดสินใจ:** 8 พฤษภาคม 2568
 
 **เหตุผลที่เลื่อน:**
+- ยังไม่มีข้อมูลสะสมที่เพียงพอสำหรับทดสอบ Advanced Analytics อย่างน่าเชื่อถือ
 - ต้องรอข้อมูลยอดขายสะสมย้อนหลังอย่างน้อย 3-6 เดือน
 - ระบบหลัก Phase 0-9 เสร็จสมบูรณ์แล้ว ควรนำไปใช้งานจริงก่อน
 - Analytics ไม่จำเป็นสำหรับการใช้งานระบบ Coupon & Promotion เบื้องต้น
@@ -1856,28 +2056,17 @@ Test ได้:
 
 ---
 
-# Open Questions
+# Open Questions (คงเหลือสำหรับอนาคต)
 
-- ตาราง batch/expiry ของสินค้าใช้ชื่ออะไร และ field expiry date ชื่ออะไร
-- ตารางวัตถุดิบใช้ชื่ออะไร
-- ตารางสูตรอาหารและ mapping ingredient ใช้ชื่ออะไร
-- สินค้า POS กับเมนูอาหารเป็น entity เดียวกันหรือแยกกัน
-- มี sales history สำหรับคำนวณ slow moving แล้วหรือไม่
-- ตารางจัดซื้อและสถานะจัดซื้อใช้ชื่ออะไร
-- สถานะจัดซื้อใดบ้างที่ควรถูกนับเป็น pending procurement เช่น ordered, approved, in_transit
-- ต้องการให้นับ pending procurement เป็น available แบบเต็มจำนวน หรือแยกแสดงเป็น `พร้อมขายตอนนี้` กับ `กำลังมา`
-- ถ้า stock/วัตถุดิบไม่พอ ตอน checkout ควร block การใช้โปรโมชัน หรือแค่เตือนผู้ใช้
-- มีต้นทุนสินค้า/ต้นทุนสูตรอาหารที่แม่นยำพอสำหรับคำนวณ margin หรือไม่
-- มีข้อมูลวัตถุดิบตามฤดูกาลหรือยัง และเก็บช่วงฤดูกาลแบบใด
-- มีตารางเทศกาล/วันสำคัญหรือ event calendar หรือยัง
-- ต้องการ mapping สินค้ากับเทศกาลแบบ manual หรือให้ระบบแนะนำจากยอดขายย้อนหลัง
-- ต้องการให้ระบบ suggest discount อัตโนมัติหรือแค่เลือกสินค้าเป้าหมายก่อน
+- จะเริ่ม Phase 10 เมื่อข้อมูลสะสมครบกี่วันระหว่าง 90 หรือ 180 วัน
+- รูปแบบรายงาน Advanced Analytics ที่ต้องใช้จริงในรอบแรกคืออะไร (กราฟ, export, comparison)
+- จะกำหนด KPI กลางสำหรับวัดผลคูปอง/โปรโมชันอย่างไร (เช่น uplift, margin impact, sell-through)
 
 ---
 
 # ✅ ระบบพร้อมใช้งานจริง!
 
-**สถานะปัจจุบัน:** Phase 0-9 เสร็จสมบูรณ์ 100% ✅  
+**สถานะปัจจุบัน:** ✅ Phase 0-9, 11-12 เสร็จสมบูรณ์ 100% และ ⏸️ Phase 10 อยู่ระหว่าง On Hold  
 **วันที่อัปเดต:** 8 พฤษภาคม 2568
 
 ระบบ Coupon & Promotion พร้อมใช้งานใน production แล้ว! มีความสามารถครบถ้วนตั้งแต่สร้างคูปอง ไปจนถึงวิเคราะห์การใช้งาน
@@ -1951,7 +2140,7 @@ Test ได้:
 ## Database Schema
 
 ### Tables
-- `pos_coupons` เพิ่ม: `qr_code`, `qr_signature`, `qr_generated_at`
+- `pos_discounts` เพิ่ม: `qr_code`, `qr_signature`, `qr_generated_at`
 - `pos_promotions` เพิ่ม: `qr_code`, `qr_signature`, `qr_generated_at`, `code`
 - `pos_coupon_qr_scan_logs` เก็บประวัติ scan คูปอง
 - `pos_promotion_qr_scan_logs` เก็บประวัติ scan โปรโมชัน
@@ -2102,6 +2291,166 @@ final coupons = await PosDiscountService.getVisibleCouponsForPOS();
 
 ---
 
+# Phase 13: Daily Coupon (ส่วนลด + สิทธิ์เข้าพื้นที่) 
+
+**สถานะ:** Planned (Specification Complete)  
+**วันที่อัปเดต:** 18 พฤษภาคม 2569  
+**Owner:** Coupon Platform Squad  
+**Dependencies:** Phase 0-12 (schema, QR, governance, visibility)  
+**Forbidden:** ห้ามใช้บริการแจ้งเตือนที่มีค่าใช้จ่ายเพิ่ม (เช่น Firebase Cloud Messaging)
+
+## เป้าหมาย
+- สร้างคูปองรายวันที่รวม "ส่วนลด" และ "สิทธิ์เข้าพื้นที่" ใน artifact เดียว
+- ให้แอดมินกำหนดกติกาเองทั้งหมดผ่านแถบใหม่ (Admin-first policy) พร้อม sub-tab ประวัติการใช้งานรายวัน
+- ให้ลูกค้าเห็นคูปองในแท็บเดิม (badge รายวัน) และแชร์ได้เมื่อเป็นคูปองรายกลุ่ม
+- แยก log ช่องทาง Gate vs POS อย่างชัดเจน โดยส่วนลด reuse log เดิม เพื่อไม่ซ้ำซ้อน
+
+## Scope & Admin-first Policy
+- ใช้ `pos_discounts` เป็นแหล่งข้อมูลหลัก (reuse-first) พร้อม visibility flags เดิม
+- ค่าใหม่เก็บใน `targeting_rule` JSON; หลีกเลี่ยง migration จนกว่าจะยืนยัน implementation
+- เพิ่ม sub-tab `ประวัติการใช้คูปองรายวัน` ในหน้า Admin เพื่อดู timeline เข้า/ออกพื้นที่ (Gate) + ลิงก์ไป usage log เดิม (POS)
+- ลูกค้าเห็นคูปองรายวันในแท็บคูปองเดิม โดยใช้ `show_in_coupon_tab = true` + badge "รายวัน"
+- คูปองรายกลุ่มต้องแชร์ให้สมาชิกได้ (share token + QR) และลูกค้าดูประวัติการเข้า/ออกได้จากการ์ด
+
+## Field Spec (reuse-first)
+| กลุ่ม | Field | แหล่งข้อมูล | หมายเหตุ |
+|-------|-------|--------------|-----------|
+| Identity | `name`, `description`, `coupon_code` | `pos_discounts` | แสดงบนการ์ดลูกค้า + QR |
+| Discount | `discount_type`, `scope`, `value`, `max_discount`, `min_amount` | `pos_discounts` | ใช้ logic เดิม |
+| Lifecycle | `lifecycle_status`, `is_active`, `start_at`, `end_at` | `pos_discounts` | daily reset ตาม timezone tenant |
+| Limits | `usage_limit`, `usage_limit_per_customer`, `usage_limit_per_day`, `usage_limit_per_order`, `used_count` | `pos_discounts` | ใช้ Rule Matrix เดิม |
+| Policy | `stackable`, `priority`, `require_in_stock`, `require_sufficient_ingredients`, `include_pending_procurement` | `pos_discounts` | กำหนดได้จาก Admin UI |
+| Visibility | `show_in_coupon_tab`, `show_in_pos_discount_dialog` | `pos_discounts` | ลูกค้าเห็นเมื่อเปิดซ้ำ |
+| QR | `qr_code`, `qr_signature`, `qr_generated_at` | `pos_discounts` | ทุกคูปองมี QR เฉพาะ |
+
+## `targeting_rule` profile สำหรับคูปองรายวัน
+| Key | Type | หมายเหตุ |
+|-----|------|-----------|
+| `daily_unified_enabled` | bool | ต้องเป็น true |
+| `event_types` | array | `["discount","entry"]` |
+| `coupon_audience` | enum | `individual` หรือ `group` |
+| `group_size` | int | required เมื่อ audience = group (≥ 2) |
+| `entry_zone_mode` | enum | ใช้ `single` เสมอ |
+| `entry_area_name` | text | ชื่อพื้นที่เดียว |
+| `entry_limit_per_day` | int | จำนวนครั้งเข้า/ออกต่อวัน |
+| `discount_limit_per_day` | int | จำนวนครั้งลดราคาต่อวัน |
+| `discount_limit_per_coupon` | int? | จำกัดรวมระดับคูปอง |
+| `entry_requires_same_day` | bool | จำกัดสิทธิ์ให้ใช้งานภายในวันเดียว |
+| `allow_entry_before_discount` | bool | ระบุได้ว่าต้องเข้าเขตก่อนใช้ส่วนลดหรือไม่ |
+| `allow_discount_without_entry` | bool | ถ้า false ต้องสแกนเข้าให้สำเร็จจึงใช้ส่วนลดได้ |
+| `idempotency_window_seconds` | int | ป้องกันการยิงซ้ำในระยะสั้น |
+| `qr_replay_window_seconds` | int | จำกัด replay window |
+| `key_version` | text | ระบุชุดคีย์ QR ตาม Phase 11 |
+| `nonce_policy` | enum | เช่น `per_day` / `per_entry` |
+| `reset_at_local_midnight` | bool | ใช้ timezone tenant |
+
+### JSON Example
+```json
+{
+  "daily_unified_enabled": true,
+  "event_types": ["discount", "entry"],
+  "coupon_audience": "group",
+  "group_size": 8,
+  "entry_zone_mode": "single",
+  "entry_area_name": "Safari Dome",
+  "entry_limit_per_day": 100,
+  "discount_limit_per_day": 50,
+  "entry_requires_same_day": true,
+  "allow_entry_before_discount": true,
+  "allow_discount_without_entry": false,
+  "idempotency_window_seconds": 45,
+  "qr_replay_window_seconds": 30,
+  "key_version": "v3",
+  "reset_at_local_midnight": true
+}
+```
+
+## Admin UI Design (แถบ `คูปองรายวัน`)
+1. **Tab Layout** – ปุ่ม `+ สร้างคูปองรายวัน`, filters (สถานะ, ช่วงวันที่, ประเภท), bulk actions (pause/archive/export/duplicate), Empty/Loading/Error states ระบุชัดเจน
+2. **Card Columns** – ชื่อคูปอง, ประเภท (รายบุคคล/รายกลุ่ม + จำนวนคน), ส่วนลดที่เหลือวันนี้, เข้าพื้นที่วันนี้, สถานะ lifecycle
+3. **Form Sections (A-H)** – ตรงตามแผน: ข้อมูลหลัก, ส่วนลด, สิทธิ์เข้าพื้นที่, ประเภท/โควตา, ช่วงเวลา, นโยบาย, การแสดงผล, QR & Security (มี helper text mapping field → table)
+4. **Detail Drawer/Page** – สรุปยอดวันนี้, tabs: ข้อมูลคูปอง / สมาชิกกลุ่ม / ประวัติ POS / ประวัติ Gate / Audit Log / Alerts
+5. **Sub-tab `ประวัติการใช้คูปองรายวัน`** – ตารางคู่ (POS vs Gate)
+   - ตำแหน่ง: อยู่ในแถบคูปองรายวันฝั่ง Admin
+   - POS reuse `pos_order_discounts` + ปุ่ม "ดูประวัติรวม" ไป Usage Analytics เดิม
+   - Gate ใช้ log ใหม่ (coupon_id, entry_area, scanned_by, device, status, reason_code)
+
+## Customer Experience (แอปลูกค้า)
+- การ์ดคูปองจะแสดงรวมกับคูปองอื่น ผ่าน `show_in_coupon_tab`
+- Badge: `รายวัน • รายบุคคล` หรือ `รายวัน • รายกลุ่ม X คน`
+- คูปองรายกลุ่มมีปุ่ม "แชร์" (share token มี expiry + `max_uses = group_size`)
+- ลูกค้ากด "ดูประวัติการใช้พื้นที่" เพื่อดู timeline เข้า/ออกพื้นที่ (Gate) + ลิงก์ไป usage log เดิม (POS)
+- ปุ่ม "ดูประวัติส่วนลด" ลิงก์กลับหน้า usage log รวม (ข้อมูลจาก POS)
+
+## Gate Scanner Flow
+1. พนักงานเปิดหน้าสแกน → สแกน QR → ตรวจ signature + lifecycle + quota + audience
+2. ถ้า valid → แสดงข้อมูลคูปอง + quota วันนี้ + ปุ่ม "ยืนยันเข้า"; ถ้า invalid → แสดง reason code ภาษาไทย
+3. บันทึก entry log: coupon_id, member_id/กลุ่ม, scanned_by, area, scanned_at, status, device_info
+4. Offline fallback: เก็บคิวใน local storage + hash ป้องกัน duplicate → sync เมื่อออนไลน์ภายใน `idempotency_window_seconds`
+
+## Logging Strategy
+- ส่วนลด (POS): ใช้ `pos_order_discounts` + analytic views เดิม (ไม่มีตารางใหม่)
+- Gate: เพิ่ม `daily_coupon_entry_logs` (หรือ view ที่อิงจาก QR scan logs) เพื่อเก็บ channel-specific data
+- Sub-tab ประวัติใน Admin ดึงข้อมูลทั้งสองช่องทาง พร้อมสรุปจำนวนรวมด้านบน
+- Audit log บันทึกทุก transition + การแก้ไขค่า + ผู้กระทำ + เหตุผล
+
+## QR Security & Monitoring
+- ใช้มาตรฐาน QR Phase 11 + เพิ่มตัวเลือก daily rotation ผ่าน `key_version`
+- ทุกสแกนบันทึก `nonce`, `qr_signature`, `device_info`, `reason_code`
+- In-app alerts (dashboard) แจ้งเตือน: quota ใกล้เต็ม, scan ผิดปกติ, คูปองใกล้หมดอายุ
+- ไม่ใช้บริการ push/premium externas; แจ้งเตือนผ่านหน้า dashboard และอีเมลภายในเท่านั้น (ถ้ามีอยู่แล้ว)
+
+## Validation Rules (Form)
+| Field | Rule |
+|-------|------|
+| `name` | required, ≤ 120 ตัวอักษร |
+| `coupon_code` | required, unique, ตัวอักษร/ตัวเลข/ขีด |
+| `discount_value` | > 0, ถ้า % ต้อง ≤ 100 |
+| `entry_area_name` | required เมื่อเปิด entry |
+| `entry_limit_per_day` | required เมื่อเปิด entry, ≥ 1 |
+| `discount_limit_per_day` | required, ≥ 0 |
+| `group_size` | required เมื่อ audience = group, ≥ 2 |
+| `start_at < end_at` | ต้องไม่ผิดเพี้ยนตาม timezone |
+| `targeting_rule` | ต้องตรง schema (key ครบ) |
+
+## State Machine & Permission
+- State: `draft → scheduled → active → (paused ↔ active) → expired → archived`
+- ทุก transition บันทึกใน audit log (ผู้แก้ไข + เหตุผล)
+- Permission Matrix: viewer (read only), editor (draft edits), publisher (publish/pause/archive), admin (ตั้งค่ามาตรฐานกลาง, override)
+
+## Group Member Binding & Share Control
+- กรอก `group_size` เมื่อ audience = group; optional ผูก member ID (ถ้ามีระบบสมาชิก)
+- Share token: มี expiry, `max_uses = group_size`, ห้ามใช้ข้ามกลุ่ม, log ทุกครั้ง
+- ลูกค้ากดดูรายชื่อหรือสถานะสมาชิกที่ใช้สิทธิ์ได้จากการ์ด
+
+## In-app Alerting (ไม่มีค่าใช้จ่ายเพิ่ม)
+- Dashboard แจ้งเตือน: คูปองใกล้หมดเวลา, quota ใกล้เต็ม, scan invalid ต่อเนื่อง
+- ไม่ส่ง push notification ผ่านบริการที่มีค่าใช้จ่าย; ใช้เฉพาะ alert card + email ภายใน (ถ้ามีระบบเดิม)
+
+## Operational Test Practice (เรียงตามที่ยืนยัน)
+1. **เตรียมข้อมูล (Test Data Setup)** – คูปอง active/scheduled/paused, ช่องทาง POS + Gate, user group ≥ 2
+2. **ตั้งค่าในแถบใหม่ (Admin Config)** – สร้างคูปองรายวัน, ตั้ง split quota, audience, group size, ช่วงเวลา
+3. **ทดสอบสิทธิ์เข้าพื้นที่ (Entry Flow)** – สแกน gate, ทดสอบ quota, ช่วงเวลา, paused state, offline sync
+4. **ทดสอบส่วนลด (Discount Flow)** – ใช้ QR ที่ POS, ทดสอบ stackable/conflict precedence, quota
+5. **ทดสอบ Negative & Edge** – QR หมดอายุ, replay, channel ผิด, idempotency, share token misuse
+6. **เกณฑ์ผ่าน (Pass/Fail)** – Rule Matrix ครบ, splitting quota ถูกต้อง, log ครบ POS & Gate, ไม่มีบริการแจ้งเตือนเสียค่าใช้จ่าย
+
+## Acceptance Criteria
+- เอกสาร Phase 13 ครอบคลุมฟิลด์, JSON schema, UI flow, customer UX, test plan ครบถ้วน
+- ลูกค้าเห็นการ์ดคูปองรายวันพร้อม badge + ปุ่มแชร์ (รายกลุ่ม) + ปุ่มดูประวัติพื้นที่
+- Admin UI มีแถบ/ฟอร์ม/ประวัติ/Audit log ตามสเปกนี้
+- Logging strategy ชัดเจน: POS reuse, Gate log ใหม่, แยกช่องทางแต่สรุปรวมได้
+- ระบุความเสี่ยงและแนวทางบรรเทา (reuse-first, offline queue, share token control)
+
+## ความเสี่ยง & การบรรเทา
+- **Reuse field semantics สับสน** → เอกสารนี้แสดง mapping + helper text ใน UI
+- **ยังไม่มีตาราง log Gate** → ระบุให้สร้าง `daily_coupon_entry_logs` และเชื่อม governance audit ใน implementation
+- **Offline scan backlog** → ใช้ idempotency window + hash, ทดสอบทุก edge cases
+- **Share token abuse** → จำกัด `max_uses = group_size`, log ทุกครั้ง, ผูก member ID
+- **Time zone reset** → ใช้ `reset_at_local_midnight` + preview ใน UI เพื่อป้องกันตั้งค่าผิด
+
+---
+
 # Summary: ความคืบหน้าโครงการ
 
 | Phase | สถานะ | ความสมบูรณ์ | หมายเหตุ |
@@ -2116,8 +2465,36 @@ final coupons = await PosDiscountService.getVisibleCouponsForPOS();
 | Phase 7: Analytics MVP | ✅ เสร็จ | 100% | Usage Analytics พร้อมใช้งาน |
 | Phase 8: Business Intelligence | ✅ เสร็จ | 100% | Priority Score + Recommended Products |
 | Phase 9: Governance | ✅ เสร็จ | 100% | Tax Rules + Permission System |
-| Phase 10: Advanced Analytics | ⏸️ On Hold | 0% | รอข้อมูลสะสม 3-6 เดือน |
+| Phase 10: Advanced Analytics | ⏸️ On Hold | 0% | พักไว้ก่อนเพราะยังไม่มีข้อมูลสำหรับทดสอบ |
 | Phase 11: QR Code System | ✅ เสร็จ | 100% | QR Code สำหรับคูปอง + โปรโมชัน |
 | Phase 12: Coupon Visibility Control | ✅ เสร็จ | 100% | ควบคุมการแสดงคูปองในแต่ละหน้า UI |
+| Phase 13: Daily Unified Coupon Admin Tab | 📋 Planned | 0% | สเปก + UI/Flow พร้อม เริ่มพัฒนาแถบใหม่สำหรับส่วนลด+สิทธิ์เข้าพื้นที่ |
 
-**สรุป:** ✅ Phase 0-9, 11-12 เสร็จสมบูรณ์ (100%) - ระบบ Coupon & Promotion พร้อมใช้งานจริง!
+**สรุป:** ✅ Phase 0-9, 11-12 เสร็จสมบูรณ์ (100%) และเตรียมเริ่ม 📋 Phase 13 (Admin-driven Daily Unified Coupon)
+
+---
+
+# Version History
+
+> ใช้ส่วนนี้เป็นแหล่งอ้างอิงสถานะล่าสุด (single source of truth)
+> หากมีข้อความส่วนอื่นขัดแย้ง ให้ยึดรายการที่ใหม่ที่สุดในตารางนี้
+
+| Version | วันที่ | ผู้แก้ไข | สรุปการเปลี่ยนแปลง | ผลกระทบสถานะ |
+|---------|--------|----------|----------------------|----------------|
+| v1.0.0 | 08 พ.ค. 2568 | ทีมพัฒนา | ปิดงาน Phase 0-9 และอัปเดตสถานะระบบพร้อมใช้งานจริง | Phase 0-9 = ✅, Phase 10 = ⏸️ |
+| v1.1.0 | 09 พ.ค. 2568 | ทีมพัฒนา | เพิ่ม Phase 12: Coupon Visibility Control | เพิ่ม Phase 12 = ✅ |
+| v1.1.1 | 18 พ.ค. 2569 | Cascade | ปรับเอกสารให้สถานะทุก section สอดคล้องกันทั้งฉบับ และแก้ชื่อ table QR ให้ตรง schema (`pos_discounts`) | ลดความเสี่ยงสถานะย้อนแย้ง |
+| v1.1.2 | 18 พ.ค. 2569 | Cascade | เพิ่ม section Version History เพื่อกำกับการอัปเดตสถานะในอนาคต | กำหนดกระบวนการควบคุมเวอร์ชันเอกสาร |
+| v1.1.3 | 18 พ.ค. 2569 | Cascade | ยืนยันมติพัก Phase 10 ไว้ก่อน เนื่องจากข้อมูลทดสอบยังไม่เพียงพอ | คงสถานะ Phase 10 = ⏸️ On Hold |
+| v1.1.4 | 18 พ.ค. 2569 | Cascade | เพิ่มนโยบาย Admin-first และแถบใหม่ `คูปองรายวันแบบรวมสิทธิ์` เพื่อให้แอดมินกำหนดทุกกติกาได้เอง | เพิ่มแผน Phase 13 = 📋 Planned |
+| v1.1.5 | 18 พ.ค. 2569 | Cascade | บันทึกสเปก Phase 13 (ฟิลด์, UI flow, targeting_rule, test plan, UX ลูกค้า) ครบถ้วน | Phase 13 พร้อมเข้าสู่ implementation |
+
+## กติกาการอัปเดต
+
+1. ทุกครั้งที่เปลี่ยนสถานะ phase ต้องเพิ่มแถวใหม่ใน `Version History` ทันที
+2. ต้องอัปเดตอย่างน้อย 3 จุดให้ตรงกันเสมอ:
+   - `Development Phases`
+   - `Summary: ความคืบหน้าโครงการ`
+   - `Version History`
+3. ถ้ามีการเลื่อนงาน ให้ระบุเหตุผลและเงื่อนไขกลับมาทำในแถวเดียวกัน
+4. ห้ามลบประวัติเก่า ให้เพิ่มเฉพาะรายการใหม่เพื่อเก็บ audit trail

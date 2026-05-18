@@ -70,6 +70,7 @@ final List<Map<String, dynamic>> _systemTabs = [
   {'id': 'coupon_promotion_promotions', 'page_id': 'coupon_promotion', 'name': 'จัดการโปรโมชั่น', 'icon': Icons.celebration},
   {'id': 'coupon_promotion_analytics', 'page_id': 'coupon_promotion', 'name': 'วิเคราะห์การใช้งาน', 'icon': Icons.analytics},
   {'id': 'coupon_promotion_main', 'page_id': 'coupon_promotion', 'name': 'จัดการคูปองและโปรโมชั่น (Admin)', 'icon': Icons.local_offer},
+  {'id': 'coupon_promotion_daily', 'page_id': 'coupon_promotion', 'name': 'คูปองรายวัน', 'icon': Icons.qr_code_2},
   // Tab: ตั้งค่าสูตรแนะนำ (formula_config)
   {'id': 'coupon_promotion_formula', 'page_id': 'coupon_promotion', 'name': 'ตั้งค่าสูตรแนะนำ', 'icon': Icons.functions},
 ];
@@ -203,6 +204,11 @@ final List<Map<String, dynamic>> _systemActions = [
   {'id': 'coupon_promotion_delete_coupon', 'tab_id': 'coupon_promotion_main', 'name': 'ลบคูปอง', 'icon': Icons.delete},
   {'id': 'coupon_promotion_edit_promotion', 'tab_id': 'coupon_promotion_main', 'name': 'แก้ไขโปรโมชั่น', 'icon': Icons.edit},
   {'id': 'coupon_promotion_delete_promotion', 'tab_id': 'coupon_promotion_main', 'name': 'ลบโปรโมชั่น', 'icon': Icons.delete},
+  // Tab: คูปองรายวัน (coupon_promotion_daily)
+  {'id': 'coupon_promotion_daily_view', 'tab_id': 'coupon_promotion_daily', 'name': 'ดูคูปองรายวัน', 'icon': Icons.visibility},
+  {'id': 'coupon_promotion_daily_add', 'tab_id': 'coupon_promotion_daily', 'name': 'สร้างคูปองรายวัน', 'icon': Icons.add_circle},
+  {'id': 'coupon_promotion_daily_history', 'tab_id': 'coupon_promotion_daily', 'name': 'ดูประวัติการใช้งาน', 'icon': Icons.history},
+  {'id': 'coupon_promotion_daily_gate_scanner', 'tab_id': 'coupon_promotion_daily', 'name': 'เปิด Gate Scanner', 'icon': Icons.qr_code_scanner},
   // Tab: ตั้งค่าสูตรแนะนำ (coupon_promotion_formula)
   {'id': 'formula_view', 'tab_id': 'coupon_promotion_formula', 'name': 'ดูสูตรทั้งหมด', 'icon': Icons.visibility},
   {'id': 'formula_create', 'tab_id': 'coupon_promotion_formula', 'name': 'สร้างสูตรใหม่', 'icon': Icons.add_circle},

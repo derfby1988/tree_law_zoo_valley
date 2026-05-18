@@ -12,6 +12,7 @@ class CouponFormDialog extends StatefulWidget {
     required this.categories,
     required this.products,
     required this.onSubmit,
+    this.defaultDailyMode = false,
   });
 
   final String title;
@@ -19,6 +20,7 @@ class CouponFormDialog extends StatefulWidget {
   final List<Map<String, dynamic>> categories;
   final List<Map<String, dynamic>> products;
   final Future<void> Function(CouponFormResult result) onSubmit;
+  final bool defaultDailyMode;
 
   @override
   State<CouponFormDialog> createState() => _CouponFormDialogState();
@@ -34,6 +36,14 @@ class _CouponFormDialogState extends State<CouponFormDialog> {
   late final TextEditingController _usageLimitCtrl;
   late final TextEditingController _usageLimitPerCustomerCtrl;
   late final TextEditingController _usageLimitPerDayCtrl;
+  late final TextEditingController _entryAreaCtrl;
+  late final TextEditingController _entryLimitCtrl;
+  late final TextEditingController _discountLimitCtrl;
+  late final TextEditingController _discountLimitPerCouponCtrl;
+  late final TextEditingController _groupSizeCtrl;
+  late final TextEditingController _idempotencyWindowCtrl;
+  late final TextEditingController _qrReplayWindowCtrl;
+  late final TextEditingController _keyVersionCtrl;
 
   String _discountType = 'fixed';
   String _scope = 'order';
@@ -48,6 +58,12 @@ class _CouponFormDialogState extends State<CouponFormDialog> {
   bool _includePendingProcurement = false;
   bool _showInCouponTab = false;
   bool _showInPosDiscountDialog = false;
+  bool _isDailyCoupon = false;
+  String _dailyAudience = 'individual';
+  bool _entryRequiresSameDay = true;
+  bool _allowEntryBeforeDiscount = true;
+  bool _allowDiscountWithoutEntry = false;
+  bool _resetAtLocalMidnight = true;
   DateTime? _startAt;
   DateTime? _endAt;
   bool _isCategoryLoading = false;
@@ -82,6 +98,23 @@ class _CouponFormDialogState extends State<CouponFormDialog> {
     _showInPosDiscountDialog = existing?.showInPosDiscountDialog ?? false;
     _startAt = existing?.startAt;
     _endAt = existing?.endAt;
+
+    final rule = Map<String, dynamic>.from(existing?.targetingRule ?? const {});
+    _isDailyCoupon = rule['daily_unified_enabled'] == true || (existing == null && widget.defaultDailyMode);
+    _dailyAudience = (rule['coupon_audience'] ?? 'individual').toString();
+    _entryRequiresSameDay = rule['entry_requires_same_day'] ?? true;
+    _allowEntryBeforeDiscount = rule['allow_entry_before_discount'] ?? true;
+    _allowDiscountWithoutEntry = rule['allow_discount_without_entry'] ?? false;
+    _resetAtLocalMidnight = rule['reset_at_local_midnight'] ?? true;
+
+    _entryAreaCtrl = TextEditingController(text: rule['entry_area_name']?.toString() ?? '');
+    _entryLimitCtrl = TextEditingController(text: _intToString(rule['entry_limit_per_day']));
+    _discountLimitCtrl = TextEditingController(text: _intToString(rule['discount_limit_per_day']));
+    _discountLimitPerCouponCtrl = TextEditingController(text: _intToString(rule['discount_limit_per_coupon']));
+    _groupSizeCtrl = TextEditingController(text: _intToString(rule['group_size']));
+    _idempotencyWindowCtrl = TextEditingController(text: _intToString(rule['idempotency_window_seconds'] ?? 45));
+    _qrReplayWindowCtrl = TextEditingController(text: _intToString(rule['qr_replay_window_seconds'] ?? 30));
+    _keyVersionCtrl = TextEditingController(text: rule['key_version']?.toString() ?? '');
   }
 
   @override
@@ -95,6 +128,14 @@ class _CouponFormDialogState extends State<CouponFormDialog> {
     _usageLimitCtrl.dispose();
     _usageLimitPerCustomerCtrl.dispose();
     _usageLimitPerDayCtrl.dispose();
+    _entryAreaCtrl.dispose();
+    _entryLimitCtrl.dispose();
+    _discountLimitCtrl.dispose();
+    _discountLimitPerCouponCtrl.dispose();
+    _groupSizeCtrl.dispose();
+    _idempotencyWindowCtrl.dispose();
+    _qrReplayWindowCtrl.dispose();
+    _keyVersionCtrl.dispose();
     super.dispose();
   }
 
@@ -148,6 +189,49 @@ class _CouponFormDialogState extends State<CouponFormDialog> {
     return null;
   }
 
+  String? _validateDailyCouponFields() {
+    if (!_isDailyCoupon) return null;
+    if (_entryAreaCtrl.text.trim().isEmpty) {
+      return 'คูปองรายวันต้องระบุชื่อพื้นที่ที่ใช้สิทธิ์';
+    }
+
+    final entryLimit = int.tryParse(_entryLimitCtrl.text.trim());
+    if (entryLimit == null || entryLimit <= 0) {
+      return 'จำนวนเข้าได้ต่อวันต้องมากกว่า 0';
+    }
+
+    final discountLimit = int.tryParse(_discountLimitCtrl.text.trim());
+    if (discountLimit == null || discountLimit < 0) {
+      return 'จำนวนใช้ส่วนลดต่อวันต้องเป็นตัวเลข 0 ขึ้นไป';
+    }
+
+    if (_dailyAudience == 'group') {
+      final size = int.tryParse(_groupSizeCtrl.text.trim());
+      if (size == null || size < 2) {
+        return 'คูปองรายกลุ่มต้องกำหนดจำนวนสมาชิกอย่างน้อย 2 คน';
+      }
+    }
+
+    if (_discountLimitPerCouponCtrl.text.trim().isNotEmpty) {
+      final perCoupon = int.tryParse(_discountLimitPerCouponCtrl.text.trim());
+      if (perCoupon == null || perCoupon < 0) {
+        return 'จำนวนใช้ต่อคูปองต้องเป็นตัวเลข 0 ขึ้นไป';
+      }
+    }
+
+    final idempotency = int.tryParse(_idempotencyWindowCtrl.text.trim());
+    if (idempotency == null || idempotency <= 0) {
+      return 'Idempotency window (วินาที) ต้องมากกว่า 0';
+    }
+
+    final replay = int.tryParse(_qrReplayWindowCtrl.text.trim());
+    if (replay == null || replay <= 0) {
+      return 'Replay window (วินาที) ต้องมากกว่า 0';
+    }
+
+    return null;
+  }
+
   Future<void> _handleSubmit() async {
     final err = _validateCoupon(
       name: _nameCtrl.text,
@@ -161,6 +245,12 @@ class _CouponFormDialogState extends State<CouponFormDialog> {
 
     if (err != null) {
       setState(() => _errorMsg = err);
+      return;
+    }
+
+    final dailyErr = _validateDailyCouponFields();
+    if (dailyErr != null) {
+      setState(() => _errorMsg = dailyErr);
       return;
     }
 
@@ -178,6 +268,8 @@ class _CouponFormDialogState extends State<CouponFormDialog> {
       _errorMsg = null;
       _isSaving = true;
     });
+
+    final targetingRule = _buildTargetingRule();
 
     final data = CouponFormResult(
       name: _nameCtrl.text,
@@ -204,6 +296,7 @@ class _CouponFormDialogState extends State<CouponFormDialog> {
       showInPosDiscountDialog: _showInPosDiscountDialog,
       startAt: _startAt,
       endAt: _endAt,
+      targetingRule: targetingRule,
     );
 
     try {
@@ -718,6 +811,17 @@ class _CouponFormDialogState extends State<CouponFormDialog> {
                 contentPadding: EdgeInsets.zero,
                 dense: true,
               ),
+              const Divider(height: 24),
+              SwitchListTile(
+                title: const Text('เปิดใช้โหมดคูปองรายวัน (ส่วนลด + สิทธิ์เข้าพื้นที่)', style: TextStyle(fontSize: 13)),
+                subtitle: const Text('กำหนด quota ส่วนลดและการเข้าพื้นที่ในใบเดียวตามมาตรฐาน Phase 13'),
+                value: _isDailyCoupon,
+                onChanged: (v) => setState(() => _isDailyCoupon = v),
+                activeColor: AppDesignSystem.primary,
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+              ),
+              if (_isDailyCoupon) _buildDailyCouponSection(),
             ],
           ),
         ),
@@ -754,6 +858,175 @@ class _CouponFormDialogState extends State<CouponFormDialog> {
     ];
     return '${date.day} ${months[date.month - 1]} ${date.year + 543}';
   }
+
+  String _intToString(dynamic value) {
+    if (value == null) return '';
+    if (value is int) return value.toString();
+    if (value is num) return value.toInt().toString();
+    if (value is String) return value;
+    return '';
+  }
+
+  Map<String, dynamic> _buildTargetingRule() {
+    if (!_isDailyCoupon) {
+      return const {};
+    }
+
+    final entryLimit = int.tryParse(_entryLimitCtrl.text.trim());
+    final discountLimit = int.tryParse(_discountLimitCtrl.text.trim());
+    final discountPerCoupon = int.tryParse(_discountLimitPerCouponCtrl.text.trim());
+    final groupSize = int.tryParse(_groupSizeCtrl.text.trim());
+    final idempotency = int.tryParse(_idempotencyWindowCtrl.text.trim());
+    final replay = int.tryParse(_qrReplayWindowCtrl.text.trim());
+
+    final map = <String, dynamic>{
+      'daily_unified_enabled': true,
+      'event_types': const ['discount', 'entry'],
+      'coupon_audience': _dailyAudience,
+      'entry_zone_mode': 'single',
+      'entry_area_name': _entryAreaCtrl.text.trim(),
+      'entry_limit_per_day': entryLimit,
+      'discount_limit_per_day': discountLimit,
+      'discount_limit_per_coupon': discountPerCoupon,
+      'entry_requires_same_day': _entryRequiresSameDay,
+      'allow_entry_before_discount': _allowEntryBeforeDiscount,
+      'allow_discount_without_entry': _allowDiscountWithoutEntry,
+      'reset_at_local_midnight': _resetAtLocalMidnight,
+      'idempotency_window_seconds': idempotency,
+      'qr_replay_window_seconds': replay,
+      'key_version': _keyVersionCtrl.text.trim().isEmpty ? null : _keyVersionCtrl.text.trim(),
+    };
+
+    if (_dailyAudience == 'group' && groupSize != null) {
+      map['group_size'] = groupSize;
+    }
+
+    map.removeWhere((key, value) => value == null);
+    return map;
+  }
+
+  Widget _buildDailyCouponSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppDesignSystem.primary.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Text(
+            'กำหนด quota และความปลอดภัยของคูปองรายวัน พร้อมให้สิทธิ์ส่วนลดและการเข้า-ออกพื้นที่ในคูปองใบเดียว',
+            style: TextStyle(fontSize: 12, color: Colors.black87),
+          ),
+        ),
+        const SizedBox(height: 12),
+        DropdownButtonFormField<String>(
+          value: _dailyAudience,
+          decoration: const InputDecoration(labelText: 'ประเภทผู้ใช้คูปอง', border: OutlineInputBorder()),
+          items: const [
+            DropdownMenuItem(value: 'individual', child: Text('รายบุคคล')),
+            DropdownMenuItem(value: 'group', child: Text('รายกลุ่ม')),
+          ],
+          onChanged: (value) => setState(() => _dailyAudience = value ?? 'individual'),
+        ),
+        if (_dailyAudience == 'group') ...[
+          const SizedBox(height: 12),
+          TextField(
+            controller: _groupSizeCtrl,
+            decoration: const InputDecoration(labelText: 'จำนวนสมาชิกในกลุ่ม (คน) *', border: OutlineInputBorder()),
+            keyboardType: TextInputType.number,
+          ),
+        ],
+        const SizedBox(height: 12),
+        TextField(
+          controller: _entryAreaCtrl,
+          decoration: const InputDecoration(labelText: 'ชื่อพื้นที่ (สำหรับสิทธิ์เข้าพื้นที่) *', border: OutlineInputBorder()),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _entryLimitCtrl,
+                decoration: const InputDecoration(labelText: 'เข้าได้ต่อวัน (ครั้ง) *', border: OutlineInputBorder()),
+                keyboardType: TextInputType.number,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: TextField(
+                controller: _discountLimitCtrl,
+                decoration: const InputDecoration(labelText: 'ใช้ส่วนลดต่อวัน (ครั้ง) *', border: OutlineInputBorder()),
+                keyboardType: TextInputType.number,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _discountLimitPerCouponCtrl,
+          decoration: const InputDecoration(labelText: 'จำกัดจำนวนใช้ต่อคูปอง (ทั้งหมด)', border: OutlineInputBorder(), hintText: 'ปล่อยว่าง = ไม่จำกัด'),
+          keyboardType: TextInputType.number,
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _idempotencyWindowCtrl,
+                decoration: const InputDecoration(labelText: 'Idempotency Window (วินาที) *', border: OutlineInputBorder()),
+                keyboardType: TextInputType.number,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: TextField(
+                controller: _qrReplayWindowCtrl,
+                decoration: const InputDecoration(labelText: 'QR Replay Window (วินาที) *', border: OutlineInputBorder()),
+                keyboardType: TextInputType.number,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _keyVersionCtrl,
+          decoration: const InputDecoration(labelText: 'Key Version (optional)', border: OutlineInputBorder(), hintText: 'เช่น v3'),
+        ),
+        SwitchListTile(
+          title: const Text('ต้องใช้สิทธิ์ภายในวันเดียวกัน'),
+          value: _entryRequiresSameDay,
+          onChanged: (v) => setState(() => _entryRequiresSameDay = v),
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+        ),
+        SwitchListTile(
+          title: const Text('อนุญาตให้สแกนเข้าพื้นที่ก่อนใช้ส่วนลด'),
+          value: _allowEntryBeforeDiscount,
+          onChanged: (v) => setState(() => _allowEntryBeforeDiscount = v),
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+        ),
+        SwitchListTile(
+          title: const Text('อนุญาตใช้ส่วนลดโดยไม่ต้องเข้าเขตก่อน'),
+          value: _allowDiscountWithoutEntry,
+          onChanged: (v) => setState(() => _allowDiscountWithoutEntry = v),
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+        ),
+        SwitchListTile(
+          title: const Text('รีเซ็ตโควตาตามเที่ยงคืนของพื้นที่ (timezone tenant)'),
+          value: _resetAtLocalMidnight,
+          onChanged: (v) => setState(() => _resetAtLocalMidnight = v),
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+        ),
+      ],
+    );
+  }
 }
 
 class CouponFormResult {
@@ -782,6 +1055,7 @@ class CouponFormResult {
     required this.showInPosDiscountDialog,
     this.startAt,
     this.endAt,
+    this.targetingRule = const {},
   });
 
   final String name;
@@ -808,6 +1082,7 @@ class CouponFormResult {
   final bool showInPosDiscountDialog;
   final DateTime? startAt;
   final DateTime? endAt;
+  final Map<String, dynamic> targetingRule;
 }
 
 class _ChannelChip extends StatefulWidget {

@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import 'package:tree_law_zoo_valley/services/daily_coupon_entry_service.dart';
 import 'package:tree_law_zoo_valley/services/pos_discount_service.dart';
 import 'package:tree_law_zoo_valley/services/pos_promotion_service.dart';
 import 'package:tree_law_zoo_valley/services/inventory_service.dart';
@@ -46,6 +47,36 @@ class CouponPromotionAdminController extends ChangeNotifier {
   String productSortBy = 'name';
   bool productSortAscending = true;
 
+  // Phase 13: Daily coupon computed data
+  List<PosDiscount> get dailyCoupons =>
+      coupons.where((coupon) => _isDailyCoupon(coupon)).toList();
+
+  // Phase 13: Daily history state
+  PosDiscount? selectedDailyCoupon;
+  bool isLoadingDailyHistory = false;
+  int dailyHistoryRangeDays = 7;
+  List<Map<String, dynamic>> dailyEntryLogs = [];
+  List<Map<String, dynamic>> dailyPosHistory = [];
+  Map<String, dynamic>? dailyEntrySummary;
+  List<String> dailyAlerts = [];
+
+  Map<String, dynamic> getTargetingRule(PosDiscount coupon) {
+    final rule = coupon.targetingRule;
+    if (rule is Map<String, dynamic>) {
+      return rule;
+    }
+    if (rule is Map) {
+      return Map<String, dynamic>.from(rule);
+    }
+    return const {};
+  }
+
+  bool _isDailyCoupon(PosDiscount coupon) {
+    final rule = getTargetingRule(coupon);
+    final enabled = rule['daily_unified_enabled'];
+    return enabled == true;
+  }
+
   // =============================================
   // Core Data Loading
   // =============================================
@@ -70,6 +101,14 @@ class CouponPromotionAdminController extends ChangeNotifier {
       categories = results[3] as List<Map<String, dynamic>>;
       userGroups = results[4] as List<UserGroup>;
       filteredProducts = allProducts;
+      if (dailyCoupons.isNotEmpty && selectedDailyCoupon == null) {
+        selectedDailyCoupon = dailyCoupons.first;
+      } else if (dailyCoupons.isEmpty) {
+        selectedDailyCoupon = null;
+        dailyEntryLogs = [];
+        dailyPosHistory = [];
+        dailyEntrySummary = null;
+      }
       isLoading = false;
       notifyListeners();
     } catch (e) {
@@ -151,6 +190,14 @@ class CouponPromotionAdminController extends ChangeNotifier {
     if (index == 4) {
       if (usageData.isEmpty && analyticsSummary == null) {
         loadAnalyticsData();
+      }
+    }
+    if (index == 6) {
+      if (dailyCoupons.isNotEmpty && selectedDailyCoupon == null) {
+        selectedDailyCoupon = dailyCoupons.first;
+      }
+      if (selectedDailyCoupon != null && dailyEntryLogs.isEmpty && !isLoadingDailyHistory) {
+        loadDailyCouponHistory();
       }
     }
   }
@@ -285,6 +332,7 @@ class CouponPromotionAdminController extends ChangeNotifier {
     bool showInPosDiscountDialog = false,
     DateTime? startAt,
     DateTime? endAt,
+    Map<String, dynamic>? targetingRule,
   }) async {
     if (name.isEmpty) return false;
     final result = await PosDiscountService.addDiscount(
@@ -308,6 +356,7 @@ class CouponPromotionAdminController extends ChangeNotifier {
       showInPosDiscountDialog: showInPosDiscountDialog,
       startAt: startAt,
       endAt: endAt,
+      targetingRule: targetingRule ?? const {},
     );
     if (result != null) {
       await loadData();
@@ -342,6 +391,7 @@ class CouponPromotionAdminController extends ChangeNotifier {
     bool showInPosDiscountDialog = false,
     DateTime? startAt,
     DateTime? endAt,
+    Map<String, dynamic>? targetingRule,
   }) async {
     if (name.isEmpty) return false;
     final result = await PosDiscountService.updateDiscount(
@@ -364,6 +414,7 @@ class CouponPromotionAdminController extends ChangeNotifier {
       showInPosDiscountDialog: showInPosDiscountDialog,
       startAt: startAt,
       endAt: endAt,
+      targetingRule: targetingRule,
     );
     if (result != null) {
       await loadData();
@@ -379,6 +430,109 @@ class CouponPromotionAdminController extends ChangeNotifier {
       return true;
     }
     return false;
+  }
+
+  // =============================================
+  // Phase 13: Daily coupon history
+  // =============================================
+
+  void selectDailyCouponForHistory(PosDiscount? coupon) {
+    selectedDailyCoupon = coupon;
+    notifyListeners();
+    if (coupon != null) {
+      loadDailyCouponHistory();
+    } else {
+      dailyEntryLogs = [];
+      dailyPosHistory = [];
+      dailyEntrySummary = null;
+      notifyListeners();
+    }
+  }
+
+  void setDailyHistoryRange(int days) {
+    if (dailyHistoryRangeDays == days) return;
+    dailyHistoryRangeDays = days;
+    notifyListeners();
+    if (selectedDailyCoupon != null) {
+      loadDailyCouponHistory();
+    }
+  }
+
+  Future<void> loadDailyCouponHistory() async {
+    final target = selectedDailyCoupon;
+    if (target == null) return;
+    isLoadingDailyHistory = true;
+    notifyListeners();
+
+    final now = DateTime.now();
+    final start = now.subtract(Duration(days: dailyHistoryRangeDays));
+    final end = now;
+
+    try {
+      final results = await Future.wait([
+        DailyCouponEntryService.getEntryLogs(
+          discountId: target.id,
+          startDate: start,
+          endDate: end,
+          limit: 200,
+        ),
+        DailyCouponEntryService.getEntrySummary(
+          discountId: target.id,
+          startDate: start,
+          endDate: end,
+        ),
+        PosDiscountService.getUsageAnalytics(
+          startDate: start,
+          endDate: end,
+          discountId: target.id,
+          limit: 120,
+        ),
+      ]);
+
+      dailyEntryLogs = results[0] as List<Map<String, dynamic>>;
+      dailyEntrySummary = results[1] as Map<String, dynamic>;
+      dailyPosHistory = (results[2] as List).cast<Map<String, dynamic>>();
+      dailyAlerts = _computeDailyAlerts(target);
+      isLoadingDailyHistory = false;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error loadDailyCouponHistory: $e');
+      isLoadingDailyHistory = false;
+      dailyAlerts = [];
+      notifyListeners();
+    }
+  }
+
+  List<String> _computeDailyAlerts(PosDiscount coupon) {
+    final alerts = <String>[];
+    final rule = getTargetingRule(coupon);
+    final entryLimit = rule['entry_limit_per_day'];
+    final rows = (dailyEntrySummary?['rows'] as List?) ?? const [];
+    Map<String, dynamic>? latestRow;
+    if (rows.isNotEmpty && rows.first is Map) {
+      latestRow = Map<String, dynamic>.from(rows.first as Map);
+    }
+
+    if (entryLimit is int && entryLimit > 0 && latestRow != null) {
+      final used = latestRow['total_entries'] is int ? latestRow['total_entries'] as int : 0;
+      final remaining = entryLimit - used;
+      final ratio = used / entryLimit;
+      if (ratio >= 0.8) {
+        alerts.add('คูปอง ${coupon.name} ใช้สิทธิ์เข้าแล้ว $used/$entryLimit ครั้งในวันนี้ (เหลือ $remaining)');
+      }
+    }
+
+    final deniedCount = dailyEntryLogs.where((log) => (log['status'] ?? '') != 'valid').length;
+    if (deniedCount > 0) {
+      alerts.add('พบการเข้า/ออกที่ถูกปฏิเสธ $deniedCount ครั้ง กรุณาตรวจสอบเหตุผล');
+    }
+
+    final replayWindow = rule['qr_replay_window_seconds'];
+    if (replayWindow is int && replayWindow < 15) {
+      alerts.add('คำเตือน: QR replay window ต่ำกว่า 15 วินาที ตรวจสอบความปลอดภัยอีกครั้ง');
+    }
+
+    return alerts;
   }
 
   // =============================================

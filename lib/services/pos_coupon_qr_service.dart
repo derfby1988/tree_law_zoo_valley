@@ -27,10 +27,17 @@ class PosCouponQRService {
 
   /// สร้าง QR Code content จากคูปอง
   static Map<String, dynamic> generateQRContent(PosDiscount coupon) {
+    final targetingRule = coupon.targetingRule;
+    final keyVersion = targetingRule['key_version']?.toString() ?? 'v1';
+    final nonce = DateTime.now().millisecondsSinceEpoch.toString();
+    final issuedAt = DateTime.now().toIso8601String();
+
     final signature = _generateSignature(
       coupon.id,
       coupon.couponCode ?? '',
       coupon.endAt,
+      keyVersion: keyVersion,
+      nonce: nonce,
     );
 
     return {
@@ -40,12 +47,21 @@ class PosCouponQRService {
       'discount_id': coupon.id,
       'exp': coupon.endAt?.toIso8601String().split('T')[0],
       'sig': signature,
+      'kv': keyVersion,
+      'nonce': nonce,
+      'issued_at': issuedAt,
     };
   }
 
   /// สร้าง HMAC signature สำหรับ QR validation
-  static String _generateSignature(String couponId, String couponCode, DateTime? expiryDate) {
-    final payload = '$couponId|$couponCode|${expiryDate?.toIso8601String().split('T')[0] ?? ''}';
+  static String _generateSignature(
+    String couponId,
+    String couponCode,
+    DateTime? expiryDate, {
+    String keyVersion = 'v1',
+    String? nonce,
+  }) {
+    final payload = '$couponId|$couponCode|${expiryDate?.toIso8601String().split('T')[0] ?? ''}|$keyVersion|${nonce ?? ''}';
     
     // Simple hash-based signature (ไม่ใช่ HMAC แต่ใช้ได้สำหรับ version นี้)
     // ใน production ควรใช้ crypto library ที่รองรับ HMAC
@@ -261,6 +277,7 @@ class PosCouponQRService {
           isValid: false,
           status: 'invalid_data',
           errorMessage: 'ข้อมูล QR Code ไม่ครบถ้วน',
+          rawContent: qrContent,
         );
       }
 
@@ -295,6 +312,10 @@ class PosCouponQRService {
             : null,
         status: result['status']?.toString() ?? 'unknown',
         errorMessage: result['error']?.toString(),
+        rawContent: qrContent,
+        keyVersion: qrContent['kv']?.toString(),
+        nonce: qrContent['nonce']?.toString(),
+        issuedAt: qrContent['issued_at']?.toString(),
       );
 
     } catch (e) {
@@ -635,6 +656,10 @@ class QRValidationResult {
   final double? value;
   final String status;
   final String? errorMessage;
+  final Map<String, dynamic>? rawContent;
+  final String? keyVersion;
+  final String? nonce;
+  final String? issuedAt;
 
   QRValidationResult({
     required this.isValid,
@@ -645,6 +670,10 @@ class QRValidationResult {
     this.value,
     required this.status,
     this.errorMessage,
+    this.rawContent,
+    this.keyVersion,
+    this.nonce,
+    this.issuedAt,
   });
 
   @override
