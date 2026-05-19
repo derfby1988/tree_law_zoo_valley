@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../models/pos_discount_model.dart';
 import '../../../theme/app_design_system.dart';
 import '../../../utils/date_picker_helper.dart';
+import '../../../services/supabase_service.dart';
 
 class CouponFormDialog extends StatefulWidget {
   const CouponFormDialog({
@@ -69,6 +71,7 @@ class _CouponFormDialogState extends State<CouponFormDialog> {
   bool _isCategoryLoading = false;
   bool _isSaving = false;
   String? _errorMsg;
+  bool _hasPrefilledDailyDefaults = false;
 
   @override
   void initState() {
@@ -115,6 +118,10 @@ class _CouponFormDialogState extends State<CouponFormDialog> {
     _idempotencyWindowCtrl = TextEditingController(text: _intToString(rule['idempotency_window_seconds'] ?? 45));
     _qrReplayWindowCtrl = TextEditingController(text: _intToString(rule['qr_replay_window_seconds'] ?? 30));
     _keyVersionCtrl = TextEditingController(text: rule['key_version']?.toString() ?? '');
+
+    if (existing == null && widget.defaultDailyMode) {
+      _prefillDailyDefaults();
+    }
   }
 
   @override
@@ -157,6 +164,85 @@ class _CouponFormDialogState extends State<CouponFormDialog> {
         _endAt = picked;
       }
     });
+  }
+
+  void _prefillDailyDefaults() {
+    if (_hasPrefilledDailyDefaults) return;
+    _hasPrefilledDailyDefaults = true;
+
+    if (_nameCtrl.text.trim().isEmpty) {
+      _nameCtrl.text = 'คูปองเข้าพื้นที่ & แลกซื้อ';
+    }
+
+    _generateDailyCouponCode().then((code) {
+      if (!mounted || code == null) return;
+      if (_couponCodeCtrl.text.trim().isEmpty) {
+        _couponCodeCtrl.text = code;
+      }
+    });
+  }
+
+  Future<String?> _generateDailyCouponCode() async {
+    try {
+      final datePart = _formatDateForCode(DateTime.now());
+      final suffix = await _resolvePhoneSuffix();
+      return 'TLZ$datePart$suffix';
+    } catch (e) {
+      debugPrint('Failed to generate daily coupon code: $e');
+      return null;
+    }
+  }
+
+  Future<String> _resolvePhoneSuffix() async {
+    const fallback = '0000';
+    try {
+      final user = SupabaseService.currentUser;
+      if (user == null) return fallback;
+
+      String? phone = user.phone;
+      final metadataPhone = user.userMetadata?['phone'];
+      if ((phone == null || phone.isEmpty) && metadataPhone != null) {
+        phone = metadataPhone.toString();
+      }
+
+      if (phone == null || phone.isEmpty) {
+        try {
+          final response = await SupabaseService.client
+              .from('users')
+              .select('phone')
+              .eq('id', user.id)
+              .maybeSingle();
+          if (response != null) {
+            final row = Map<String, dynamic>.from(response as Map);
+            phone = row['phone']?.toString();
+          }
+        } catch (e) {
+          debugPrint('Failed to fetch phone from users table: $e');
+        }
+      }
+
+      if (phone == null || phone.trim().isEmpty) return fallback;
+
+      final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+      if (digits.isEmpty) return fallback;
+
+      final normalized = digits.padLeft(4, '0');
+      return normalized.substring(normalized.length - 4);
+    } catch (e) {
+      debugPrint('Failed to resolve phone suffix: $e');
+      return fallback;
+    }
+  }
+
+  String _formatDateForCode(DateTime date) {
+    const monthAbbr = [
+      'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
+      'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC',
+    ];
+    final year = (date.year % 100).toString().padLeft(2, '0');
+    final month = monthAbbr[date.month - 1];
+    final day = date.day.toString().padLeft(2, '0');
+    return '$year$month$day';
   }
 
   String? _validateCoupon({

@@ -2312,6 +2312,28 @@ final coupons = await PosDiscountService.getVisibleCouponsForPOS();
 - ลูกค้าเห็นคูปองรายวันในแท็บคูปองเดิม โดยใช้ `show_in_coupon_tab = true` + badge "รายวัน"
 - คูปองรายกลุ่มต้องแชร์ให้สมาชิกได้ (share token + QR) และลูกค้าดูประวัติการเข้า/ออกได้จากการ์ด
 
+### ความคืบหน้าปัจจุบัน (19 พ.ค. 2569)
+✅ สร้างแท็บ "คูปองรายวัน" ในหน้า Admin พร้อม FAB เปิดฟอร์ม daily-mode และเชื่อม Gate Scanner ตามสิทธิ์  
+✅ Controller/Widget โหลดคูปองรายวัน, ประวัติ POS & Gate, สรุป quota, การแจ้งเตือน และเลือกช่วงวันได้  
+✅ ฟอร์มคูปองเติมชื่อ "คูปองเข้าพื้นที่ & แลกซื้อ" และสร้างรหัส `TLZ` + วันที่ + 4 หลักโทรศัพท์อัตโนมัติเมื่อเป็น daily mode  
+✅ Gate Scanner (beta) ตรวจ QR, แสดงข้อมูลคูปอง, บันทึก entry log และโชว์ประวัติล่าสุด พร้อม metadata nonce/key version  
+✅ ฝั่งลูกค้าเห็น badge รายวัน, ปุ่มคัดลอกรหัส/แชร์พื้นฐาน และ bottom sheet ประวัติ POS + Gate  
+✅ Permission Page เพิ่ม tab/action สำหรับคูปองรายวัน (view, add, history, gate scanner)
+
+### ช่องว่างสำคัญที่ยังไม่ปิด
+- ยังไม่มี share token/back-end สำหรับคูปองรายกลุ่ม (จำกัด `max_uses = group_size`, ผูก member)
+- POS ยังไม่บังคับ quota/ตรวจการใช้ซ้ำต่อสมาชิก/กลุ่ม (เฉพาะ Gate เท่านั้นที่ log)
+- Gate Scanner ยังไม่มี offline queue + idempotency sync ตามสเปก
+- ประสบการณ์ลูกค้าสำหรับการแชร์สมาชิก/ติดตามสถานะยังเป็น MVP (ไม่แสดงเหลือ/รายชื่อชัดเจน)
+- ยังไม่ทำ end-to-end test plan & documentation update สำหรับ Phase 13
+
+### ข้อเสนอขั้นถัดไป (Next Steps)
+1. **Share Token Service & Schema** – สร้างโครงสร้าง token สำหรับคูปองรายกลุ่ม (DB, RPC, client service) พร้อม expiry และ `max_uses = group_size`, รวมถึง UI ในฟอร์ม/การ์ดลูกค้า
+2. **POS Quota Enforcement** – เพิ่ม validation ฝั่ง POS ให้ตรวจจำนวนสมาชิกที่ใช้สิทธิ์, share token misuse, และบันทึก log ตามกติกา group/individual
+3. **Offline & Idempotent Gate Flow** – เพิ่ม offline queue ใน Gate Scanner รวมถึง hash/idempotency window เพื่อกันการยิงซ้ำและ sync เมื่อต่อเน็ต
+4. **Customer Share UX** – ปรับหน้าแสดงคูปองลูกค้าให้โชว์จำนวนสมาชิกที่ใช้แล้ว/เหลือ, ปุ่มแชร์ token จริง, และประวัติ timeline บนการ์ดหรือหน้า detail
+5. **E2E Testing & Documentation** – เขียน test plan ครอบคลุม flow รายวัน (สร้าง → แชร์ → สแกน Gate → ใช้ POS → ตรวจ log), อัปเดตเอกสาร Phase 13 และ checklist governance
+
 ## Field Spec (reuse-first)
 | กลุ่ม | Field | แหล่งข้อมูล | หมายเหตุ |
 |-------|-------|--------------|-----------|
