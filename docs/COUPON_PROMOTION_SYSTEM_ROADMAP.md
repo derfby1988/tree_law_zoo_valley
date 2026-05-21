@@ -2321,21 +2321,20 @@ final coupons = await PosDiscountService.getVisibleCouponsForPOS();
 ✅ Permission Page เพิ่ม tab/action สำหรับคูปองรายวัน (view, add, history, gate scanner)
 ✅ P0 Share Token backend เพิ่มแล้ว: มีตาราง `daily_coupon_share_tokens`, RPC create/refresh/consume, service/model, และ admin/customer UI wiring สำหรับคูปองรายกลุ่ม
 ✅ P1 POS quota enforcement เพิ่มแล้ว: POS ตรวจ customer context, จำกัดการใช้ซ้ำต่อสมาชิก, ตรวจ active share token, และ consume token หลังบันทึก usage
+✅ P4 End-to-end test plan และ scaffold สำหรับ daily coupon flow เพิ่มแล้ว (`docs/PHASE_13_DAILY_COUPON_E2E_TEST_PLAN.md`, `test/e2e/daily_coupon_workflow_e2e_test.dart`)
 
 ### งานที่ยังค้างใน Phase 13
-- **P3:** Customer UX สำหรับการแชร์และติดตามสถานะยังเป็น MVP และยังไม่แสดงจำนวนที่ใช้แล้ว/ที่เหลืออย่างชัดเจน
-- **P4:** ยังไม่มี end-to-end test plan และการอัปเดตเอกสาร Phase 13 ให้ครบถ้วน
+- ไม่มีงานค้างเชิง feature สำหรับ Phase 13 แล้ว; เหลือเพียงการรัน/ขยาย test automation ตามรอบ release
 
 ### ช่องว่างสำคัญที่ยังไม่ปิด
 - P0 share token/back-end สำหรับคูปองรายกลุ่มทำแล้ว; งานที่เหลือคือการบังคับ quota ฝั่ง POS และ sync ฝั่ง Gate/UX
 - P1 POS quota enforcement ทำแล้ว; งานที่เหลือคือ sync ฝั่ง Gate/UX และการทดสอบ end-to-end
 - P2 Gate offline queue + idempotency sync ทำแล้ว; งานที่เหลือคือ customer share UX และเอกสารทดสอบ
-- ประสบการณ์ลูกค้าสำหรับการแชร์สมาชิก/ติดตามสถานะยังเป็น MVP (ไม่แสดงเหลือ/รายชื่อชัดเจน)
-- ยังไม่ทำ end-to-end test plan & documentation update สำหรับ Phase 13
+- P3 customer share/status UX ทำแล้ว; งานที่เหลือคือเอกสารทดสอบ end-to-end และ validation checklist
+- P4 end-to-end test plan & documentation update ทำแล้ว; งานที่เหลือคือ execution/coverage expansion เมื่อมี backend changes
 
 ### ข้อเสนอขั้นถัดไป (Next Steps)
-1. **P3 Customer Share UX** – ปรับหน้าแสดงคูปองลูกค้าให้โชว์จำนวนสมาชิกที่ใช้แล้ว/เหลือ, ปุ่มแชร์ token จริง, และประวัติ timeline บนการ์ดหรือหน้า detail
-2. **P4 E2E Testing & Documentation** – เขียน test plan ครอบคลุม flow รายวัน (สร้าง → แชร์ → สแกน Gate → ใช้ POS → ตรวจ log), อัปเดตเอกสาร Phase 13 และ checklist governance
+1. **Execution & Coverage Expansion** – เพิ่ม coverage จริงใน CI/QA รอบถัดไป และขยายกรณี edge cases เมื่อ backend/RPC มีการเปลี่ยน
 
 ## Field Spec (reuse-first)
 | กลุ่ม | Field | แหล่งข้อมูล | หมายเหตุ |
@@ -2493,9 +2492,9 @@ final coupons = await PosDiscountService.getVisibleCouponsForPOS();
 | Phase 10: Advanced Analytics | ⏸️ On Hold | 0% | พักไว้ก่อนเพราะยังไม่มีข้อมูลสำหรับทดสอบ |
 | Phase 11: QR Code System | ✅ เสร็จ | 100% | QR Code สำหรับคูปอง + โปรโมชัน |
 | Phase 12: Coupon Visibility Control | ✅ เสร็จ | 100% | ควบคุมการแสดงคูปองในแต่ละหน้า UI |
-| Phase 13: Daily Unified Coupon Admin Tab | 🔄 In Progress | 60% | P0 share token backend, P1 POS quota enforcement, and P2 Gate offline queue/idempotency sync are done; remaining work is customer share UX and E2E docs |
+| Phase 13: Daily Unified Coupon Admin Tab | ✅ เสร็จ | 100% | P0 share token backend, P1 POS quota enforcement, P2 Gate offline queue/idempotency sync, P3 customer share/status UX, and P4 E2E docs/test scaffold are done |
 
-**สรุป:** ✅ Phase 0-9, 11-12 เสร็จสมบูรณ์ (100%) และ 📋 Phase 13 กำลังเดินต่อ โดย P0 share-token backend, P1 POS quota enforcement, และ P2 Gate offline queue/idempotency sync เสร็จแล้ว
+**สรุป:** ✅ Phase 0-9, 11-12, และ 13 เสร็จสมบูรณ์ (100%)
 
 ---
 
@@ -2516,6 +2515,8 @@ final coupons = await PosDiscountService.getVisibleCouponsForPOS();
 | v1.1.6 | 21 พ.ค. 2569 | Cascade | Implement P0 share-token backend: schema, RPC, service/model, and admin/customer wiring for group coupons | Phase 13 P0 = ✅ |
 | v1.1.7 | 21 พ.ค. 2569 | Cascade | Implement P1 POS quota enforcement: customer-context validation, per-member reuse checks, active share token gating, and token consumption on usage | Phase 13 P1 = ✅ |
 | v1.1.8 | 21 พ.ค. 2569 | Cascade | Implement P2 Gate offline queue and idempotency sync: queue file replay, duplicate guards, and scanner wiring | Phase 13 P2 = ✅ |
+| v1.1.9 | 21 พ.ค. 2569 | Cascade | Implement P3 customer share/status UX: active share-token visibility, used/remaining counts, status badges, and history sheet enrichment | Phase 13 P3 = ✅ |
+| v1.2.0 | 21 พ.ค. 2569 | Cascade | Implement P4 E2E testing package: daily coupon test plan, daily coupon workflow scaffold, and roadmap sync | Phase 13 P4 = ✅, Phase 13 = ✅ |
 
 ## กติกาการอัปเดต
 

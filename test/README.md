@@ -81,6 +81,7 @@ flutter test
 flutter test test/services/inventory_service_test.dart
 flutter test test/services/procurement_service_test.dart
 flutter test test/widgets/batch_management_widget_test.dart
+flutter test test/e2e/daily_coupon_workflow_e2e_test.dart
 ```
 
 ### Run Specific Test Group
@@ -93,6 +94,10 @@ flutter test test/services/procurement_service_test.dart -k "Supplier Performanc
 ```bash
 flutter test --coverage
 ```
+
+### Daily Coupon E2E Checks
+- `test/e2e/daily_coupon_workflow_e2e_test.dart` — scaffold for customer share status, gate scan, and history visibility
+- `docs/PHASE_13_DAILY_COUPON_E2E_TEST_PLAN.md` — manual and automation-oriented acceptance plan for Phase 13
 
 ---
 

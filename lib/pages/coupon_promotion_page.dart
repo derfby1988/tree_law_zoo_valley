@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../theme/app_design_system.dart';
 import '../services/pos_promotion_service.dart';
 import '../services/daily_coupon_share_token_service.dart';
+import '../models/daily_coupon_share_token_model.dart';
 import '../services/pos_discount_service.dart';
 import '../services/daily_coupon_entry_service.dart';
 import '../services/pos_coupon_qr_service.dart';
@@ -22,6 +23,7 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
   bool _isLoading = false;
   List<PosDiscount> _coupons = [];
   List<PosPromotion> _promotions = [];
+  Map<String, DailyCouponShareToken> _activeShareTokens = {};
   String? _errorMessage;
   Color _userGroupColor = AppDesignSystem.primary;
 
@@ -48,7 +50,7 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -69,21 +71,176 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
     );
   }
 
+  Widget _buildShareTokenStatusCard({
+    required PosDiscount coupon,
+    DailyCouponShareToken? token,
+  }) {
+    if (!DailyCouponShareTokenService.isGroupShareable(coupon)) {
+      return const SizedBox.shrink();
+    }
+
+    final currentToken = token;
+    if (currentToken == null) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.grey.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.group_off_outlined, color: Colors.black54, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'ยังไม่มี share token สำหรับคูปองนี้ กด “แชร์ให้สมาชิก” เพื่อสร้าง token และติดตามจำนวนที่ใช้แล้ว/เหลือได้ทันที',
+                style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final progress = currentToken.maxUses <= 0
+        ? 0.0
+        : (currentToken.usesCount / currentToken.maxUses).clamp(0.0, 1.0);
+    final statusColor = currentToken.isActive ? Colors.green : Colors.red;
+    final statusLabel = currentToken.isActive ? 'ใช้งานได้' : 'หมดอายุ/ถูกยกเลิก';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: statusColor.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'สถานะการแชร์',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  statusLabel,
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: statusColor),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'ใช้แล้ว ${currentToken.usesCount}/${currentToken.maxUses} • เหลือ ${currentToken.remainingUses}',
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 8,
+              backgroundColor: Colors.grey.withValues(alpha: 0.12),
+              valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildDailyBadge(
+                label: 'สมาชิก ${currentToken.groupSize} คน',
+                icon: Icons.groups_2_outlined,
+                color: AppDesignSystem.primary,
+              ),
+              _buildDailyBadge(
+                label: 'หมดอายุ ${_formatDate(currentToken.expiresAt)}',
+                icon: Icons.schedule_outlined,
+                color: Colors.indigo,
+              ),
+              if (currentToken.lastUsedAt != null)
+                _buildDailyBadge(
+                  label: 'ใช้ล่าสุด ${_formatDate(currentToken.lastUsedAt!)}',
+                  icon: Icons.history,
+                  color: Colors.teal,
+                ),
+            ],
+          ),
+          if ((currentToken.lastUsedMemberIdentifier ?? '').isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'สมาชิกล่าสุด: ${currentToken.lastUsedMemberIdentifier}',
+              style: TextStyle(fontSize: 11, color: Colors.grey[700]),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<Map<String, DailyCouponShareToken>> _loadActiveShareTokens(List<PosDiscount> coupons) async {
+    final shareableCoupons = coupons.where(DailyCouponShareTokenService.isGroupShareable).toList();
+    if (shareableCoupons.isEmpty) {
+      return {};
+    }
+
+    final results = await Future.wait(
+      shareableCoupons.map((coupon) async {
+        final token = await DailyCouponShareTokenService.getActiveShareToken(coupon.id);
+        return MapEntry(coupon.id, token);
+      }),
+    );
+
+    return {
+      for (final entry in results)
+        if (entry.value != null) entry.key: entry.value!,
+    };
+  }
+
   Future<void> _shareDailyCoupon(PosDiscount coupon) async {
     String shareText = coupon.couponCode ?? coupon.id;
+    DailyCouponShareToken? token;
 
     if (DailyCouponShareTokenService.isGroupShareable(coupon)) {
-      final token = await DailyCouponShareTokenService.createOrRefreshShareToken(coupon: coupon);
+      token = await DailyCouponShareTokenService.createOrRefreshShareToken(coupon: coupon);
       if (token != null) {
         shareText = DailyCouponShareTokenService.buildShareClipboardText(token, coupon: coupon);
       }
+    }
+
+    if (!mounted) return;
+    if (token != null) {
+      setState(() {
+        _activeShareTokens = {
+          ..._activeShareTokens,
+          coupon.id: token!,
+        };
+      });
     }
 
     await Clipboard.setData(ClipboardData(text: shareText));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('คัดลอกข้อมูลแชร์สำหรับ ${coupon.name} แล้ว'),
+        content: Text(
+          token != null
+              ? 'คัดลอกข้อมูลแชร์สำหรับ ${coupon.name} แล้ว • ใช้แล้ว ${token.usesCount}/${token.maxUses} เหลือ ${token.remainingUses}'
+              : 'คัดลอกข้อมูลแชร์สำหรับ ${coupon.name} แล้ว',
+        ),
         duration: const Duration(seconds: 2),
       ),
     );
@@ -92,6 +249,7 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
   Future<void> _showDailyHistorySheet(PosDiscount coupon) async {
     final start = DateTime.now().subtract(const Duration(days: 7));
     final end = DateTime.now();
+    final activeToken = _activeShareTokens[coupon.id];
 
     await showModalBottomSheet(
       context: context,
@@ -152,6 +310,10 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
                         style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 16),
+                      if (DailyCouponShareTokenService.isGroupShareable(coupon)) ...[
+                        _buildShareTokenStatusCard(coupon: coupon, token: activeToken),
+                        const SizedBox(height: 16),
+                      ],
                       const Text('เข้า/ออกพื้นที่ (Gate)', style: TextStyle(fontWeight: FontWeight.w600)),
                       if (entryLogs.isEmpty)
                         const Padding(
@@ -267,6 +429,7 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
       // ดึงคูปองที่แสดงในแถบคูปองเท่านั้น (filter ตาม visibility)
       final coupons = await PosDiscountService.getVisibleCouponsForCouponTab(userGroupId: userGroupId);
       final promotions = await PosPromotionService.getAllPromotions();
+      final activeShareTokens = await _loadActiveShareTokens(coupons);
       
       debugPrint('Loaded ${coupons.length} coupons (visible in coupon tab)');
       debugPrint('Loaded ${promotions.length} promotions');
@@ -274,6 +437,7 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
       setState(() {
         _coupons = coupons;
         _promotions = promotions;
+        _activeShareTokens = activeShareTokens;
         _userGroupColor = groupColor;
         _isLoading = false;
       });
@@ -386,7 +550,7 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
         decoration: BoxDecoration(
           color: isSelected
               ? Colors.white
-              : Colors.white.withOpacity(0.2),
+              : Colors.white.withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(10),
           border: isSelected
               ? Border.all(color: AppDesignSystem.primary, width: 2)
@@ -425,14 +589,14 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
             Icon(
               Icons.local_offer_outlined,
               size: 64,
-              color: Colors.white.withOpacity(0.5),
+              color: Colors.white.withValues(alpha: 0.5),
             ),
             const SizedBox(height: 16),
             Text(
               'ไม่มีคูปองที่ใช้ได้',
               style: TextStyle(
                 fontSize: 16,
-                color: Colors.white.withOpacity(0.7),
+                color: Colors.white.withValues(alpha: 0.7),
               ),
             ),
           ],
@@ -480,14 +644,14 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
             Icon(
               Icons.celebration_outlined,
               size: 64,
-              color: Colors.white.withOpacity(0.5),
+              color: Colors.white.withValues(alpha: 0.5),
             ),
             const SizedBox(height: 16),
             Text(
               'ไม่มีโปรโมชั่นที่ใช้ได้',
               style: TextStyle(
                 fontSize: 16,
-                color: Colors.white.withOpacity(0.7),
+                color: Colors.white.withValues(alpha: 0.7),
               ),
             ),
           ],
@@ -559,6 +723,7 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
     final isGroup = audience == 'group';
     final groupSize = rule['group_size'];
     final entryArea = (rule['entry_area_name'] ?? '-').toString();
+    final activeToken = _activeShareTokens[coupon.id];
 
     return Container(
       decoration: BoxDecoration(
@@ -566,7 +731,7 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
         borderRadius: BorderRadius.circular(15),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -610,7 +775,7 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: AppDesignSystem.primary.withOpacity(0.1),
+                    color: AppDesignSystem.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
@@ -648,6 +813,10 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
                   ),
                 ],
               ),
+              if (isGroup) ...[
+                const SizedBox(height: 10),
+                _buildShareTokenStatusCard(coupon: coupon, token: activeToken),
+              ],
             ],
             const SizedBox(height: 12),
             Row(
@@ -709,7 +878,7 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
                       color: Colors.grey[50],
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: AppDesignSystem.primary.withOpacity(0.2),
+                        color: AppDesignSystem.primary.withValues(alpha: 0.2),
                         width: 1,
                       ),
                     ),
@@ -819,7 +988,7 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
         borderRadius: BorderRadius.circular(15),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -835,7 +1004,7 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
+                    color: color.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
@@ -879,7 +1048,7 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
                 color: Colors.grey[50],
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: color.withOpacity(0.2),
+                  color: color.withValues(alpha: 0.2),
                   width: 1,
                 ),
               ),
@@ -917,7 +1086,7 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: color.withOpacity(0.1),
+                      color: color.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
@@ -939,71 +1108,4 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
     );
   }
 
-  Widget _buildHistoryItem({
-    required String code,
-    required String title,
-    required String usedDate,
-    required String amount,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'รหัส: $code',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    usedDate,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey[500],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Text(
-              amount,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Colors.green,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
