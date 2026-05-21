@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/app_design_system.dart';
 import '../services/pos_promotion_service.dart';
+import '../services/daily_coupon_share_token_service.dart';
 import '../services/pos_discount_service.dart';
 import '../services/daily_coupon_entry_service.dart';
 import '../services/pos_coupon_qr_service.dart';
 import '../services/user_group_service.dart';
 import '../models/pos_promotion_model.dart';
 import '../models/pos_discount_model.dart';
-import '../models/user_group_model.dart';
 
 class CouponPromotionPage extends StatefulWidget {
   const CouponPromotionPage({super.key});
@@ -32,10 +32,7 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
   }
 
   Map<String, dynamic> _getTargetingRule(PosDiscount coupon) {
-    final rule = coupon.targetingRule;
-    if (rule is Map<String, dynamic>) return rule;
-    if (rule is Map) return Map<String, dynamic>.from(rule);
-    return const {};
+    return coupon.targetingRule;
   }
 
   bool _isDailyCoupon(PosDiscount coupon) {
@@ -73,8 +70,16 @@ class _CouponPromotionPageState extends State<CouponPromotionPage> {
   }
 
   Future<void> _shareDailyCoupon(PosDiscount coupon) async {
-    final payload = coupon.couponCode ?? coupon.id;
-    await Clipboard.setData(ClipboardData(text: payload));
+    String shareText = coupon.couponCode ?? coupon.id;
+
+    if (DailyCouponShareTokenService.isGroupShareable(coupon)) {
+      final token = await DailyCouponShareTokenService.createOrRefreshShareToken(coupon: coupon);
+      if (token != null) {
+        shareText = DailyCouponShareTokenService.buildShareClipboardText(token, coupon: coupon);
+      }
+    }
+
+    await Clipboard.setData(ClipboardData(text: shareText));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(

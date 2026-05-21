@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import 'package:tree_law_zoo_valley/models/daily_coupon_share_token_model.dart';
 import 'package:tree_law_zoo_valley/models/pos_discount_model.dart';
 import 'package:tree_law_zoo_valley/theme/app_design_system.dart';
 
@@ -19,6 +21,9 @@ class DailyCouponsTabWidget extends StatelessWidget {
     required this.onRefreshHistory,
     required this.historyRangeDays,
     required this.onHistoryRangeChanged,
+    required this.shareToken,
+    required this.isLoadingShareToken,
+    required this.onRefreshShareToken,
     this.dailyAlerts = const [],
   });
 
@@ -35,6 +40,9 @@ class DailyCouponsTabWidget extends StatelessWidget {
   final Future<void> Function() onRefreshHistory;
   final int historyRangeDays;
   final ValueChanged<int> onHistoryRangeChanged;
+  final DailyCouponShareToken? shareToken;
+  final bool isLoadingShareToken;
+  final Future<void> Function(PosDiscount coupon) onRefreshShareToken;
   final List<String> dailyAlerts;
 
   @override
@@ -69,6 +77,10 @@ class DailyCouponsTabWidget extends StatelessWidget {
                   onRefresh: onRefreshHistory,
                   historyRangeDays: historyRangeDays,
                   onHistoryRangeChanged: onHistoryRangeChanged,
+                  isGroupCoupon: _isGroupCoupon,
+                  shareToken: shareToken,
+                  isLoadingShareToken: isLoadingShareToken,
+                  onRefreshShareToken: onRefreshShareToken,
                   alerts: dailyAlerts,
                 ),
               ],
@@ -87,7 +99,7 @@ class DailyCouponsTabWidget extends StatelessWidget {
     return ListView.separated(
       padding: const EdgeInsets.all(16),
       itemCount: coupons.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 16),
+      separatorBuilder: (context, index) => const SizedBox(height: 16),
       itemBuilder: (context, index) {
         final coupon = coupons[index];
         final rule = getTargetingRule(coupon);
@@ -111,7 +123,7 @@ class DailyCouponsTabWidget extends StatelessWidget {
             Icon(
               Icons.qr_code_scanner,
               size: 72,
-              color: Colors.white.withOpacity(0.6),
+              color: Colors.white.withValues(alpha: 0.6),
             ),
             const SizedBox(height: 20),
             Text(
@@ -120,7 +132,7 @@ class DailyCouponsTabWidget extends StatelessWidget {
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
-                color: Colors.white.withOpacity(0.9),
+                color: Colors.white.withValues(alpha: 0.9),
               ),
             ),
             const SizedBox(height: 8),
@@ -129,11 +141,157 @@ class DailyCouponsTabWidget extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13,
-                color: Colors.white.withOpacity(0.8),
+                color: Colors.white.withValues(alpha: 0.8),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  bool _isGroupCoupon(PosDiscount? coupon) {
+    if (coupon == null) return false;
+    final map = coupon.targetingRule;
+    return (map['daily_unified_enabled'] == true && (map['coupon_audience'] ?? 'individual').toString() == 'group');
+  }
+}
+
+class _ShareTokenSummaryCard extends StatelessWidget {
+  const _ShareTokenSummaryCard({
+    required this.coupon,
+    required this.shareToken,
+    required this.isLoading,
+    required this.onRefreshShareToken,
+  });
+
+  final PosDiscount? coupon;
+  final DailyCouponShareToken? shareToken;
+  final bool isLoading;
+  final Future<void> Function(PosDiscount coupon) onRefreshShareToken;
+
+  @override
+  Widget build(BuildContext context) {
+    final currentCoupon = coupon;
+    final activeToken = shareToken;
+    if (currentCoupon == null) return const SizedBox.shrink();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: isLoading
+          ? const Center(child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: CircularProgressIndicator(),
+            ))
+          : activeToken == null
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Share token สำหรับคูปองรายกลุ่ม', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Text(
+                      'ยังไม่มี token ที่ active สำหรับ ${currentCoupon.name}',
+                      style: const TextStyle(fontSize: 12, color: Colors.black54),
+                    ),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: OutlinedButton.icon(
+                        onPressed: () => onRefreshShareToken(currentCoupon),
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('สร้าง/รีเฟรช token'),
+                      ),
+                    ),
+                  ],
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Share token สำหรับคูปองรายกลุ่ม', style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text(
+                          activeToken.isActive ? 'ใช้งานได้' : 'หมดอายุ/ถูกยกเลิก',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: activeToken.isActive ? Colors.green : Colors.red,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    SelectableText(
+                      activeToken.shareToken,
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 1),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _TokenChip(label: 'ใช้แล้ว ${activeToken.usesCount}/${activeToken.maxUses}'),
+                        _TokenChip(label: 'สมาชิก ${activeToken.groupSize} คน'),
+                        _TokenChip(label: 'เหลือ ${activeToken.remainingUses}'),
+                        _TokenChip(label: 'หมดอายุ ${_formatDateTime(activeToken.expiresAt)}'),
+                      ],
+                    ),
+                    if ((activeToken.revokedReason ?? '').isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text('เหตุผล: ${activeToken.revokedReason}', style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                    ],
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        TextButton.icon(
+                          onPressed: () async {
+                            await Clipboard.setData(ClipboardData(
+                              text: 'คูปองรายวัน ${currentCoupon.name}\nรหัสแชร์: ${activeToken.shareToken}\nใช้แล้ว: ${activeToken.usesCount}/${activeToken.maxUses}\nสมาชิกต่อกลุ่ม: ${activeToken.groupSize} คน\nหมดอายุ: ${_formatDateTime(activeToken.expiresAt)}',
+                            ));
+                          },
+                          icon: const Icon(Icons.copy_outlined),
+                          label: const Text('คัดลอก token'),
+                        ),
+                        const Spacer(),
+                        OutlinedButton.icon(
+                          onPressed: () => onRefreshShareToken(currentCoupon),
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('รีเฟรช token'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+    );
+  }
+
+  static String _formatDateTime(DateTime date) {
+    return '${date.day}/${date.month}/${date.year + 543} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+  }
+}
+
+class _TokenChip extends StatelessWidget {
+  const _TokenChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppDesignSystem.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
       ),
     );
   }
@@ -151,6 +309,10 @@ class _DailyHistoryTab extends StatelessWidget {
     required this.onRefresh,
     required this.historyRangeDays,
     required this.onHistoryRangeChanged,
+    required this.isGroupCoupon,
+    required this.shareToken,
+    required this.isLoadingShareToken,
+    required this.onRefreshShareToken,
     this.alerts = const [],
   });
 
@@ -164,6 +326,10 @@ class _DailyHistoryTab extends StatelessWidget {
   final Future<void> Function() onRefresh;
   final int historyRangeDays;
   final ValueChanged<int> onHistoryRangeChanged;
+  final bool Function(PosDiscount? coupon) isGroupCoupon;
+  final DailyCouponShareToken? shareToken;
+  final bool isLoadingShareToken;
+  final Future<void> Function(PosDiscount coupon) onRefreshShareToken;
   final List<String> alerts;
 
   static const _rangeOptions = [1, 3, 7, 30];
@@ -185,7 +351,7 @@ class _DailyHistoryTab extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         children: [
           DropdownButtonFormField<PosDiscount>(
-            value: selectedCoupon,
+            initialValue: selectedCoupon,
             decoration: const InputDecoration(
               labelText: 'เลือกคูปอง',
               border: OutlineInputBorder(),
@@ -221,9 +387,9 @@ class _DailyHistoryTab extends StatelessWidget {
                       margin: const EdgeInsets.only(bottom: 8),
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.orange.withOpacity(0.15),
+                        color: Colors.orange.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.orange.withOpacity(0.4)),
+                        border: Border.all(color: Colors.orange.withValues(alpha: 0.4)),
                       ),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -251,6 +417,15 @@ class _DailyHistoryTab extends StatelessWidget {
               style: TextStyle(color: Colors.white70),
             )
           else ...[
+            if (isGroupCoupon(selectedCoupon)) ...[
+              _ShareTokenSummaryCard(
+                coupon: selectedCoupon,
+                shareToken: shareToken,
+                isLoading: isLoadingShareToken,
+                onRefreshShareToken: onRefreshShareToken,
+              ),
+              const SizedBox(height: 16),
+            ],
             _HistorySummaryCard(entrySummary: entrySummary),
             const SizedBox(height: 20),
             _HistorySectionTitle(title: 'ประวัติการเข้า/ออกพื้นที่ (Gate)'),
@@ -286,7 +461,7 @@ class _HistorySummaryCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.95),
+        color: Colors.white.withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
@@ -330,7 +505,7 @@ class _EmptyHistoryLabel extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: Text(
         message,
-        style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 12),
+        style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 12),
       ),
     );
   }
@@ -494,7 +669,7 @@ class _DailyCouponCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withValues(alpha: 0.08),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -644,7 +819,7 @@ class _InfoChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -679,7 +854,7 @@ class _QuotaTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.grey[50],
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.withOpacity(0.2)),
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -716,7 +891,7 @@ class _TimelineTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.grey[50],
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.withOpacity(0.2)),
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -781,7 +956,7 @@ class _StatusPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(

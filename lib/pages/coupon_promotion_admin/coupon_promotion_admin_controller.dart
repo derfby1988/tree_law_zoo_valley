@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 
+import 'package:tree_law_zoo_valley/models/daily_coupon_share_token_model.dart';
 import 'package:tree_law_zoo_valley/services/daily_coupon_entry_service.dart';
+import 'package:tree_law_zoo_valley/services/daily_coupon_share_token_service.dart';
 import 'package:tree_law_zoo_valley/services/pos_discount_service.dart';
 import 'package:tree_law_zoo_valley/services/pos_promotion_service.dart';
 import 'package:tree_law_zoo_valley/services/inventory_service.dart';
@@ -59,16 +61,11 @@ class CouponPromotionAdminController extends ChangeNotifier {
   List<Map<String, dynamic>> dailyPosHistory = [];
   Map<String, dynamic>? dailyEntrySummary;
   List<String> dailyAlerts = [];
+  DailyCouponShareToken? selectedDailyShareToken;
+  bool isLoadingDailyShareToken = false;
 
   Map<String, dynamic> getTargetingRule(PosDiscount coupon) {
-    final rule = coupon.targetingRule;
-    if (rule is Map<String, dynamic>) {
-      return rule;
-    }
-    if (rule is Map) {
-      return Map<String, dynamic>.from(rule);
-    }
-    return const {};
+    return coupon.targetingRule;
   }
 
   bool _isDailyCoupon(PosDiscount coupon) {
@@ -105,9 +102,12 @@ class CouponPromotionAdminController extends ChangeNotifier {
         selectedDailyCoupon = dailyCoupons.first;
       } else if (dailyCoupons.isEmpty) {
         selectedDailyCoupon = null;
+        selectedDailyShareToken = null;
+        isLoadingDailyShareToken = false;
         dailyEntryLogs = [];
         dailyPosHistory = [];
         dailyEntrySummary = null;
+        dailyAlerts = [];
       }
       isLoading = false;
       notifyListeners();
@@ -232,8 +232,8 @@ class CouponPromotionAdminController extends ChangeNotifier {
         ),
       ]);
 
-      expiringProducts = results[0] as List<Map<String, dynamic>>;
-      expiringIngredients = results[1] as List<Map<String, dynamic>>;
+      expiringProducts = List<Map<String, dynamic>>.from(results[0]);
+      expiringIngredients = List<Map<String, dynamic>>.from(results[1]);
       isLoadingExpiry = false;
       notifyListeners();
     } catch (e) {
@@ -438,6 +438,8 @@ class CouponPromotionAdminController extends ChangeNotifier {
 
   void selectDailyCouponForHistory(PosDiscount? coupon) {
     selectedDailyCoupon = coupon;
+    selectedDailyShareToken = null;
+    isLoadingDailyShareToken = false;
     notifyListeners();
     if (coupon != null) {
       loadDailyCouponHistory();
@@ -445,6 +447,7 @@ class CouponPromotionAdminController extends ChangeNotifier {
       dailyEntryLogs = [];
       dailyPosHistory = [];
       dailyEntrySummary = null;
+      dailyAlerts = [];
       notifyListeners();
     }
   }
@@ -462,6 +465,7 @@ class CouponPromotionAdminController extends ChangeNotifier {
     final target = selectedDailyCoupon;
     if (target == null) return;
     isLoadingDailyHistory = true;
+    isLoadingDailyShareToken = DailyCouponShareTokenService.isGroupShareable(target);
     notifyListeners();
 
     final now = DateTime.now();
@@ -469,6 +473,10 @@ class CouponPromotionAdminController extends ChangeNotifier {
     final end = now;
 
     try {
+      final activeShareTokenFuture = DailyCouponShareTokenService.isGroupShareable(target)
+          ? DailyCouponShareTokenService.getActiveShareToken(target.id)
+          : Future<DailyCouponShareToken?>.value(null);
+
       final results = await Future.wait([
         DailyCouponEntryService.getEntryLogs(
           discountId: target.id,
@@ -487,18 +495,50 @@ class CouponPromotionAdminController extends ChangeNotifier {
           discountId: target.id,
           limit: 120,
         ),
+        activeShareTokenFuture,
       ]);
 
       dailyEntryLogs = results[0] as List<Map<String, dynamic>>;
       dailyEntrySummary = results[1] as Map<String, dynamic>;
       dailyPosHistory = (results[2] as List).cast<Map<String, dynamic>>();
+      selectedDailyShareToken = results[3] as DailyCouponShareToken?;
       dailyAlerts = _computeDailyAlerts(target);
       isLoadingDailyHistory = false;
+      isLoadingDailyShareToken = false;
       notifyListeners();
     } catch (e) {
       debugPrint('Error loadDailyCouponHistory: $e');
       isLoadingDailyHistory = false;
+      selectedDailyShareToken = null;
+      isLoadingDailyShareToken = false;
       dailyAlerts = [];
+      notifyListeners();
+    }
+  }
+
+  Future<DailyCouponShareToken?> createOrRefreshDailyCouponShareToken({
+    PosDiscount? coupon,
+    bool forceNew = false,
+  }) async {
+    final target = coupon ?? selectedDailyCoupon;
+    if (target == null) return null;
+
+    isLoadingDailyShareToken = true;
+    notifyListeners();
+
+    try {
+      final token = await DailyCouponShareTokenService.createOrRefreshShareToken(
+        coupon: target,
+        forceNew: forceNew,
+      );
+      selectedDailyShareToken = token;
+      return token;
+    } catch (e) {
+      debugPrint('Error createOrRefreshDailyCouponShareToken: $e');
+      selectedDailyShareToken = null;
+      return null;
+    } finally {
+      isLoadingDailyShareToken = false;
       notifyListeners();
     }
   }

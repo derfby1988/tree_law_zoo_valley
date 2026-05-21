@@ -289,6 +289,11 @@ class _CouponPromotionAdminViewState extends State<_CouponPromotionAdminView>
           onRefreshHistory: () async => controller.loadDailyCouponHistory(),
           historyRangeDays: ctrl.dailyHistoryRangeDays,
           onHistoryRangeChanged: controller.setDailyHistoryRange,
+          shareToken: ctrl.selectedDailyShareToken,
+          isLoadingShareToken: ctrl.isLoadingDailyShareToken,
+          onRefreshShareToken: (coupon) async {
+            await controller.createOrRefreshDailyCouponShareToken(coupon: coupon, forceNew: true);
+          },
           dailyAlerts: ctrl.dailyAlerts,
           onViewDetail: (coupon) => _showDailyCouponInfo(context, coupon),
         );
