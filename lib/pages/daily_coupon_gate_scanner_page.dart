@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:tree_law_zoo_valley/models/pos_discount_model.dart';
+import 'package:tree_law_zoo_valley/services/daily_coupon_gate_sync_service.dart';
 import 'package:tree_law_zoo_valley/services/daily_coupon_entry_service.dart';
 import 'package:tree_law_zoo_valley/services/pos_coupon_qr_service.dart';
 import 'package:tree_law_zoo_valley/services/pos_discount_service.dart';
@@ -16,6 +19,7 @@ class DailyCouponGateScannerPage extends StatefulWidget {
 class _DailyCouponGateScannerPageState extends State<DailyCouponGateScannerPage> {
   final TextEditingController _qrController = TextEditingController();
   final TextEditingController _memberCtrl = TextEditingController();
+  Timer? _syncTimer;
   bool _isProcessing = false;
   String _direction = 'enter';
   QRValidationResult? _qrResult;
@@ -26,10 +30,37 @@ class _DailyCouponGateScannerPageState extends State<DailyCouponGateScannerPage>
   List<Map<String, dynamic>> _recentEntryLogs = [];
 
   @override
+  void initState() {
+    super.initState();
+    _kickOffQueueSync();
+    _syncTimer = Timer.periodic(const Duration(seconds: 45), (_) {
+      _syncQueuedEvents(silent: true);
+    });
+  }
+
+  @override
   void dispose() {
+    _syncTimer?.cancel();
     _qrController.dispose();
     _memberCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _kickOffQueueSync() async {
+    await _syncQueuedEvents(silent: true);
+  }
+
+  Future<void> _syncQueuedEvents({bool silent = false}) async {
+    await DailyCouponGateSyncService.pruneExpiredQueue();
+    final synced = await DailyCouponGateSyncService.syncQueuedEvents();
+
+    if (!mounted) return;
+    if (!silent && synced) {
+      setState(() {
+        _statusMessage = 'ซิงก์รายการค้างเรียบร้อยแล้ว';
+        _statusColor = Colors.green;
+      });
+    }
   }
 
   Future<void> _loadRecentEntries(String discountId) async {
@@ -37,6 +68,7 @@ class _DailyCouponGateScannerPageState extends State<DailyCouponGateScannerPage>
       discountId: discountId,
       limit: 20,
     );
+    if (!mounted) return;
     setState(() => _recentEntryLogs = logs);
   }
 
@@ -78,9 +110,7 @@ class _DailyCouponGateScannerPageState extends State<DailyCouponGateScannerPage>
         return;
       }
 
-      final rule = coupon.targetingRule is Map<String, dynamic>
-          ? coupon.targetingRule
-          : <String, dynamic>{};
+      final rule = Map<String, dynamic>.from(coupon.targetingRule);
 
       setState(() {
         _qrResult = qrResult;
@@ -109,36 +139,61 @@ class _DailyCouponGateScannerPageState extends State<DailyCouponGateScannerPage>
 
     final entryArea = _targetingRule['entry_area_name']?.toString() ?? 'Unknown area';
     final member = _memberCtrl.text.trim().isEmpty ? null : _memberCtrl.text.trim();
+    final qrData = _qrController.text.trim();
 
-    final success = await DailyCouponEntryService.logEntry(
-      discountId: coupon.id,
-      couponCode: coupon.couponCode,
-      couponAudience: _targetingRule['coupon_audience']?.toString(),
-      memberIdentifier: member,
+    if (qrData.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _statusMessage = 'กรุณาวางข้อมูล QR ก่อนบันทึก';
+        _statusColor = Colors.red;
+      });
+      return;
+    }
+
+    if ((_targetingRule['coupon_audience']?.toString() ?? 'individual') == 'group' &&
+        (member == null || member.isEmpty)) {
+      if (!mounted) return;
+      setState(() {
+        _statusMessage = 'คูปองรายกลุ่มต้องระบุสมาชิกก่อนบันทึก';
+        _statusColor = Colors.red;
+      });
+      return;
+    }
+
+    setState(() => _isProcessing = true);
+
+    final result = await DailyCouponGateSyncService.processGateScan(
+      qrData: qrData,
+      memberIdentifier: member ?? '',
       entryArea: entryArea,
+      scannedBy: null,
       gateId: 'admin_gate',
       direction: _direction,
-      status: status,
-      reasonCode: status == 'valid' ? null : 'MANUAL_OVERRIDE',
-      metadata: {
-        'kv': _qrResult?.keyVersion,
-        'nonce': _qrResult?.nonce,
-        'issued_at': _qrResult?.issuedAt,
+      deviceInfo: {
+        'source': 'daily_coupon_gate_scanner_page',
+        'status': status,
       },
     );
 
-    if (success) {
+    if (!mounted) return;
+    setState(() => _isProcessing = false);
+
+    if (!result.succeeded) {
       setState(() {
-        _statusMessage = 'บันทึกการ${_direction == 'enter' ? 'เข้า' : 'ออก'}สำเร็จ';
-        _statusColor = Colors.green;
-      });
-      await _loadRecentEntries(coupon.id);
-    } else {
-      setState(() {
-        _statusMessage = 'บันทึกไม่สำเร็จ';
+        _statusMessage = result.errorMessage ?? 'บันทึกไม่สำเร็จ';
         _statusColor = Colors.red;
       });
+      return;
     }
+
+    setState(() {
+      _statusMessage = result.statusMessage ?? 'บันทึกการ${_direction == 'enter' ? 'เข้า' : 'ออก'}สำเร็จ';
+      _statusColor = Colors.green;
+    });
+
+    await _loadRecentEntries(coupon.id);
+
+    await _syncQueuedEvents(silent: true);
   }
 
   @override
@@ -176,7 +231,7 @@ class _DailyCouponGateScannerPageState extends State<DailyCouponGateScannerPage>
               children: [
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    value: _direction,
+                    initialValue: _direction,
                     decoration: const InputDecoration(
                       labelText: 'ทิศทาง',
                       border: OutlineInputBorder(),
@@ -228,7 +283,7 @@ class _DailyCouponGateScannerPageState extends State<DailyCouponGateScannerPage>
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: _statusColor.withOpacity(0.15),
+                  color: _statusColor.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(

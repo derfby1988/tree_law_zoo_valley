@@ -1,9 +1,26 @@
 import 'package:flutter/foundation.dart';
-import 'package:postgrest/postgrest.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class DailyCouponEntryService {
   static final SupabaseClient _client = Supabase.instance.client;
+
+  static Future<bool> hasLoggedEntry(String idempotencyKey) async {
+    try {
+      if (idempotencyKey.trim().isEmpty) return false;
+
+      final response = await _client
+          .from('daily_coupon_entry_logs')
+          .select('id')
+          .contains('metadata', {'idempotency_key': idempotencyKey})
+          .limit(1)
+          .maybeSingle();
+
+      return response != null;
+    } catch (e) {
+      debugPrint('Error hasLoggedEntry: $e');
+      return false;
+    }
+  }
 
   static Future<List<Map<String, dynamic>>> getEntryLogs({
     required String discountId,
@@ -101,8 +118,21 @@ class DailyCouponEntryService {
     String? scannedBy,
     Map<String, dynamic>? deviceInfo,
     Map<String, dynamic>? metadata,
+    String? idempotencyKey,
   }) async {
     try {
+      if (idempotencyKey != null && idempotencyKey.isNotEmpty) {
+        final alreadyLogged = await hasLoggedEntry(idempotencyKey);
+        if (alreadyLogged) {
+          return true;
+        }
+      }
+
+      final mergedMetadata = <String, dynamic>{
+        if (metadata != null) ...metadata,
+        if (idempotencyKey != null && idempotencyKey.isNotEmpty) 'idempotency_key': idempotencyKey,
+      };
+
       final payload = {
         'discount_id': discountId,
         'coupon_code': couponCode,
@@ -115,7 +145,7 @@ class DailyCouponEntryService {
         'reason_code': reasonCode,
         'scanned_by': scannedBy,
         'device_info': deviceInfo,
-        'metadata': metadata,
+        'metadata': mergedMetadata.isEmpty ? null : mergedMetadata,
       }..removeWhere((key, value) => value == null);
 
       await _client.from('daily_coupon_entry_logs').insert(payload);
