@@ -1,9 +1,106 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../models/daily_coupon_share_token_model.dart';
 import '../models/pos_discount_model.dart';
 
 class PosDiscountService {
   static final _client = Supabase.instance.client;
+
+  static Map<String, dynamic> _targetingRule(PosDiscount discount) {
+    return discount.targetingRule;
+  }
+
+  static bool _isDailyGroupCoupon(PosDiscount discount) {
+    final rule = _targetingRule(discount);
+    return rule['daily_unified_enabled'] == true &&
+        (rule['coupon_audience'] ?? 'individual').toString() == 'group';
+  }
+
+  static Future<DailyCouponShareToken?> _getActiveDailyShareToken(String discountId) async {
+    try {
+      final response = await _client.rpc(
+        'get_active_daily_coupon_share_token',
+        params: {'p_discount_id': discountId},
+      );
+
+      if (response == null) return null;
+      if (response is Map) {
+        final map = Map<String, dynamic>.from(response);
+        if ((map['id']?.toString() ?? '').isEmpty && (map['share_token']?.toString() ?? '').isEmpty) {
+          return null;
+        }
+        return DailyCouponShareToken.fromMap(map);
+      }
+      if (response is List && response.isNotEmpty && response.first is Map) {
+        final map = Map<String, dynamic>.from(response.first as Map);
+        if ((map['id']?.toString() ?? '').isEmpty && (map['share_token']?.toString() ?? '').isEmpty) {
+          return null;
+        }
+        return DailyCouponShareToken.fromMap(map);
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Error _getActiveDailyShareToken: $e');
+      return null;
+    }
+  }
+
+  static Future<int> _countDiscountUsageForCustomer({
+    required String discountId,
+    required String customerId,
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    try {
+      var query = _client
+          .from('pos_order_discounts')
+          .select('discount_id, applied_at, pos_orders!inner(customer_id)')
+          .eq('discount_id', discountId)
+          .eq('pos_orders.customer_id', customerId);
+
+      if (startDate != null) {
+        query = query.gte('applied_at', startDate.toIso8601String());
+      }
+      if (endDate != null) {
+        query = query.lte('applied_at', endDate.toIso8601String());
+      }
+
+      final response = await query;
+      return (response as List).length;
+    } catch (e) {
+      debugPrint('Error _countDiscountUsageForCustomer: $e');
+      return 0;
+    }
+  }
+
+  static Future<bool> _consumeActiveDailyShareToken({
+    required String discountId,
+    String? customerId,
+    String? channel,
+  }) async {
+    try {
+      final token = await _getActiveDailyShareToken(discountId);
+      if (token == null) return false;
+      if (!token.isActive || token.remainingUses <= 0) return false;
+
+      final response = await _client.rpc(
+        'consume_daily_coupon_share_token',
+        params: {
+          'p_share_token': token.shareToken,
+          'p_member_identifier': customerId,
+          'p_channel': channel,
+          'p_metadata': {
+            'source': 'pos_discount_usage',
+          },
+        },
+      );
+
+      return response != null;
+    } catch (e) {
+      debugPrint('Error _consumeActiveDailyShareToken: $e');
+      return false;
+    }
+  }
 
   // =============================================
   // Discount Management
@@ -386,7 +483,7 @@ class PosDiscountService {
     String channel = 'pos',
   }) async {
     try {
-      final now = DateTime.now().toIso8601String();
+      customerId = customerId?.trim();
 
       // Find discount by coupon code
       final response = await _client
@@ -444,6 +541,56 @@ class PosDiscountService {
         return null;
       }
 
+      final isDailyGroupCoupon = _isDailyGroupCoupon(discount);
+      if (isDailyGroupCoupon) {
+        if (customerId == null || customerId.isEmpty) {
+          debugPrint('Daily group coupon requires customer context');
+          return null;
+        }
+
+        final activeShareToken = await _getActiveDailyShareToken(discount.id);
+        if (activeShareToken == null || !activeShareToken.isActive || activeShareToken.remainingUses <= 0) {
+          debugPrint('Daily group coupon share token exhausted or missing');
+          return null;
+        }
+
+        final customerUsage = await _countDiscountUsageForCustomer(
+          discountId: discount.id,
+          customerId: customerId,
+        );
+        if (customerUsage > 0) {
+          debugPrint('Customer already used this daily group coupon: $customerId');
+          return null;
+        }
+      } else {
+        if (discount.usageLimitPerCustomer != null && customerId != null && customerId.isNotEmpty) {
+          final customerUsage = await _countDiscountUsageForCustomer(
+            discountId: discount.id,
+            customerId: customerId,
+          );
+          if (customerUsage >= discount.usageLimitPerCustomer!) {
+            debugPrint('Per-customer usage limit reached: $customerUsage/${discount.usageLimitPerCustomer}');
+            return null;
+          }
+        }
+
+        if (discount.usageLimitPerDay != null && discount.usageLimitPerDay! > 0) {
+          final startOfDay = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+          final endOfDay = startOfDay.add(const Duration(days: 1));
+          final dailyUsage = await _countDiscountUsageForCustomer(
+            discountId: discount.id,
+            customerId: customerId ?? '',
+            startDate: startOfDay,
+            endDate: endOfDay,
+          );
+
+          if (dailyUsage >= discount.usageLimitPerDay!) {
+            debugPrint('Per-day usage limit reached: $dailyUsage/${discount.usageLimitPerDay}');
+            return null;
+          }
+        }
+      }
+
       // Validate channel
       if (discount.applicableChannels.isNotEmpty &&
           !discount.applicableChannels.contains(channel)) {
@@ -471,6 +618,7 @@ class PosDiscountService {
     required String discountId,
     required double discountAmount,
     required String appliedBy,
+    String? customerId,
     String? orderLineId,
     String? promotionId,
     String? couponCode,
@@ -497,6 +645,18 @@ class PosDiscountService {
 
       // Increment used_count on the discount
       await _client.rpc('increment_discount_usage', params: {'p_discount_id': discountId});
+
+      final discountResponse = await getDiscountById(discountId);
+      if (discountResponse != null && _isDailyGroupCoupon(discountResponse)) {
+        final consumed = await _consumeActiveDailyShareToken(
+          discountId: discountId,
+          customerId: customerId,
+          channel: 'pos',
+        );
+        if (!consumed) {
+          debugPrint('Daily group share token was not consumed for discount $discountId');
+        }
+      }
 
       return true;
     } catch (e) {

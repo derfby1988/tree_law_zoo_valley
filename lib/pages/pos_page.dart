@@ -1406,6 +1406,7 @@ class _PosPageState extends State<PosPage> {
               },
               orderAmount: _subtotal,
               appliedDiscounts: _appliedDiscounts,
+              customerId: _selectedCustomer?['id']?.toString(),
             ),
             const SizedBox(height: 12),
             Row(
@@ -2594,7 +2595,7 @@ class _PosPageState extends State<PosPage> {
                       )
                     : ListView.separated(
                         itemCount: heldOrders.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        separatorBuilder: (context, index) => const Divider(height: 1),
                         itemBuilder: (ctx, index) {
                           final order = heldOrders[index];
                           final heldAgo = DateTime.now().difference(order.heldAt);
@@ -2807,6 +2808,7 @@ class _PosPageState extends State<PosPage> {
             discountId: discountId,
             discountAmount: discountAmount,
             appliedBy: userName,
+            customerId: _selectedCustomer?['id']?.toString(),
             couponCode: couponCode,
             discountName: discountInfo?['name']?.toString() ?? '',
             discountType: discountInfo?['discount_type']?.toString() ?? 'fixed',

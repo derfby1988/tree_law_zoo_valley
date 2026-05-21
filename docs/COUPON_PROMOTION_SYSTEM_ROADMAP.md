@@ -2320,25 +2320,24 @@ final coupons = await PosDiscountService.getVisibleCouponsForPOS();
 ✅ ฝั่งลูกค้าเห็น badge รายวัน, ปุ่มคัดลอกรหัส/แชร์พื้นฐาน และ bottom sheet ประวัติ POS + Gate  
 ✅ Permission Page เพิ่ม tab/action สำหรับคูปองรายวัน (view, add, history, gate scanner)
 ✅ P0 Share Token backend เพิ่มแล้ว: มีตาราง `daily_coupon_share_tokens`, RPC create/refresh/consume, service/model, และ admin/customer UI wiring สำหรับคูปองรายกลุ่ม
+✅ P1 POS quota enforcement เพิ่มแล้ว: POS ตรวจ customer context, จำกัดการใช้ซ้ำต่อสมาชิก, ตรวจ active share token, และ consume token หลังบันทึก usage
 
 ### งานที่ยังค้างใน Phase 13
-- **P1:** POS ยังไม่บังคับ quota หรือกันการใช้ซ้ำต่อสมาชิก/กลุ่มอย่างครบถ้วน
 - **P2:** Gate Scanner ยังไม่มี offline queue และ idempotency sync ตามสเปก
 - **P3:** Customer UX สำหรับการแชร์และติดตามสถานะยังเป็น MVP และยังไม่แสดงจำนวนที่ใช้แล้ว/ที่เหลืออย่างชัดเจน
 - **P4:** ยังไม่มี end-to-end test plan และการอัปเดตเอกสาร Phase 13 ให้ครบถ้วน
 
 ### ช่องว่างสำคัญที่ยังไม่ปิด
 - P0 share token/back-end สำหรับคูปองรายกลุ่มทำแล้ว; งานที่เหลือคือการบังคับ quota ฝั่ง POS และ sync ฝั่ง Gate/UX
-- POS ยังไม่บังคับ quota/ตรวจการใช้ซ้ำต่อสมาชิก/กลุ่ม (เฉพาะ Gate เท่านั้นที่ log)
+- P1 POS quota enforcement ทำแล้ว; งานที่เหลือคือ sync ฝั่ง Gate/UX และการทดสอบ end-to-end
 - Gate Scanner ยังไม่มี offline queue + idempotency sync ตามสเปก
 - ประสบการณ์ลูกค้าสำหรับการแชร์สมาชิก/ติดตามสถานะยังเป็น MVP (ไม่แสดงเหลือ/รายชื่อชัดเจน)
 - ยังไม่ทำ end-to-end test plan & documentation update สำหรับ Phase 13
 
 ### ข้อเสนอขั้นถัดไป (Next Steps)
-1. **P1 POS Quota Enforcement** – เพิ่ม validation ฝั่ง POS ให้ตรวจจำนวนสมาชิกที่ใช้สิทธิ์, share token misuse, และบันทึก log ตามกติกา group/individual
-2. **P2 Offline & Idempotent Gate Flow** – เพิ่ม offline queue ใน Gate Scanner รวมถึง hash/idempotency window เพื่อกันการยิงซ้ำและ sync เมื่อต่อเน็ต
-3. **P3 Customer Share UX** – ปรับหน้าแสดงคูปองลูกค้าให้โชว์จำนวนสมาชิกที่ใช้แล้ว/เหลือ, ปุ่มแชร์ token จริง, และประวัติ timeline บนการ์ดหรือหน้า detail
-4. **P4 E2E Testing & Documentation** – เขียน test plan ครอบคลุม flow รายวัน (สร้าง → แชร์ → สแกน Gate → ใช้ POS → ตรวจ log), อัปเดตเอกสาร Phase 13 และ checklist governance
+1. **P2 Offline & Idempotent Gate Flow** – เพิ่ม offline queue ใน Gate Scanner รวมถึง hash/idempotency window เพื่อกันการยิงซ้ำและ sync เมื่อต่อเน็ต
+2. **P3 Customer Share UX** – ปรับหน้าแสดงคูปองลูกค้าให้โชว์จำนวนสมาชิกที่ใช้แล้ว/เหลือ, ปุ่มแชร์ token จริง, และประวัติ timeline บนการ์ดหรือหน้า detail
+3. **P4 E2E Testing & Documentation** – เขียน test plan ครอบคลุม flow รายวัน (สร้าง → แชร์ → สแกน Gate → ใช้ POS → ตรวจ log), อัปเดตเอกสาร Phase 13 และ checklist governance
 
 ## Field Spec (reuse-first)
 | กลุ่ม | Field | แหล่งข้อมูล | หมายเหตุ |
@@ -2496,9 +2495,9 @@ final coupons = await PosDiscountService.getVisibleCouponsForPOS();
 | Phase 10: Advanced Analytics | ⏸️ On Hold | 0% | พักไว้ก่อนเพราะยังไม่มีข้อมูลสำหรับทดสอบ |
 | Phase 11: QR Code System | ✅ เสร็จ | 100% | QR Code สำหรับคูปอง + โปรโมชัน |
 | Phase 12: Coupon Visibility Control | ✅ เสร็จ | 100% | ควบคุมการแสดงคูปองในแต่ละหน้า UI |
-| Phase 13: Daily Unified Coupon Admin Tab | � In Progress | 20% | P0 share token backend done; remaining work is POS quota enforcement, offline sync, customer share UX, and E2E docs |
+| Phase 13: Daily Unified Coupon Admin Tab | 🔄 In Progress | 20% | P0 share token backend done; remaining work is POS quota enforcement, offline sync, customer share UX, and E2E docs |
 
-**สรุป:** ✅ Phase 0-9, 11-12 เสร็จสมบูรณ์ (100%) และ 📋 Phase 13 กำลังเดินต่อ โดย P0 share-token backend เสร็จแล้ว
+**สรุป:** ✅ Phase 0-9, 11-12 เสร็จสมบูรณ์ (100%) และ 📋 Phase 13 กำลังเดินต่อ โดย P0 share-token backend และ P1 POS quota enforcement เสร็จแล้ว
 
 ---
 
@@ -2517,6 +2516,7 @@ final coupons = await PosDiscountService.getVisibleCouponsForPOS();
 | v1.1.4 | 18 พ.ค. 2569 | Cascade | เพิ่มนโยบาย Admin-first และแถบใหม่ `คูปองรายวันแบบรวมสิทธิ์` เพื่อให้แอดมินกำหนดทุกกติกาได้เอง | เพิ่มแผน Phase 13 = 📋 Planned |
 | v1.1.5 | 18 พ.ค. 2569 | Cascade | บันทึกสเปก Phase 13 (ฟิลด์, UI flow, targeting_rule, test plan, UX ลูกค้า) ครบถ้วน | Phase 13 พร้อมเข้าสู่ implementation |
 | v1.1.6 | 21 พ.ค. 2569 | Cascade | Implement P0 share-token backend: schema, RPC, service/model, and admin/customer wiring for group coupons | Phase 13 P0 = ✅ |
+| v1.1.7 | 21 พ.ค. 2569 | Cascade | Implement P1 POS quota enforcement: customer-context validation, per-member reuse checks, active share token gating, and token consumption on usage | Phase 13 P1 = ✅ |
 
 ## กติกาการอัปเดต
 

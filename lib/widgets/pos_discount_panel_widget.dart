@@ -15,6 +15,7 @@ class PosDiscountPanelWidget extends StatefulWidget {
   final Function(String) onDiscountRemoved;
   final double orderAmount;
   final List<Map<String, dynamic>> appliedDiscounts;
+  final String? customerId;
 
   const PosDiscountPanelWidget({
     super.key,
@@ -22,6 +23,7 @@ class PosDiscountPanelWidget extends StatefulWidget {
     required this.onDiscountRemoved,
     required this.orderAmount,
     this.appliedDiscounts = const [],
+    this.customerId,
   });
 
   @override
@@ -177,9 +179,11 @@ class _PosDiscountPanelWidgetState extends State<PosDiscountPanelWidget> {
     final discount = await PosDiscountService.validateCouponCode(
       couponCode: code,
       orderAmount: widget.orderAmount,
+      customerId: widget.customerId,
       channel: 'pos',
     );
 
+    if (!mounted) return;
     setState(() => _isApplyingCoupon = false);
 
     if (discount == null) {
@@ -195,6 +199,7 @@ class _PosDiscountPanelWidgetState extends State<PosDiscountPanelWidget> {
     // Calculate discount amount
     final discountAmount = discount.calculateDiscount(widget.orderAmount);
     if (discountAmount <= 0) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('ไม่สามารถใช้คูปองนี้กับยอดปัจจุบัน'),
@@ -316,6 +321,7 @@ class _PosDiscountPanelWidgetState extends State<PosDiscountPanelWidget> {
       scannedBy: null, // จะถูกเติมใน backend
     );
 
+    if (!mounted) return;
     setState(() => _isApplyingCoupon = false);
 
     if (!result.isValid) {
@@ -346,10 +352,12 @@ class _PosDiscountPanelWidgetState extends State<PosDiscountPanelWidget> {
     final discount = await PosDiscountService.validateCouponCode(
       couponCode: result.couponCode!,
       orderAmount: widget.orderAmount,
+      customerId: widget.customerId,
       channel: 'pos',
     );
 
     if (discount == null) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('ไม่พบคูปองในระบบ'),
@@ -362,6 +370,7 @@ class _PosDiscountPanelWidgetState extends State<PosDiscountPanelWidget> {
     // Calculate discount
     final discountAmount = discount.calculateDiscount(widget.orderAmount);
     if (discountAmount <= 0) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('ไม่สามารถใช้คูปองนี้กับยอดปัจจุบัน'),
@@ -379,6 +388,7 @@ class _PosDiscountPanelWidgetState extends State<PosDiscountPanelWidget> {
     );
     _couponController.clear();
 
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('✅ ใช้คูปอง ${discount.name} สำเร็จ (฿${discountAmount.toStringAsFixed(2)})'),
