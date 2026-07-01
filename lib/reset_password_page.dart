@@ -21,35 +21,61 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
   bool _showNewPassword = false;
   String? _errorMessage;
 
+  /// ✅ #2 Safe logger — เฉพาะ debug mode + ไม่พิมพ์ข้อมูลอ่อนไหว
+  void _safeLog(String message) {
+    assert(() {
+      debugPrint('[ResetPassword] $message');
+      return true;
+    }());
+  }
+
+  /// ✅ #4 ตรวจสอบรูปแบบ JWT เบื้องต้น (3 ส่วนคั่นด้วยจุด)
+  bool _isValidJwtFormat(String token) {
+    if (token.isEmpty) return false;
+    final parts = token.split('.');
+    return parts.length == 3 && parts.every((p) => p.isNotEmpty);
+  }
+
   @override
   void initState() {
     super.initState();
     _recoverSessionFromUrl();
   }
 
-  // ฟังก์ชันกู้คืน session จาก URL
+  // ✅ ฟังก์ชันกู้คืน session จาก URL — รองรับทั้ง PKCE flow และ Legacy flow
   void _recoverSessionFromUrl() async {
     try {
       final uri = Uri.base;
-      debugPrint('ResetPasswordPage - Current URI: $uri');
+      _safeLog('Checking URL for recovery tokens');
       
-      // ตรวจสอบว่ามี tokens ใน URL หรือไม่
-      if (uri.queryParameters.containsKey('access_token')) {
-        final accessToken = uri.queryParameters['access_token'];
-        final refreshToken = uri.queryParameters['refresh_token'];
-        
-        debugPrint('Found access token in URL');
-        debugPrint('Access token: $accessToken');
-        debugPrint('Refresh token: $refreshToken');
-        
-        // กู้คืน session จาก tokens
-        if (accessToken != null) {
-          await Supabase.instance.client.auth.recoverSession(accessToken);
-          debugPrint('Session recovered successfully');
-        }
+      // === กรณี PKCE Flow: session ถูกสร้างไว้แล้วโดย AuthStateObserver.exchangeCodeForSession ===
+      final existingSession = Supabase.instance.client.auth.currentSession;
+      if (existingSession != null) {
+        _safeLog('Session already exists (from PKCE exchange), ready to reset password');
+        return;
+      }
+      
+      // === กรณี Legacy Flow: access_token + type=recovery ใน URL ===
+      final type = uri.queryParameters['type'] ??
+          Uri.tryParse('?${uri.fragment}')?.queryParameters['type'];
+      
+      if (type != 'recovery') {
+        _safeLog('Not a recovery URL and no existing session');
+        return;
+      }
+      
+      final accessToken = uri.queryParameters['access_token'] ??
+          Uri.tryParse('?${uri.fragment}')?.queryParameters['access_token'];
+      
+      if (accessToken != null && _isValidJwtFormat(accessToken)) {
+        _safeLog('Valid recovery token found, recovering session');
+        await Supabase.instance.client.auth.recoverSession(accessToken);
+        _safeLog('Session recovered successfully');
+      } else {
+        _safeLog('No valid access token found in recovery URL');
       }
     } catch (e) {
-      debugPrint('Error recovering session: $e');
+      _safeLog('Session recovery failed');
     }
   }
 
@@ -110,7 +136,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
     try {
       // ตรวจสอบว่ามี session จากการคลิกลิงก์ในอีเมลหรือไม่
       final session = Supabase.instance.client.auth.currentSession;
-      debugPrint('Current session: $session');
+      _safeLog('Session exists: ${session != null}');
       
       if (session != null) {
         // อัปเดตรหัสผ่านใหม่
@@ -129,7 +155,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
       }
       
     } catch (e) {
-      debugPrint('Reset password error: $e');
+      _safeLog('Reset password failed');
       if (mounted) {
         setState(() {
           _errorMessage = 'เกิดข้อผิดพลาด: ${e.toString()}';
@@ -149,7 +175,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
     try {
       // ดู email จาก session ปัจจุบัน
       final session = Supabase.instance.client.auth.currentSession;
-      final email = session?.user?.email;
+      final email = session?.user.email;
       
       if (email == null) {
         throw Exception('ไม่พบอีเมลผู้ใช้');
@@ -159,36 +185,53 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
       await Supabase.instance.client.auth.signOut();
       
       // ล็อกอินใหม่ด้วยรหัสผ่านใหม่
-      final response = await Supabase.instance.client.auth.signInWithPassword(
+      await Supabase.instance.client.auth.signInWithPassword(
         email: email,
         password: newPassword,
       );
       
-      debugPrint('Auto login successful: ${response.user?.email}');
+      _safeLog('Auto login successful');
       
       if (mounted) {
-        // แสดงข้อความแจ้งเตือน
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('เปลี่ยนรหัสผ่านสำเร็จ! กำลังเข้าสู่ระบบ...'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
+        // ✅ ด่านที่ 3: กล่องแจ้งเตือนความปลอดภัยเมื่อดำเนินการเปลี่ยนรหัสผ่านสำเร็จ
+        showDialog(
+          context: context,
+          barrierDismissible: false, // บังคับให้ผู้ใช้กดปุ่มตกลง
+          builder: (context) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.shield, color: Colors.green),
+                SizedBox(width: 8),
+                Text('เปลี่ยนรหัสผ่านสำเร็จ'),
+              ],
+            ),
+            content: const Text(
+              'ระบบได้บันทึกรหัสผ่านใหม่ของคุณเรียบร้อยแล้ว\n\n'
+              'เพื่อความปลอดภัย:\n'
+              '• ระบบจะส่งอีเมลยืนยันการเปลี่ยนแปลงรหัสผ่านไปยังกล่องจดหมายของคุณ\n'
+              '• หากคุณไม่ได้ทำรายการนี้ด้วยตนเอง กรุณาติดต่อผู้ดูแลระบบทันที',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop(); // ปิด Dialog
+                  
+                  // นำทางไปยังหน้า Home ของแอป
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(
+                      builder: (context) => const MyHomePage(isGuestMode: false, title: 'TREE LAW ZOO valley'),
+                    ),
+                    (route) => false,
+                  );
+                },
+                child: const Text('ตกลงและเข้าสู่ระบบ'),
+              ),
+            ],
           ),
-        );
-        
-        // รอ 2 วินาทีแล้วไปหน้า home
-        await Future.delayed(const Duration(seconds: 2));
-        
-        // ไปหน้า home โดยตรง
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (context) => const MyHomePage(isGuestMode: false, title: 'TREE LAW ZOO valley'),
-          ),
-          (route) => false,
         );
       }
     } catch (e) {
-      debugPrint('Auto login error: $e');
+      _safeLog('Auto login failed, redirecting to login page');
       if (mounted) {
         // ถ้า auto login ไม่สำเร็จ ให้ไปหน้า login
         ScaffoldMessenger.of(context).showSnackBar(
@@ -276,11 +319,11 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.9),
+                      color: Colors.white.withValues(alpha: 0.9),
                       borderRadius: BorderRadius.circular(15),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
+                          color: Colors.black.withValues(alpha: 0.1),
                           blurRadius: 10,
                           offset: const Offset(0, 5),
                         ),

@@ -6,6 +6,10 @@ import 'reset_password_page.dart';
 class AuthStateObserver extends StatefulWidget {
   final Widget child;
 
+  /// URL ที่ capture ไว้ก่อน Supabase.initialize() จะลบ ?code= ออกจาก URL
+  /// ต้องตั้งค่าใน main() ก่อน SupabaseService.initialize()
+  static Uri? initialUri;
+
   const AuthStateObserver({super.key, required this.child});
 
   @override
@@ -14,8 +18,33 @@ class AuthStateObserver extends StatefulWidget {
 
 class _AuthStateObserverState extends State<AuthStateObserver> {
   late final Stream<AuthState> _authStateStream;
-  Timer? _urlCheckTimer;
   bool _hasCheckedUrl = false;
+  bool _isNavigating = false;
+  bool _isRecoveryFlowProcessed = false; // ✅ ป้องกันไม่ให้ประมวลผลซ้ำหรือเด้งไปหน้า reset ซ้ำซาก
+
+  /// Safe logger — เฉพาะ debug mode + ไม่พิมพ์ข้อมูลอ่อนไหว
+  void _safeLog(String message) {
+    assert(() {
+      debugPrint('[AuthObserver] $message');
+      return true;
+    }());
+  }
+
+  /// ตรวจสอบรูปแบบ JWT เบื้องต้น (3 ส่วนคั่นด้วยจุด)
+  bool _isValidJwtFormat(String token) {
+    if (token.isEmpty) return false;
+    final parts = token.split('.');
+    return parts.length == 3 && parts.every((p) => p.isNotEmpty);
+  }
+
+  /// ตรวจสอบรูปแบบ PKCE code (UUID format)
+  bool _isValidPkceCode(String code) {
+    if (code.isEmpty) return false;
+    return RegExp(
+      r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+      caseSensitive: false,
+    ).hasMatch(code);
+  }
 
   @override
   void initState() {
@@ -24,141 +53,117 @@ class _AuthStateObserverState extends State<AuthStateObserver> {
     // ตรวจสอบ URL parameters ตอนเริ่มต้น (ครั้งเดียว)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_hasCheckedUrl) {
-        _checkResetPasswordFromUrl();
         _hasCheckedUrl = true;
+        _checkResetPasswordFromUrl();
       }
     });
-    
-    // ตรวจสอบซ้ำเพียงครั้งเดียว (กรณี URL โหลดช้า)
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted && !_hasCheckedUrl) {
-        _checkResetPasswordFromUrl();
-        _hasCheckedUrl = true;
-      }
-    });
-    
-    // ลด polling ให้น้อยลง
-    _startUrlPolling();
     
     _authStateStream = Supabase.instance.client.auth.onAuthStateChange;
     _authStateStream.listen((data) {
       final AuthState authState = data;
-      debugPrint('AuthState event: ${authState.event}');
-      debugPrint('AuthState session: ${authState.session}');
+      _safeLog('AuthState event: ${authState.event}, session exists: ${authState.session != null}');
       
-      // ตรวจสอบว่าเป็น password recovery event
-      if (authState.event == AuthChangeEvent.passwordRecovery) {
-        debugPrint('Password recovery event detected!');
+      // ตรวจหา type = recovery จาก URL ดั้งเดิม
+      final uri = AuthStateObserver.initialUri ?? Uri.base;
+      final type = uri.queryParameters['type'] ??
+          Uri.tryParse('?${uri.fragment}')?.queryParameters['type'];
+
+      // ✅ วิธีชัวร์ที่สุด: ถ้ามี session เข้ามาแล้ว และ URL แรกระบุว่าเป็น recovery flow
+      if (authState.session != null && type == 'recovery' && !_isRecoveryFlowProcessed) {
+        _safeLog('Session established for recovery flow, navigating');
         _navigateToResetPassword();
       }
       
-      // ตรวจสอบ signedIn พร้อม session (กรณี recovery ทำงาน)
-      if (authState.event == AuthChangeEvent.signedIn && authState.session != null) {
-        debugPrint('SignedIn event detected, checking for recovery...');
-        if (!_hasCheckedUrl) {
-          _checkResetPasswordFromUrl();
-          _hasCheckedUrl = true;
-        }
+      // Fallback: ตรวจสอบว่าเป็น password recovery event ดั้งเดิม
+      if (authState.event == AuthChangeEvent.passwordRecovery && !_isRecoveryFlowProcessed) {
+        _safeLog('Password recovery event detected, navigating');
+        _navigateToResetPassword();
       }
     });
   }
 
   @override
   void dispose() {
-    _urlCheckTimer?.cancel();
     super.dispose();
   }
 
-  void _startUrlPolling() {
-    // Polling เพียง 3 ครั้ง (ทุก 3 วินาที) และหยุด
-    for (int i = 0; i < 3; i++) {
-      Future.delayed(Duration(seconds: 3 * i), () {
-        if (mounted && !_hasCheckedUrl) {
-          debugPrint('Polling check #$i');
-          _checkResetPasswordFromUrl();
-          if (i == 2) {
-            _hasCheckedUrl = true; // หยุดหลังจากครั้งที่ 3
-          }
-        }
-      });
-    }
+  void _checkResetPasswordFromUrl() async {
+    final uri = AuthStateObserver.initialUri ?? Uri.base;
+    _safeLog('Checking URL for recovery parameters (initialUri captured: ${AuthStateObserver.initialUri != null})');
     
-    // ฟังการเปลี่ยนแปลง URL (สำหรับ web) - ใช้ timer น้อยลง
-    if (mounted) {
-      _listenToUrlChanges();
-    }
-  }
+    final type = uri.queryParameters['type'] ??
+        Uri.tryParse('?${uri.fragment}')?.queryParameters['type'];
 
-  void _listenToUrlChanges() {
-    // ฟังการเปลี่ยนแปลง URL ผ่าน window events - ใช้ timer น้อยลง
-    _urlCheckTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
-      if (!mounted) {
-        timer.cancel();
+    // === PKCE Flow: Supabase ส่ง ?code=UUID มาแทน access_token ===
+    final code = uri.queryParameters['code'] ??
+        Uri.tryParse('?${uri.fragment}')?.queryParameters['code'];
+    
+    _safeLog('Has PKCE code: ${code != null && code.isNotEmpty}, Type: $type');
+    
+    if (code != null && code.isNotEmpty && _isValidPkceCode(code) && type == 'recovery') {
+      _safeLog('Valid PKCE recovery code detected');
+      
+      // Supabase SDK อาจจะแลก session สำเร็จไปแล้วในเบื้องหลัง
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session != null && !_isRecoveryFlowProcessed) {
+        _safeLog('Session already exists from PKCE auto-exchange, navigating');
+        _navigateToResetPassword();
         return;
       }
-      // ตรวจสอบเฉพาะถ้ายังไม่ได้ตรวจสอบ
-      if (!_hasCheckedUrl) {
-        _checkResetPasswordFromUrl();
-        _hasCheckedUrl = true;
-        timer.cancel(); // หยุดหลังจากตรวจสอบครั้งแรก
+      
+      // ถ้ายังไม่มี session → ลองแลกโค้ดเอง
+      try {
+        await Supabase.instance.client.auth.exchangeCodeForSession(code);
+        _safeLog('PKCE code exchanged manually');
+        
+        await Future.delayed(const Duration(milliseconds: 500));
+        
+        if (mounted && Supabase.instance.client.auth.currentSession != null && !_isRecoveryFlowProcessed) {
+          _navigateToResetPassword();
+        }
+        return;
+      } catch (e) {
+        _safeLog('PKCE exchange failed, checking session anyway');
+        
+        await Future.delayed(const Duration(milliseconds: 1000));
+        if (mounted && Supabase.instance.client.auth.currentSession != null && !_isRecoveryFlowProcessed) {
+          _navigateToResetPassword();
+        }
+        return;
       }
-    });
-  }
+    }
 
-  void _checkResetPasswordFromUrl() {
-    // ตรวจสอบว่ามี access_token ใน URL หรือไม่ (จากลิงก์รีเซ็ตรหัสผ่าน)
-    final uri = Uri.base;
-    debugPrint('Current URI: $uri');
-    debugPrint('Query parameters: ${uri.queryParameters}');
-    debugPrint('Hash: ${uri.fragment}');
+    // === Legacy Flow: access_token + type=recovery ใน URL ===
+    final accessToken = uri.queryParameters['access_token'] ??
+        Uri.tryParse('?${uri.fragment}')?.queryParameters['access_token'];
     
-    // ตรวจสอบหลาย parameter ที่เกี่ยวข้องกับ password recovery
-    final hasAccessToken = uri.queryParameters.containsKey('access_token');
-    final hasRefreshToken = uri.queryParameters.containsKey('refresh_token');
-    final hasType = uri.queryParameters.containsKey('type');
-    final type = uri.queryParameters['type'];
+    _safeLog('Has access_token: ${accessToken != null && accessToken.isNotEmpty}');
+    _safeLog('Type: $type');
     
-    // ตรวจสอบใน hash fragment ด้วย (กรณี web)
-    final hashUri = Uri.parse('#${uri.fragment}');
-    final hasHashAccessToken = hashUri.queryParameters.containsKey('access_token');
-    final hasHashType = hashUri.queryParameters.containsKey('type');
-    final hashType = hashUri.queryParameters['type'];
-    
-    // ตรวจสอบใน full URL ด้วย (กรณีลิงก์โดยตรง)
-    final fullUri = Uri.parse(uri.toString());
-    final hasFullAccessToken = fullUri.queryParameters.containsKey('access_token');
-    final hasFullType = fullUri.queryParameters.containsKey('type');
-    final fullType = fullUri.queryParameters['type'];
-    
-    debugPrint('Has access_token: $hasAccessToken');
-    debugPrint('Has refresh_token: $hasRefreshToken');
-    debugPrint('Has type: $hasType');
-    debugPrint('Type value: $type');
-    debugPrint('Has hash access_token: $hasHashAccessToken');
-    debugPrint('Has hash type: $hasHashType');
-    debugPrint('Hash type value: $hashType');
-    debugPrint('Has full access_token: $hasFullAccessToken');
-    debugPrint('Has full type: $hasFullType');
-    debugPrint('Full type value: $fullType');
-    
-    // ถ้ามี tokens หรือมี type=recovery ให้ไปหน้า reset password
-    if (hasAccessToken || hasRefreshToken || (hasType && type == 'recovery') ||
-        hasHashAccessToken || (hasHashType && hashType == 'recovery') ||
-        hasFullAccessToken || (hasFullType && fullType == 'recovery')) {
-      debugPrint('Reset password tokens detected in URL');
+    // ต้องมีทั้ง access_token ที่ถูกรูปแบบ JWT AND type == 'recovery'
+    if (accessToken != null &&
+        accessToken.isNotEmpty &&
+        type == 'recovery' &&
+        _isValidJwtFormat(accessToken) &&
+        !_isRecoveryFlowProcessed) {
+      _safeLog('Valid recovery token detected in URL');
       _navigateToResetPassword();
     }
   }
 
   void _navigateToResetPassword() {
-    if (mounted) {
-      debugPrint('Navigating to ResetPasswordPage');
-      Navigator.of(context).pushAndRemoveUntil(
+    if (mounted && !_isNavigating) {
+      _isNavigating = true;
+      _isRecoveryFlowProcessed = true; // ✅ ทำงานนี้สำเร็จแล้ว ป้องกันการเด้งซ้ำซ้อน
+      _safeLog('Navigating to ResetPasswordPage');
+      
+      Navigator.of(context).push(
         MaterialPageRoute(
           builder: (context) => const ResetPasswordPage(),
         ),
-        (route) => false,
-      );
+      ).then((_) {
+        _isNavigating = false;
+      });
     }
   }
 

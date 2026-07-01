@@ -58,6 +58,8 @@ String? validateEmailOrPhone(String? value) {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // ✅ Capture URL ก่อน Supabase SDK จะลบ ?code= parameter ออกจาก URL
+  AuthStateObserver.initialUri = Uri.base;
   await SupabaseService.initialize();
   runApp(const MyApp());
 }
