@@ -316,88 +316,128 @@ audit trail ของสถานะบิล
 - **ยังไม่มี shift control**
   - POS จริงต้องรู้ว่าใครเปิดเครื่องกะไหน
 
-## 8) Roadmap ใหม่ที่แนะนำสำหรับ Tree Law Zoo Valley
+## 8) Roadmap การพัฒนา (อัปเดตสถานะจริง — ตรวจสอบ Code 27 ก.ค. 2026)
+
+> **หมายเหตุ:** สถานะต่อไปนี้ได้รับการตรวจสอบโดยการอ่าน source code จริง ไม่ใช่การประมาณการ
 
 ### Phase 1 - Core POS Stability
 
-1. **Order Context Layer**
-   - order type
-   - table
-   - customer
-   - cashier
+1. **Order Context Layer** [✅ เสร็จและทำงานได้จริง]
+   - order type, table, zone, customer, responsible staff, cashier ผูกครบใน header
+   - รองรับผ่าน `pos_page.dart` + `table_management_service.dart` + `supabase_service.dart`
 
-2. **Cart & Pricing Engine**
-   - line-item tax
-   - line-item discount
-   - service charge
-   - grand total
+2. **Cart & Pricing Engine** [⚠️ เสร็จบางส่วน — มีจุด bug]
+   - line-item tax ✅ คำนวณถูกต้องตาม tax rule ต่อหมวดสินค้า
+   - service charge ✅ ดึงจากโซนโต๊ะอัตโนมัติ
+   - **❌ `_discount` hardcode = 0** — ส่วนลดสมาชิก (loyalty points) ไม่ถูกนำไปหักยอดจริง
+   - line-item discount ❌ ยังไม่มี (ส่วนลดทำได้เฉพาะระดับบิล)
 
-3. **Payment State Flow**
-   - full payment
-   - partial payment
-   - split payment
-   - payment validation
+3. **Payment State Flow** [⚠️ เสร็จบางส่วน — ขาด shift gate]
+   - full payment, split payment ✅ ทำงานได้
+   - `PosPaymentSplitService` ✅ บันทึก split ลง `pos_payment_splits`
+   - **❌ ไม่มีการบังคับเปิดกะก่อน checkout** — ขายได้โดยไม่มี shift_id
 
-4. **Hold / Resume Order**
-   - ฝากบิล
-   - เรียกบิลกลับ
+4. **Hold / Resume Order** [✅ เสร็จและทำงานได้จริง]
+   - `PosHeldOrderService`: holdOrder, resumeOrder, cancelHeldOrder, getHeldOrderForTable ครบ
+   - UI: dialog พักบิล, รายการบิลที่พัก, restore cart + discount ครบ
 
 ### Phase 2 - Business Completeness
 
-5. **Customer & Loyalty**
-   - สมาชิก
-   - แต้ม
-   - ประวัติการซื้อ
+5. **Customer & Loyalty** [✅ เสร็จ — แต่มีจุด bug]
+   - `PosCustomerPickerWidget` ✅ และ `PosLoyaltyDisplayWidget` ✅ render ใน Zone 3
+   - **❌ `_redeemedPoints` ถูก set แต่ `_discount` = 0 เสมอ** — loyalty redemption ไม่มีผลต่อยอดจริง
 
-6. **Discount & Promotion Engine**
-   - ส่วนลดระดับบิล
-   - ส่วนลดระดับรายการ
-   - โปรโมชั่น bundle/seasonal
+6. **Discount & Promotion Engine** [⚠️ เสร็จบางส่วน]
+   - ส่วนลดระดับบิลผ่าน `PosDiscountPanelWidget` ✅
+   - `pos_discount_service.dart` + `pos_promotion_service.dart` ✅
+   - ส่วนลดระดับ line item ❌ ยังไม่มี
 
-7. **Receipt & Printing**
-   - preview
-   - printer profile
-   - reprint
+7. **Receipt & Printing** [⚠️ เสร็จ UI — ยังไม่ผ่าน Hardware]
+   - `PosReceiptPreviewWidget` ✅ render ได้
+   - `PosPrinterService`: network scan, TCP print, PDF ✅ มีครบ
+   - **⏳ ยังไม่ผ่านการทดสอบกับเครื่องพิมพ์จริง**
 
 ### Phase 3 - Operation Control
 
-8. **Shift / Cash Drawer**
-   - เปิดกะ
-   - ปิดกะ
-   - เงินสดยกมา
-   - เงินสดออก
+8. **Shift / Cash Drawer** [⚠️ Service ครบ — แต่ขาด enforcement]
+   - `PosShiftService`: openShift, closeShift, getShiftSummary ✅
+   - `PosShiftWidget` + `PosShiftChip` ✅ แสดงสถานะใน header
+   - **❌ ไม่มี gate บังคับก่อนขาย** — `PosShiftService.isShiftOpen()` มีแต่ไม่ถูกเรียกใน checkout flow
 
-9. **Void / Refund / Audit**
-   - เหตุผล
-   - ผู้อนุมัติ
-   - log ทุก action
+9. **Void / Refund / Audit** [⚠️ Service ครบ — ไม่มี UI เรียกใช้เลย]
+   - `PosRefundService`: voidOrder, refundFullOrder, refundPartialOrder, คืน stock, status log ✅
+   - **❌ ไม่มีที่เรียก `voidOrder` / `refundFull` / `refundPartial` ในโปรเจกต์เลย**
+   - void/refund ยังเป็นแค่ service ที่ไม่ถูก wire เข้ากับ UI
 
-10. **Inventory Sync**
-    - reserve stock
-    - decrement on paid
-    - return on refund
+10. **Inventory Sync** [⚠️ Service ครบ — POS ไม่ call]
+    - `InventoryService.reserveStock()`, `releaseReservedStock()` ✅ มีครบ
+    - **❌ POS ไม่เรียก reserve ตอน add to cart / hold**
+    - **❌ POS ไม่เรียก decrement stock ตอน checkout**
+    - **❌ POS ไม่เรียก return stock ตอน refund**
 
 ### Phase 4 - Growth & Insights
 
-11. **Reports & Analytics**
-    - ยอดขายตามช่วงเวลา
-    - เมนูขายดี
-    - ช่องทางชำระ
-    - performance พนักงาน
+11. **Reports & Analytics** [⚠️ มีพื้นฐาน — ยังไม่ครบตาม target]
+    - `reports_page.dart`: 3 tab (Low Stock, ยอดขาย, Audit Log) ✅ ทำงานได้
+    - ❌ ขาด: Shift Summary, Refund/Void Report, Top Products, Payment Breakdown, Staff Performance
 
-12. **Multi-device / Multi-store Ready**
-    - session ต่อ device
-    - config ต่อสาขา
-    - sync และ conflict handling
+12. **Multi-device / Multi-store Ready** [❌ ยังไม่มีเลย]
+    - session ต่อ device, config ต่อสาขา, sync และ conflict handling
 
-## 9) สิ่งที่ควรลงมือทำก่อนที่สุด
+## 9) แผนงานจริง — แนวทางที่ดีที่สุด (Best Path Forward)
 
-1. **เพิ่ม order context และสถานะบิล**
-2. **แยก order item / payment / discount ออกจาก order header**
-3. **เพิ่ม hold/resume และ partial payment**
-4. **เพิ่ม customer/table integration**
-5. **เพิ่ม shift session และ audit log**
-6. **เพิ่ม refund/void ที่ตรวจสอบได้**
+> อัปเดต 27 ก.ค. 2026 จากผลการตรวจ code จริง
+> **Service layer พร้อมเกือบทั้งหมดแล้ว งานที่เหลือส่วนใหญ่คือ "ผูก service เข้ากับ UI" ไม่ใช่สร้างใหม่**
+
+---
+
+### 🔴 Priority 1 — แก้ก่อนนำไปใช้งานจริง (~2–3 วัน)
+
+งานกลุ่มนี้เป็น **bug จริงที่ทำให้ระบบทำงานผิดพลาดทางบัญชีหรือไม่สามารถใช้งานได้** ห้ามข้ามไป
+
+| # | งาน | ไฟล์ที่ต้องแก้ | ผลกระทบถ้าไม่แก้ |
+|---|---|---|---|
+| 1a | ผูก `_discount` กับ `_redeemedPoints` จริง | `pos_page.dart` L514 | ส่วนลดสมาชิกไม่มีผลต่อยอดจ่ายจริง |
+| 1b | เพิ่ม shift gate ก่อน `_showPaymentDialog()` | `pos_page.dart` | ยอดขายไม่ผูกกับกะ รายงานปิดกะผิด |
+| 1c | เพิ่ม void/refund UI ใน order history | `pos_order_history_widget.dart` | ไม่สามารถยกเลิกบิลได้จาก UI |
+| 1d | เรียก `InventoryService.decrementStock()` ตอน checkout สำเร็จ | `pos_page.dart` ฟังก์ชัน `_processPayment` | stock ไม่ถูกหักเมื่อขายจริง |
+
+---
+
+### 🟡 Priority 2 — ควรทำก่อน Go-Live เต็มรูปแบบ (~3–5 วัน)
+
+งานกลุ่มนี้ไม่ทำให้ระบบพัง แต่ส่งผลต่อ **ประสบการณ์แคชเชียร์และความถูกต้องของสต็อก**
+
+| # | งาน | ไฟล์ที่ต้องแก้ | หมายเหตุ |
+|---|---|---|---|
+| 2a | Low-stock badge บนการ์ดสินค้าใน product grid | `pos_page.dart` ฟังก์ชัน `_buildZone4()` | ป้องกันขายเกิน stock |
+| 2b | UI แก้ไข item note ต่อรายการใน cart | `pos_page.dart` ฟังก์ชัน `_buildZone5()` | field `note` มีแล้วแต่ไม่มี UI ให้พิมพ์ |
+| 2c | Barcode lookup ผูกกับ product catalog จริง | `pos_page.dart` `_barcodeController` | controller มีแต่ logic ยังไม่ครบ |
+| 2d | ทดสอบ hardware printing กับเครื่องพิมพ์จริง | `PosPrinterService` | TCP/network print ยังไม่ผ่านการทดสอบ HW |
+
+---
+
+### 🟢 Priority 3 — Phase 4 Growth (พัฒนาต่อเนื่องหลัง Go-Live)
+
+| # | งาน | หมายเหตุ |
+|---|---|---|
+| 3a | **Shift Summary Report** — เพิ่ม tab ในหน้า reports_page | สรุปยอด เงินสด refund ต่อกะ |
+| 3b | **Refund/Void Report** — ดึงจาก `pos_refunds` + `pos_order_status_log` | ตรวจสอบย้อนหลัง |
+| 3c | **Top Products Dashboard** — เมนูขายดี ช่องทางชำระ staff performance | BI เพื่อตัดสินใจธุรกิจ |
+| 3d | **Move Table** — เปลี่ยน `table_id` ใน order + update session | ยังไม่มีใน codebase เลย |
+| 3e | **Split Bill** — แยกบิลให้ลูกค้าหลายคน (≠ Split Payment) | ซับซ้อน ควรทำหลัง Go-Live |
+| 3f | **Multi-store / Device Session** | ขยายสาขา |
+
+---
+
+### เส้นทางสู่ Go-Live
+
+```
+สัปดาห์ที่ 1  แก้ Priority 1 (1a–1d) + Priority 2 (2a–2b)  → ระบบถูกต้องทางบัญชี
+สัปดาห์ที่ 2  Priority 2 (2c–2d) + UAT กับผู้ใช้จริง        → ทดสอบหน้าร้านจริง
+สัปดาห์ที่ 3  แก้ตาม UAT feedback + ทดสอบ HW printing       → พร้อม Go-Live
+หลัง Go-Live  Priority 3 ทีละ feature                       → พัฒนาต่อเนื่อง
+```
 
 ## 10) วิธีใช้เอกสารนี้ต่อ
 
