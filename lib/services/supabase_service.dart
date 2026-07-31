@@ -217,17 +217,28 @@ class SupabaseService {
     try {
       final response = await client
           .from('users')
-          .select('last_pos_zone_id, zone:restaurant_zones(*)')
+          .select('last_pos_zone_id')
           .eq('id', userId)
           .maybeSingle();
-      
-      if (response == null || response['last_pos_zone_id'] == null) {
+
+      final zoneId = response?['last_pos_zone_id'];
+      if (zoneId == null) {
         return null;
       }
-      
+
+      final zone = await client
+          .from('restaurant_zones')
+          .select('*')
+          .eq('id', zoneId)
+          .maybeSingle();
+
+      if (zone == null) {
+        return null;
+      }
+
       return {
-        'zone_id': response['last_pos_zone_id'],
-        'zone': response['zone'],
+        'zone_id': zoneId,
+        'zone': zone,
       };
     } catch (e) {
       debugPrint('Error getting last POS zone: $e');
