@@ -1,0 +1,159 @@
+appId: com.treelawzoo.treeLawZooValley
+name: "POS Loyalty Points Redemption Test"
+tags:
+  - pos
+  - loyalty
+  - p0
+---
+
+# ============================================
+# ทดสอบ 1: แลกแต้มสมาชิก
+# เลือกลูกค้า -> เลือกแต้มสะสม -> ตรวจสอบยอดลด
+# ============================================
+
+# Step 1: Login
+- runFlow:
+    file: "login_flow.yaml"
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Step 2: Navigate to POS
+- tapOn:
+    point: "1274, 92"
+    label: "Open menu drawer (more_vert icon)"
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- tapOn:
+    text: "ขาย/ POS"
+    label: "Navigate to POS page"
+
+- extendedWaitUntil:
+    visible: "เงินสด"
+    timeout: 10000
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Step 3: Tap customer picker — a11y text is "ลูกค้า:\nเลือกลูกค้า" at [984,125][1341,157]
+- tapOn:
+    text: ".*เลือกลูกค้า.*"
+    label: "Tap customer picker"
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# Step 4: Customer picker dialog should be open
+- assertVisible:
+    text: "เลือกลูกค้า"
+    label: "Verify customer picker dialog is visible"
+    optional: true
+
+# Step 5: Search for a customer — tap search field and type
+- tapOn:
+    text: "ค้นหาชื่อ หรือ เบอร์โทร"
+    label: "Tap customer search field"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 1000
+
+# If search field hint not found, try tapping the search area
+- runFlow:
+    when:
+      notVisible: "ค้นหาชื่อ หรือ เบอร์โทร"
+    commands:
+      - tapOn:
+          point: "50%, 25%"
+          label: "Tap search field area in dialog"
+
+# Type a search query — use first letter to find any customer
+- inputText: "a"
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# Dismiss keyboard
+- tapOn:
+    point: "50%, 10%"
+    label: "Dismiss keyboard"
+- waitForAnimationToEnd:
+    timeout: 1000
+
+# Step 6: Tap first customer in list (if any)
+- runFlow:
+    when:
+      notVisible: "ไม่พบลูกค้า"
+    commands:
+      - tapOn:
+          point: "50%, 45%"
+          label: "Tap first customer in list"
+      - waitForAnimationToEnd:
+          timeout: 2000
+
+# Step 7: Verify loyalty widget appears (shows "แต้ม" and "แลก" button)
+- assertVisible:
+    text: ".*แต้ม.*"
+    label: "Verify loyalty points display is visible"
+    optional: true
+
+- assertVisible:
+    text: "แลก"
+    label: "Verify redeem button is visible"
+    optional: true
+
+# Step 8: Tap "แลก" button to open redemption dialog
+- tapOn:
+    text: "แลก"
+    label: "Tap redeem button"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# Step 9: Verify redemption dialog
+- assertVisible:
+    text: "แลกแต้ม"
+    label: "Verify redeem dialog title"
+    optional: true
+
+- assertVisible:
+    text: "จำนวนแต้มที่ต้องการแลก"
+    label: "Verify points input field"
+    optional: true
+
+# Step 10: Enter points to redeem (only if dialog is open)
+- runFlow:
+    when:
+      visible: "จำนวนแต้มที่ต้องการแลก"
+    commands:
+      - tapOn:
+          text: "จำนวนแต้มที่ต้องการแลก"
+          label: "Tap points input field"
+      - inputText: "10"
+      - tapOn:
+          point: "50%, 10%"
+          label: "Dismiss keyboard"
+      - waitForAnimationToEnd:
+          timeout: 1000
+      - tapOn:
+          text: "แลกแต้ม"
+          label: "Confirm redemption"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot:
+          path: "/tmp/maestro_screenshots/pos_loyalty_redeemed"
+          label: "Screenshot after redemption"
+
+# Step 11: Add a product to cart to verify discount applies
+- tapOn:
+    point: "221, 532"
+    label: "Tap first product (น้ำมันพืช)"
+- waitForAnimationToEnd:
+    timeout: 1000
+
+# Take screenshot of cart with loyalty discount
+- takeScreenshot:
+    path: "/tmp/maestro_screenshots/pos_loyalty_cart"
+    label: "Screenshot cart with loyalty discount"

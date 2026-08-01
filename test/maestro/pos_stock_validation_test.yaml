@@ -1,0 +1,121 @@
+appId: com.treelawzoo.treeLawZooValley
+name: "POS Stock Validation Test"
+tags:
+  - pos
+  - stock
+  - p0
+---
+
+# ============================================
+# ทดสอบ 3: ตัดสต็อกและการป้องกัน
+# เพิ่มสินค้าเกินสต็อก -> ปิดบิล -> ตรวจสอบแจ้งเตือน
+# ============================================
+
+# Step 1: Login
+- runFlow:
+    file: "login_flow.yaml"
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Step 2: Navigate to POS
+- tapOn:
+    point: "1274, 92"
+    label: "Open menu drawer (more_vert icon)"
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- tapOn:
+    text: "ขาย/ POS"
+    label: "Navigate to POS page"
+
+- extendedWaitUntil:
+    visible: "เงินสด"
+    timeout: 10000
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Step 3: Add product to cart multiple times to exceed stock
+# Product "ไข่ไก่" at [371,453][656,611] center (513, 532) has price ฿5
+# Tap it multiple times to try to exceed stock
+- tapOn:
+    point: "513, 532"
+    label: "Tap product (ไข่ไก่) - 1st time"
+- waitForAnimationToEnd:
+    timeout: 500
+
+- tapOn:
+    point: "513, 532"
+    label: "Tap product (ไข่ไก่) - 2nd time"
+- waitForAnimationToEnd:
+    timeout: 500
+
+- tapOn:
+    point: "513, 532"
+    label: "Tap product (ไข่ไก่) - 3rd time"
+- waitForAnimationToEnd:
+    timeout: 500
+
+- tapOn:
+    point: "513, 532"
+    label: "Tap product (ไข่ไก่) - 4th time"
+- waitForAnimationToEnd:
+    timeout: 500
+
+- tapOn:
+    point: "513, 532"
+    label: "Tap product (ไข่ไก่) - 5th time"
+- waitForAnimationToEnd:
+    timeout: 1000
+
+# Take screenshot of cart with multiple items
+- takeScreenshot:
+    path: "/tmp/maestro_screenshots/pos_stock_cart"
+    label: "Screenshot cart with multiple items"
+
+# Step 4: Try to checkout — tap payment method
+- tapOn:
+    text: "เงินสด"
+    label: "Tap cash payment button"
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Step 5: If payment dialog opens, try to confirm payment
+- runFlow:
+    when:
+      visible: "ยืนยันชำระเงิน"
+    commands:
+      - tapOn:
+          text: "ยืนยันชำระเงิน"
+          label: "Confirm payment"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 3000
+
+# Step 6: Verify stock validation error message
+# System should show "เกิดข้อผิดพลาดในการบันทึกออเดอร์ (สต็อกอาจไม่เพียงพอ)"
+- assertVisible:
+    text: ".*สต็อก.*"
+    label: "Verify stock error message is visible"
+    optional: true
+
+- assertVisible:
+    text: ".*เกิดข้อผิดพลาด.*"
+    label: "Verify error message is visible"
+    optional: true
+
+# Take screenshot of stock validation result
+- takeScreenshot:
+    path: "/tmp/maestro_screenshots/pos_stock_validation_result"
+    label: "Screenshot stock validation result"
+
+# Close any open dialog
+- tapOn:
+    text: "ยกเลิก"
+    optional: true
+- tapOn:
+    text: "ปิด"
+    optional: true

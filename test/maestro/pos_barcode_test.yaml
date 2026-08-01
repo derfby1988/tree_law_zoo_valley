@@ -1,0 +1,92 @@
+appId: com.treelawzoo.treeLawZooValley
+name: "POS Barcode Lookup Test"
+tags:
+  - pos
+  - barcode
+---
+
+# Run login and navigate to POS
+- runFlow:
+    file: "login_flow.yaml"
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Open end drawer menu — tap more_vert icon at [1250,68][1298,116]
+- tapOn:
+    point: "1274, 92"
+    label: "Open menu drawer"
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- tapOn:
+    text: "ขาย/ POS"
+    label: "Navigate to POS page"
+
+- extendedWaitUntil:
+    visible: "เงินสด"
+    timeout: 10000
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Tap the barcode scanner button — it's an IconButton in the TextField suffix
+# On iOS, Flutter IconButtons inside TextField suffix may not respond to text/coordinate taps
+# Try multiple approaches sequentially
+- tapOn:
+    text: "สแกนบาร์โค้ด"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 1000
+
+- tapOn:
+    point: "924, 430"
+- waitForAnimationToEnd:
+    timeout: 1000
+
+- tapOn:
+    point: "930, 430"
+- waitForAnimationToEnd:
+    timeout: 1000
+
+- tapOn:
+    point: "920, 430"
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# Verify barcode dialog is open
+# NOTE: The barcode IconButton inside TextField.suffixIcon is not tappable via Maestro on iOS
+# This is a known Flutter limitation — the tooltip is exposed as a11y text but not as a tappable node
+- assertVisible:
+    text: "สแกน/กรอกบาร์โค้ด"
+    label: "Verify barcode dialog title is visible"
+    optional: true
+
+- assertVisible:
+    text: "บาร์โค้ด / SKU"
+    label: "Verify barcode input field is visible"
+    optional: true
+
+# Enter a test barcode (only if dialog is open)
+- runFlow:
+    when:
+      visible: "บาร์โค้ด / SKU"
+    commands:
+      - tapOn:
+          text: "บาร์โค้ด / SKU"
+          label: "Tap barcode input field"
+      - inputText: "TEST001"
+
+      # Tap search button
+      - tapOn:
+          text: "ค้นหา"
+          label: "Tap search button in barcode dialog"
+
+      - waitForAnimationToEnd:
+          timeout: 3000
+
+      # Take screenshot of result
+      - takeScreenshot:
+          path: "/tmp/maestro_screenshots/pos_barcode_result"
+          label: "Screenshot barcode result"

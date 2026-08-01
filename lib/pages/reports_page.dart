@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/inventory_service.dart';
+import '../services/pos_shift_service.dart';
 import '../utils/thai_date_utils.dart';
 
 class ReportsPage extends StatefulWidget {
@@ -15,7 +17,7 @@ class _ReportsPageState extends State<ReportsPage> with SingleTickerProviderStat
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 6, vsync: this);
   }
 
   @override
@@ -56,6 +58,9 @@ class _ReportsPageState extends State<ReportsPage> with SingleTickerProviderStat
             Tab(icon: Icon(Icons.warning_amber), text: 'แจ้งเตือน'),
             Tab(icon: Icon(Icons.point_of_sale), text: 'ยอดขาย'),
             Tab(icon: Icon(Icons.history), text: 'Audit Log'),
+            Tab(icon: Icon(Icons.badge), text: 'สรุปกะ'),
+            Tab(icon: Icon(Icons.undo), text: 'คืนเงิน/Void'),
+            Tab(icon: Icon(Icons.trending_up), text: 'สินค้าขายดี'),
           ],
         ),
       ),
@@ -65,6 +70,9 @@ class _ReportsPageState extends State<ReportsPage> with SingleTickerProviderStat
           _LowStockAlertTab(),
           _SalesReportTab(),
           _AuditLogTab(),
+          _ShiftSummaryTab(),
+          _RefundVoidAuditTab(),
+          _SalesInsightsTab(),
         ],
       ),
     );
@@ -589,6 +597,569 @@ class _AuditLogTabState extends State<_AuditLogTab> {
                 ),
         ),
       ],
+    );
+  }
+}
+
+// =============================================
+// Tab 4: Shift Summary Report
+// =============================================
+class _ShiftSummaryTab extends StatefulWidget {
+  const _ShiftSummaryTab();
+
+  @override
+  State<_ShiftSummaryTab> createState() => _ShiftSummaryTabState();
+}
+
+class _ShiftSummaryTabState extends State<_ShiftSummaryTab> {
+  List<dynamic> _shifts = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
+    final shifts = await PosShiftService.getShiftHistory(limit: 30);
+    setState(() {
+      _shifts = shifts;
+      _isLoading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) return const Center(child: CircularProgressIndicator());
+
+    if (_shifts.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.badge_outlined, size: 64, color: Colors.grey[300]),
+            const SizedBox(height: 16),
+            Text('ยังไม่มีประวัติกะ', style: TextStyle(color: Colors.grey[600], fontSize: 16)),
+            const SizedBox(height: 8),
+            ElevatedButton.icon(onPressed: _loadData, icon: const Icon(Icons.refresh), label: const Text('รีเฟรช')),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadData,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: _shifts.length,
+        itemBuilder: (context, index) {
+          final shift = _shifts[index];
+          final shiftNumber = shift.shiftNumber;
+          final openedAt = shift.openedAt;
+          final closedAt = shift.closedAt;
+          final status = shift.status;
+          final openedByName = shift.openedByName ?? '-';
+          final startingCash = shift.startingCash;
+          final endingCash = shift.endingCash;
+
+          final openedStr = openedAt != null
+              ? '${openedAt.toLocal().day}/${openedAt.toLocal().month}/${openedAt.toLocal().year + 543} ${openedAt.toLocal().hour.toString().padLeft(2, '0')}:${openedAt.toLocal().minute.toString().padLeft(2, '0')}'
+              : '-';
+          final closedStr = closedAt != null
+              ? '${closedAt.toLocal().day}/${closedAt.toLocal().month}/${closedAt.toLocal().year + 543} ${closedAt.toLocal().hour.toString().padLeft(2, '0')}:${closedAt.toLocal().minute.toString().padLeft(2, '0')}'
+              : 'ยังเปิดอยู่';
+
+          final isOpen = status == 'open';
+          final color = isOpen ? Colors.green : Colors.blueGrey;
+
+          return Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: ExpansionTile(
+              leading: CircleAvatar(
+                backgroundColor: color.withValues(alpha: 0.15),
+                child: Icon(Icons.badge, color: color, size: 20),
+              ),
+              title: Text('กะที่ $shiftNumber', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+              subtitle: Text('$openedStr → $closedStr • $openedByName', style: const TextStyle(fontSize: 11)),
+              trailing: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(4)),
+                child: Text(isOpen ? 'เปิด' : 'ปิด', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+              ),
+              children: [
+                FutureBuilder<Map<String, dynamic>>(
+                  future: PosShiftService.getShiftSummary(shift.id),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) {
+                      return const Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator());
+                    }
+                    final s = snapshot.data!;
+                    final totalSales = (s['total_sales'] ?? 0).toDouble();
+                    final totalOrders = (s['total_orders'] ?? 0) as int;
+                    final totalRefunds = (s['total_refunds'] ?? 0).toDouble();
+                    final totalDiscounts = (s['total_discounts'] ?? 0).toDouble();
+                    final cashSales = (s['cash_sales'] ?? 0).toDouble();
+
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _shiftRow('ยอดขายรวม', '฿${totalSales.toStringAsFixed(2)}', Colors.green),
+                          _shiftRow('จำนวนออเดอร์', '$totalOrders บิล', Colors.blue),
+                          _shiftRow('ขายเงินสด', '฿${cashSales.toStringAsFixed(2)}', Colors.teal),
+                          _shiftRow('ส่วนลดรวม', '฿${totalDiscounts.toStringAsFixed(2)}', Colors.red),
+                          _shiftRow('คืนเงินรวม', '฿${totalRefunds.toStringAsFixed(2)}', Colors.orange),
+                          const Divider(),
+                          _shiftRow('เงินทุนต้นกะ', '฿${startingCash.toStringAsFixed(2)}', Colors.purple),
+                          if (endingCash != null)
+                            _shiftRow('เงินปลายกะ', '฿${endingCash.toStringAsFixed(2)}', Colors.indigo),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _shiftRow(String label, String value, Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: TextStyle(fontSize: 12, color: Colors.grey[700])),
+          Text(value, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: color)),
+        ],
+      ),
+    );
+  }
+}
+
+// =============================================
+// Tab 5: Refund/Void Audit Log
+// =============================================
+class _RefundVoidAuditTab extends StatefulWidget {
+  const _RefundVoidAuditTab();
+
+  @override
+  State<_RefundVoidAuditTab> createState() => _RefundVoidAuditTabState();
+}
+
+class _RefundVoidAuditTabState extends State<_RefundVoidAuditTab> {
+  List<Map<String, dynamic>> _refunds = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
+    try {
+      final response = await Supabase.instance.client
+          .from('pos_refunds')
+          .select('''
+            *,
+            order:pos_orders(order_number, net_total, payment_method)
+          ''')
+          .order('created_at', ascending: false)
+          .limit(100);
+      setState(() {
+        _refunds = List<Map<String, dynamic>>.from(response);
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('Error loading refund audit: $e');
+      setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) return const Center(child: CircularProgressIndicator());
+
+    if (_refunds.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.history, size: 64, color: Colors.grey[300]),
+            const SizedBox(height: 16),
+            Text('ไม่มีประวัติคืนเงิน/Void', style: TextStyle(color: Colors.grey[600], fontSize: 16)),
+            const SizedBox(height: 8),
+            ElevatedButton.icon(onPressed: _loadData, icon: const Icon(Icons.refresh), label: const Text('รีเฟรช')),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadData,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: _refunds.length,
+        itemBuilder: (context, index) {
+          final r = _refunds[index];
+          final refundType = (r['refund_type'] ?? '-').toString();
+          final refundAmount = (r['refund_amount'] ?? 0).toDouble();
+          final reason = (r['reason'] ?? '-').toString();
+          final refundedByName = (r['refunded_by_name'] ?? '-').toString();
+          final approvedByName = (r['approved_by_name'] ?? '-').toString();
+          final refundMethod = (r['refund_method'] ?? '-').toString();
+          final orderData = r['order'] as Map<String, dynamic>?;
+          final orderNumber = orderData?['order_number'] ?? '-';
+          final createdAt = r['created_at'] != null ? DateTime.tryParse(r['created_at'].toString()) : null;
+          final dateStr = createdAt != null
+              ? '${createdAt.toLocal().day}/${createdAt.toLocal().month}/${createdAt.toLocal().year + 543} ${createdAt.toLocal().hour.toString().padLeft(2, '0')}:${createdAt.toLocal().minute.toString().padLeft(2, '0')}'
+              : '-';
+
+          final typeColor = refundType == 'void' ? Colors.red : Colors.orange;
+          final typeLabel = refundType == 'void' ? 'Void' : (refundType == 'full' ? 'คืนเงินทั้งบิล' : 'คืนบางส่วน');
+
+          return Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(color: typeColor.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(4)),
+                        child: Text(typeLabel, style: TextStyle(fontSize: 11, color: typeColor, fontWeight: FontWeight.bold)),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text('บิล $orderNumber', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
+                      Text('-฿${refundAmount.toStringAsFixed(2)}', style: TextStyle(fontWeight: FontWeight.bold, color: typeColor, fontSize: 14)),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text('เหตุผล: $reason', style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Text('โดย: $refundedByName', style: TextStyle(fontSize: 10, color: Colors.grey[500])),
+                      const SizedBox(width: 12),
+                      Text('อนุมัติ: $approvedByName', style: TextStyle(fontSize: 10, color: Colors.grey[500])),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      Text(dateStr, style: TextStyle(fontSize: 10, color: Colors.grey[400])),
+                      const Spacer(),
+                      if (refundMethod != 'null' && refundMethod != '-')
+                        Text('คืนผ่าน: $refundMethod', style: TextStyle(fontSize: 10, color: Colors.grey[500])),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// =============================================
+// Tab 6: Sales Insights Dashboard
+// =============================================
+class _SalesInsightsTab extends StatefulWidget {
+  const _SalesInsightsTab();
+
+  @override
+  State<_SalesInsightsTab> createState() => _SalesInsightsTabState();
+}
+
+class _SalesInsightsTabState extends State<_SalesInsightsTab> {
+  List<Map<String, dynamic>> _topProducts = [];
+  Map<String, double> _paymentBreakdown = {};
+  Map<int, double> _hourlySales = {};
+  bool _isLoading = true;
+  DateTime _dateFrom = DateTime.now().subtract(const Duration(days: 7));
+  DateTime _dateTo = DateTime.now();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
+    try {
+      final client = Supabase.instance.client;
+      final fromStr = _dateFrom.toIso8601String().split('T')[0];
+      final toStr = _dateTo.toIso8601String().split('T')[0];
+
+      final orders = await client
+          .from('pos_orders')
+          .select('id, net_total, payment_method, created_at')
+          .gte('created_at', fromStr)
+          .lte('created_at', '${toStr}T23:59:59')
+          .neq('status', 'voided')
+          .order('created_at', ascending: false);
+
+      final orderIds = (orders as List).map((o) => o['id'] as String).toList();
+
+      // Top products
+      if (orderIds.isNotEmpty) {
+        final lines = await client
+            .from('pos_order_lines')
+            .select('product_name, quantity, line_total')
+            .inFilter('order_id', orderIds);
+
+        final productMap = <String, Map<String, double>>{};
+        for (final line in lines) {
+          final name = (line['product_name'] ?? '-').toString();
+          final qty = (line['quantity'] ?? 0).toDouble();
+          final total = (line['line_total'] ?? 0).toDouble();
+          if (productMap.containsKey(name)) {
+            productMap[name]!['qty'] = productMap[name]!['qty']! + qty;
+            productMap[name]!['revenue'] = productMap[name]!['revenue']! + total;
+          } else {
+            productMap[name] = {'qty': qty, 'revenue': total};
+          }
+        }
+
+        final sorted = productMap.entries.toList()
+          ..sort((a, b) => b.value['qty']!.compareTo(a.value['qty']!));
+
+        setState(() {
+          _topProducts = sorted.take(15).map((e) => {
+            'name': e.key,
+            'qty': e.value['qty'],
+            'revenue': e.value['revenue'],
+          }).toList();
+        });
+      }
+
+      // Payment breakdown + hourly sales
+      _paymentBreakdown.clear();
+      _hourlySales.clear();
+      for (final o in orders) {
+        final method = (o['payment_method'] ?? 'other').toString();
+        final net = (o['net_total'] ?? 0).toDouble();
+        _paymentBreakdown[method] = (_paymentBreakdown[method] ?? 0) + net;
+
+        final createdAt = o['created_at'] != null ? DateTime.tryParse(o['created_at'].toString()) : null;
+        if (createdAt != null) {
+          final hour = createdAt.toLocal().hour;
+          _hourlySales[hour] = (_hourlySales[hour] ?? 0) + net;
+        }
+      }
+
+      setState(() => _isLoading = false);
+    } catch (e) {
+      debugPrint('Error loading sales insights: $e');
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _pickDate(bool isFrom) async {
+    final picked = await ThaiDateUtils.showThaiDatePicker(
+      context: context,
+      initialDate: isFrom ? _dateFrom : _dateTo,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+    );
+    if (picked != null) {
+      setState(() {
+        if (isFrom) _dateFrom = picked;
+        else _dateTo = picked;
+      });
+      _loadData();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) return const Center(child: CircularProgressIndicator());
+
+    final maxQty = _topProducts.isEmpty ? 1.0 : _topProducts.first['qty'] as double;
+    final maxHourly = _hourlySales.values.fold(0.0, (a, b) => a > b ? a : b);
+
+    return RefreshIndicator(
+      onRefresh: _loadData,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Date filter
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.calendar_today, size: 14),
+                    label: Text('จาก: ${ThaiDateUtils.formatBuddhistDate(_dateFrom)}', style: const TextStyle(fontSize: 12)),
+                    onPressed: () => _pickDate(true),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.event, size: 14),
+                    label: Text('ถึง: ${ThaiDateUtils.formatBuddhistDate(_dateTo)}', style: const TextStyle(fontSize: 12)),
+                    onPressed: () => _pickDate(false),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Top Products
+            Text('สินค้าขายดี Top 15', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+            const SizedBox(height: 8),
+            if (_topProducts.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Center(child: Text('ไม่มีข้อมูล', style: TextStyle(color: Colors.grey[500]))),
+              )
+            else
+              ..._topProducts.asMap().entries.map((entry) {
+                final i = entry.key;
+                final p = entry.value;
+                final name = p['name'] as String;
+                final qty = p['qty'] as double;
+                final revenue = p['revenue'] as double;
+                final ratio = maxQty > 0 ? qty / maxQty : 0.0;
+
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 24,
+                        child: Text('${i + 1}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: i < 3 ? Colors.amber[700] : Colors.grey)),
+                      ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+                            const SizedBox(height: 2),
+                            LinearProgressIndicator(
+                              value: ratio,
+                              backgroundColor: Colors.grey[200],
+                              valueColor: AlwaysStoppedAnimation(i < 3 ? Colors.amber : Colors.blue),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 50,
+                        child: Text('${qty.toStringAsFixed(0)} ชิ้น', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold), textAlign: TextAlign.right),
+                      ),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 70,
+                        child: Text('฿${revenue.toStringAsFixed(0)}', style: TextStyle(fontSize: 11, color: Colors.green[700], fontWeight: FontWeight.bold), textAlign: TextAlign.right),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+
+            const SizedBox(height: 20),
+
+            // Payment Method Breakdown
+            Text('ยอดขายตามวิธีชำระเงิน', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+            const SizedBox(height: 8),
+            if (_paymentBreakdown.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Center(child: Text('ไม่มีข้อมูล', style: TextStyle(color: Colors.grey[500]))),
+              )
+            else
+              ...(() {
+                final entries = _paymentBreakdown.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+                return entries.map((e) {
+                final total = _paymentBreakdown.values.fold(0.0, (a, b) => a + b);
+                final ratio = total > 0 ? e.value / total : 0.0;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    children: [
+                      SizedBox(width: 80, child: Text(e.key, style: const TextStyle(fontSize: 12))),
+                      Expanded(
+                        child: LinearProgressIndicator(
+                          value: ratio,
+                          backgroundColor: Colors.grey[200],
+                          valueColor: const AlwaysStoppedAnimation(Colors.blue),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 80,
+                        child: Text('฿${e.value.toStringAsFixed(0)} (${(ratio * 100).toStringAsFixed(0)}%)', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold), textAlign: TextAlign.right),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList();
+              })(),
+
+            const SizedBox(height: 20),
+
+            // Hourly Sales
+            Text('ยอดขายตามชั่วโมง', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+            const SizedBox(height: 8),
+            if (_hourlySales.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Center(child: Text('ไม่มีข้อมูล', style: TextStyle(color: Colors.grey[500]))),
+              )
+            else
+              SizedBox(
+                height: 150,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: List.generate(24, (hour) {
+                    final sales = _hourlySales[hour] ?? 0.0;
+                    final barHeight = maxHourly > 0 ? (sales / maxHourly) * 120 : 0.0;
+                    final hasData = sales > 0;
+                    return Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 1),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            if (hasData)
+                              Text('${sales.toStringAsFixed(0)}', style: const TextStyle(fontSize: 7, color: Colors.grey)),
+                            Container(
+                              height: barHeight,
+                              decoration: BoxDecoration(
+                                color: hasData ? Colors.blue : Colors.grey[200],
+                                borderRadius: const BorderRadius.vertical(top: Radius.circular(2)),
+                              ),
+                            ),
+                            Text('$hour', style: TextStyle(fontSize: 8, color: Colors.grey[600])),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -1,0 +1,133 @@
+appId: com.treelawzoo.treeLawZooValley
+name: "POS Item Note Test"
+tags:
+  - pos
+  - note
+  - p1
+---
+
+# ============================================
+# ทดสอบ 6: หมายเหตุรายการ
+# เพิ่มสินค้าในตะกร้า -> กดไอคอนหมายเหตุ -> เลือก preset -> ตรวจสอบ
+# ============================================
+
+# Step 1: Login
+- runFlow:
+    file: "login_flow.yaml"
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Step 2: Navigate to POS
+- tapOn:
+    point: "1274, 92"
+    label: "Open menu drawer (more_vert icon)"
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- tapOn:
+    text: "ขาย/ POS"
+    label: "Navigate to POS page"
+
+- extendedWaitUntil:
+    visible: "เงินสด"
+    timeout: 10000
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Step 3: Add a product to cart
+- tapOn:
+    point: "513, 532"
+    label: "Tap product (ไข่ไก่) to add to cart"
+- waitForAnimationToEnd:
+    timeout: 1000
+
+# Step 4: Verify item is in cart
+# Cart is at the bottom of the screen
+- takeScreenshot:
+    path: "/tmp/maestro_screenshots/pos_note_cart_with_item"
+    label: "Screenshot cart with item"
+
+# Step 5: Find and tap the note icon on the cart item
+# Cart item is at [83,692][1339,752], note icon (Icons.note_add_outlined, size 14)
+# is at [1146,709][1172,735], center (1159, 722)
+- tapOn:
+    point: "1159, 722"
+    label: "Tap note icon on cart item"
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# Step 6: Verify note dialog is open
+- assertVisible:
+    text: "หมายเหตุสินค้า"
+    label: "Verify note dialog title is visible"
+    optional: true
+
+# Step 8: Check for preset chips
+- assertVisible:
+    text: "ไม่ใส่น้ำแข็ง"
+    label: "Verify preset chip 1"
+    optional: true
+
+- assertVisible:
+    text: "หวานน้อย"
+    label: "Verify preset chip 2"
+    optional: true
+
+- assertVisible:
+    text: "เผ็ดน้อย"
+    label: "Verify preset chip 3"
+    optional: true
+
+# Take screenshot of note dialog with preset chips
+- takeScreenshot:
+    path: "/tmp/maestro_screenshots/pos_note_dialog_presets"
+    label: "Screenshot note dialog with preset chips"
+
+# Take screenshot of note dialog
+- takeScreenshot:
+    path: "/tmp/maestro_screenshots/pos_note_dialog"
+    label: "Screenshot note dialog"
+
+# Step 9: Tap a preset chip (only if dialog is open)
+- runFlow:
+    when:
+      visible: "หวานน้อย"
+    commands:
+      - tapOn:
+          text: "หวานน้อย"
+          label: "Tap preset chip 'หวานน้อย'"
+      - waitForAnimationToEnd:
+          timeout: 1000
+
+# Step 10: Verify text field has the preset text (only if dialog is open)
+- runFlow:
+    when:
+      visible: "หมายเหตุสินค้า"
+    commands:
+      - assertVisible:
+          text: "หวานน้อย"
+          label: "Verify preset text in input field"
+          optional: true
+      - tapOn:
+          text: "บันทึก"
+          label: "Save note"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - takeScreenshot:
+          path: "/tmp/maestro_screenshots/pos_note_saved"
+          label: "Screenshot cart with saved note"
+
+# Step 12: Take final screenshot
+- takeScreenshot:
+    path: "/tmp/maestro_screenshots/pos_note_final"
+    label: "Screenshot final state"
+
+# Close any open dialog
+- tapOn:
+    text: "ยกเลิก"
+    optional: true

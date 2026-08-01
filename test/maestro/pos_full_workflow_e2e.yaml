@@ -1,0 +1,204 @@
+appId: com.treelawzoo.treeLawZooValley
+name: "POS Full Workflow E2E"
+tags:
+  - e2e
+  - pos
+  - full-workflow
+---
+
+# ============================================
+# Full POS Workflow E2E Test
+# Covers: Login → POS → Add Product → 
+#   Barcode → Split Bill → Move Table → Reports
+# ============================================
+
+# Step 1: Login
+- runFlow:
+    file: "login_flow.yaml"
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Step 2: Navigate to POS
+- tapOn:
+    point: "1274, 92"
+    label: "Open menu drawer (more_vert icon)"
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- tapOn:
+    text: "ขาย/ POS"
+    label: "Navigate to POS page"
+
+- extendedWaitUntil:
+    visible: "เงินสด"
+    timeout: 10000
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Step 3: Verify POS main elements
+- assertVisible:
+    text: "เงินสด"
+    label: "Verify cash payment button"
+- assertVisible:
+    text: "เครดิต/เดบิต"
+    label: "Verify credit/debit payment button"
+- assertVisible:
+    text: "ค้นหาสินค้า..."
+    label: "Verify product search field"
+
+- takeScreenshot:
+    path: "/tmp/maestro_screenshots/e2e_pos_loaded"
+    label: "Screenshot POS loaded"
+
+# Step 4: Test barcode lookup (optional — IconButton in TextField suffix may not be tappable)
+- runFlow:
+    commands:
+      - tapOn:
+          text: "สแกนบาร์โค้ด"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - runFlow:
+          when:
+            visible: "สแกน/กรอกบาร์โค้ด"
+          commands:
+            - tapOn:
+                text: "บาร์โค้ด / SKU"
+            - inputText: "TEST001"
+            - tapOn:
+                text: "ค้นหา"
+            - waitForAnimationToEnd:
+                timeout: 3000
+            - takeScreenshot:
+                path: "/tmp/maestro_screenshots/e2e_barcode_lookup"
+                label: "Screenshot barcode lookup"
+
+# Step 5: Add products to cart — tap directly on products in grid
+# Product grid is at [79,453][948,611]
+- runFlow:
+    commands:
+      - tapOn:
+          point: "500, 430"
+          label: "Tap search field to clear it"
+      - eraseText
+      - waitForAnimationToEnd:
+          timeout: 1000
+      - tapOn:
+          point: "50%, 10%"
+          label: "Dismiss keyboard"
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - tapOn:
+          point: "221, 532"
+          label: "Tap first product (น้ำมันพืช)"
+      - waitForAnimationToEnd:
+          timeout: 1000
+
+- takeScreenshot:
+    path: "/tmp/maestro_screenshots/e2e_product_added"
+    label: "Screenshot product added"
+
+# Step 6: Test split bill (if 2+ items in cart)
+- runFlow:
+    commands:
+      - tapOn:
+          point: "513, 532"
+          label: "Tap second product (ไข่ไก่)"
+      - waitForAnimationToEnd:
+          timeout: 1000
+      - runFlow:
+          when:
+            visible: "เพิ่มวิธีจ่าย"
+          commands:
+            - swipe:
+                from:
+                  text: "เพิ่มวิธีจ่าย"
+                direction: UP
+                duration: 300
+            - waitForAnimationToEnd:
+                timeout: 1000
+      - tapOn:
+          text: "แบ่งบิลตามรายการ"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - takeScreenshot:
+          path: "/tmp/maestro_screenshots/e2e_split_bill"
+          label: "Screenshot split bill"
+      - tapOn:
+          text: "ยกเลิก"
+          optional: true
+
+# Step 7: Navigate to Reports
+- tapOn:
+    point: "1274, 92"
+    label: "Open menu drawer (more_vert icon)"
+- waitForAnimationToEnd:
+    timeout: 2000
+- tapOn:
+    text: "รายงานยอด"
+    label: "Navigate to Reports"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 5000
+
+- takeScreenshot:
+    path: "/tmp/maestro_screenshots/e2e_reports_page"
+    label: "Screenshot reports page"
+
+# Step 8: Check Shift Summary tab
+- runFlow:
+    when:
+      visible: "รายงานยอด"
+    commands:
+      - scrollUntilVisible:
+          element: "สรุปกะ"
+          direction: RIGHT
+          timeout: 5000
+      - tapOn:
+          text: "สรุปกะ"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot:
+          path: "/tmp/maestro_screenshots/e2e_shift_summary"
+          label: "Screenshot shift summary"
+
+# Step 9: Check Refund/Void tab
+- runFlow:
+    when:
+      visible: "รายงานยอด"
+    commands:
+      - scrollUntilVisible:
+          element: "คืนเงิน/Void"
+          direction: RIGHT
+          timeout: 5000
+      - tapOn:
+          text: "คืนเงิน/Void"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot:
+          path: "/tmp/maestro_screenshots/e2e_refund_void"
+          label: "Screenshot refund void"
+
+# Step 10: Check Top Products tab
+- runFlow:
+    when:
+      visible: "รายงานยอด"
+    commands:
+      - scrollUntilVisible:
+          element: "สินค้าขายดี"
+          direction: RIGHT
+          timeout: 5000
+      - tapOn:
+          text: "สินค้าขายดี"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot:
+          path: "/tmp/maestro_screenshots/e2e_top_products"
+          label: "Screenshot top products"

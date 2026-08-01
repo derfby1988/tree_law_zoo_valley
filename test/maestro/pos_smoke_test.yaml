@@ -1,0 +1,63 @@
+appId: com.treelawzoo.treeLawZooValley
+name: "POS Smoke Test"
+tags:
+  - smoke
+  - pos
+---
+
+# Run login flow first
+- runFlow:
+    file: "login_flow.yaml"
+
+# Wait for home page to fully load
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Open the end drawer (menu) — tap the more_vert icon button at top-right
+# The menu button is at [1250,68][1298,116] on 1366x1024 screen
+# (The button to its right at [1298,68] is the logout button)
+- tapOn:
+    point: "1274, 92"
+    label: "Tap menu button (more_vert icon)"
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# Tap "ขาย/ POS" in the drawer
+- tapOn:
+    text: "ขาย/ POS"
+    label: "Navigate to POS page"
+
+# Wait for POS page to load
+- extendedWaitUntil:
+    visible: "เงินสด"
+    timeout: 10000
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Verify POS elements are visible
+# "ราคารวมก่อนคำนวณภาษี" is inside a large container a11y text, not a standalone element
+# Use directly visible elements instead
+- assertVisible:
+    text: "เงินสด"
+    label: "Verify cash payment button is visible"
+
+- assertVisible:
+    text: "เครดิต/เดบิต"
+    label: "Verify credit/debit payment button is visible"
+
+# Verify product search field exists
+- assertVisible:
+    text: "ค้นหาสินค้า..."
+    label: "Verify product search field is visible"
+
+# Verify barcode scanner button exists
+- assertVisible:
+    text: "สแกนบาร์โค้ด"
+    label: "Verify barcode scanner button is visible"
+
+# Take screenshot of POS page
+- takeScreenshot:
+    path: "/tmp/maestro_screenshots/pos_main_screen"
+    label: "Screenshot POS main screen"

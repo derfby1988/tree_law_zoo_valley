@@ -456,6 +456,61 @@ class TableManagementService {
     }
   }
 
+  /// ย้ายโต๊ะ: โอน session + order จากโต๊ะเดิมไปโต๊ะใหม่
+  static Future<bool> moveTable({
+    required String fromTableId,
+    required String toTableId,
+  }) async {
+    try {
+      // ดึงข้อมูลโต๊ะเดิม
+      final fromTable = await _client
+          .from('restaurant_tables')
+          .select('id, current_session_id, current_order_id, status')
+          .eq('id', fromTableId)
+          .maybeSingle();
+      if (fromTable == null) return false;
+
+      final sessionId = fromTable['current_session_id'];
+      final orderId = fromTable['current_order_id'];
+      if (sessionId == null) return false;
+
+      // ตรวจสอบว่าโต๊ะปลายทางว่าง
+      final toTable = await _client
+          .from('restaurant_tables')
+          .select('id, status')
+          .eq('id', toTableId)
+          .maybeSingle();
+      if (toTable == null) return false;
+      if (toTable['status'] == 'occupied') return false;
+
+      // อัปเดต session ให้ผูกกับโต๊ะใหม่
+      await _client.from('restaurant_table_sessions')
+          .update({'table_id': toTableId})
+          .eq('id', sessionId);
+
+      // อัปเดตโต๊ะใหม่: รับ session + order
+      await _client.from('restaurant_tables').update({
+        'current_session_id': sessionId,
+        'current_order_id': orderId,
+        'status': 'occupied',
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', toTableId);
+
+      // คืนสถานะโต๊ะเดิมเป็น available
+      await _client.from('restaurant_tables').update({
+        'current_session_id': null,
+        'current_order_id': null,
+        'status': 'available',
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', fromTableId);
+
+      return true;
+    } catch (e) {
+      debugPrint('Error moveTable: $e');
+      return false;
+    }
+  }
+
   static Future<bool> closeTableSession({
     required String tableId,
     required String sessionId,

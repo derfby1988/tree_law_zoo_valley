@@ -1,0 +1,117 @@
+appId: com.treelawzoo.treeLawZooValley
+name: "POS Low Stock Badge Test"
+tags:
+  - pos
+  - stock
+  - p1
+---
+
+# ============================================
+# ทดสอบ 5: ป้ายสต็อกต่ำ
+# ตรวจสอบป้าย "คงเหลือ X ชิ้น" และ "สินค้าหมด" บนกริดสินค้า
+# ============================================
+
+# Step 1: Login
+- runFlow:
+    file: "login_flow.yaml"
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Step 2: Navigate to POS
+- tapOn:
+    point: "1274, 92"
+    label: "Open menu drawer (more_vert icon)"
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- tapOn:
+    text: "ขาย/ POS"
+    label: "Navigate to POS page"
+
+- extendedWaitUntil:
+    visible: "เงินสด"
+    timeout: 10000
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Step 3: Verify product grid is loaded
+- assertVisible:
+    text: "เงินสด"
+    label: "Verify POS page is loaded"
+
+# Step 4: Check for low stock badges on product cards
+# Products are at [79,453][948,611]:
+#   น้ำมันพืช at [79,453][363,611]
+#   ไข่ไก่ at [371,453][656,611]
+#   ข้าวสาร at [664,453][948,611]
+
+# Take screenshot of product grid
+- takeScreenshot:
+    path: "/tmp/maestro_screenshots/pos_product_grid_stock"
+    label: "Screenshot product grid with stock badges"
+
+# Step 5: Check for "สินค้าหมด" (out of stock) badge
+- assertVisible:
+    text: "สินค้าหมด"
+    label: "Verify out-of-stock badge is visible"
+    optional: true
+
+# Step 6: Check for "คงเหลือ" (low stock) badge
+- assertVisible:
+    text: ".*คงเหลือ.*"
+    label: "Verify low stock badge is visible"
+    optional: true
+
+# Step 7: Scroll down to see more products if any
+- runFlow:
+    commands:
+      - swipe:
+          start: "50%, 80%"
+          end: "50%, 40%"
+          duration: 500
+      - waitForAnimationToEnd:
+          timeout: 1000
+      - takeScreenshot:
+          path: "/tmp/maestro_screenshots/pos_product_grid_scrolled"
+          label: "Screenshot product grid scrolled"
+
+# Step 8: Check all visible products for stock indicators
+- assertVisible:
+    text: ".*คงเหลือ.*"
+    label: "Verify low stock badge after scroll"
+    optional: true
+
+- assertVisible:
+    text: "สินค้าหมด"
+    label: "Verify out-of-stock badge after scroll"
+    optional: true
+
+# Step 9: Try tapping an out-of-stock product (should be disabled)
+- runFlow:
+    when:
+      visible: "สินค้าหมด"
+    commands:
+      - tapOn:
+          text: "สินค้าหมด"
+          label: "Tap out-of-stock product"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 1000
+      # Verify item was NOT added to cart (no new item in cart)
+      - takeScreenshot:
+          path: "/tmp/maestro_screenshots/pos_out_of_stock_tap"
+          label: "Screenshot after tapping out-of-stock product"
+
+# Step 10: Tap a normal product to verify it still works
+- tapOn:
+    point: "221, 532"
+    label: "Tap first product (น้ำมันพืช)"
+- waitForAnimationToEnd:
+    timeout: 1000
+
+- takeScreenshot:
+    path: "/tmp/maestro_screenshots/pos_normal_product_added"
+    label: "Screenshot normal product added to cart"

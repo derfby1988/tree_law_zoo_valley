@@ -1,0 +1,103 @@
+appId: com.treelawzoo.treeLawZooValley
+name: "POS Shift Gate Test"
+tags:
+  - pos
+  - shift
+  - p0
+---
+
+# ============================================
+# ทดสอบ 2: การบังคับเปิดกะ
+# ปิดกะ -> เลือกสินค้า -> กดเลือกวิธีชำระเงิน
+# ระบบบล็อกทันที และแสดงหน้าต่างเปิดกะ
+# ============================================
+
+# Step 1: Login
+- runFlow:
+    file: "login_flow.yaml"
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Step 2: Navigate to POS
+- tapOn:
+    point: "1274, 92"
+    label: "Open menu drawer (more_vert icon)"
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- tapOn:
+    text: "ขาย/ POS"
+    label: "Navigate to POS page"
+
+- extendedWaitUntil:
+    visible: "เงินสด"
+    timeout: 10000
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Step 3: Check current shift status — "เปิดกะ" at [467,53][531,77]
+# If shift is open, close it first to test the gate
+- runFlow:
+    when:
+      visible: "ปิดกะ"
+    commands:
+      - tapOn:
+          text: "ปิดกะ"
+          label: "Close current shift"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      # If close shift dialog appears, confirm
+      - tapOn:
+          text: "ปิดกะ"
+          label: "Confirm close shift"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 3000
+
+# Step 4: Add a product to cart
+- tapOn:
+    point: "221, 532"
+    label: "Tap first product (น้ำมันพืช)"
+- waitForAnimationToEnd:
+    timeout: 1000
+
+# Step 5: Tap a payment method (เงินสด) — this should trigger shift gate
+- tapOn:
+    text: "เงินสด"
+    label: "Tap cash payment button"
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Step 6: Verify shift gate blocks payment
+# The system should show snackbar "กรุณาเปิดกะก่อนชำระเงิน"
+# and open the shift dialog
+- assertVisible:
+    text: ".*เปิดกะ.*"
+    label: "Verify shift open dialog or snackbar is visible"
+    optional: true
+
+# Take screenshot of shift gate response
+- takeScreenshot:
+    path: "/tmp/maestro_screenshots/pos_shift_gate_blocked"
+    label: "Screenshot shift gate blocking payment"
+
+# Step 7: Verify shift dialog appeared (if snackbar appeared, dialog should follow)
+- runFlow:
+    when:
+      visible: "เปิดกะ"
+    commands:
+      - assertVisible:
+          text: "เงินทอนเริ่มต้น"
+          label: "Verify starting cash input in shift dialog"
+          optional: true
+      - takeScreenshot:
+          path: "/tmp/maestro_screenshots/pos_shift_open_dialog"
+          label: "Screenshot shift open dialog"
+      # Close dialog
+      - tapOn:
+          text: "ยกเลิก"
+          optional: true

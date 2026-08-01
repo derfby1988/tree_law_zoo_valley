@@ -4017,6 +4017,30 @@ class InventoryService {
     try {
       final userId = _client.auth.currentUser?.id;
 
+      // 0. Pre-checkout Stock Validation — ตรวจสอบสต็อกทุกรายการก่อนสร้าง order
+      final insufficientItems = <String>[];
+      for (final item in cartItems) {
+        final product = item['product'] as Map<String, dynamic>;
+        final qty = item['qty'] as int;
+        final productId = product['id'] as String;
+        final productName = product['name'] as String? ?? '';
+        final productResp = await _client
+            .from('inventory_products')
+            .select('quantity, reserved_quantity')
+            .eq('id', productId)
+            .single();
+        final currentQty = (productResp['quantity'] as num?)?.toDouble() ?? 0;
+        final reservedQty = (productResp['reserved_quantity'] as num?)?.toDouble() ?? 0;
+        final available = currentQty - reservedQty;
+        if (available < qty) {
+          insufficientItems.add('$productName (มี ${available.toStringAsFixed(0)} ต้องการ $qty)');
+        }
+      }
+      if (insufficientItems.isNotEmpty) {
+        debugPrint('❌ Stock validation failed: $insufficientItems');
+        return null;
+      }
+
       // 1. สร้าง order header
       final combinedDiscount = discountAmount + totalDiscountAmount + loyaltyDiscountAmount;
       final orderResp = await _client.from('pos_orders').insert({
@@ -4054,57 +4078,85 @@ class InventoryService {
       final orderNumber = orderResp['order_number'] as String;
 
       // 2. สร้าง order lines + ลดสต็อก + บันทึก adjustment
-      for (final item in cartItems) {
-        final product = item['product'] as Map<String, dynamic>;
-        final qty = item['qty'] as int;
-        final productId = product['id'] as String;
-        final productName = product['name'] as String? ?? '';
-        final unitPrice = (product['price'] ?? 0).toDouble();
-        final lineTotal = unitPrice * qty;
-        final unit = product['unit'];
-        final unitName = (unit is Map) ? (unit['abbreviation'] ?? unit['name'] ?? '') : '';
-        final isTaxExempt = product['is_tax_exempt'] == true;
-        final productTaxRate = (product['tax_rate'] ?? 0).toDouble();
+      final processedItems = <Map<String, dynamic>>[]; // track for rollback
+      try {
+        for (final item in cartItems) {
+          final product = item['product'] as Map<String, dynamic>;
+          final qty = item['qty'] as int;
+          final productId = product['id'] as String;
+          final productName = product['name'] as String? ?? '';
+          final unitPrice = (product['price'] ?? 0).toDouble();
+          final lineTotal = unitPrice * qty;
+          final unit = product['unit'];
+          final unitName = (unit is Map) ? (unit['abbreviation'] ?? unit['name'] ?? '') : '';
+          final isTaxExempt = product['is_tax_exempt'] == true;
+          final productTaxRate = (product['tax_rate'] ?? 0).toDouble();
 
-        // Insert order line
-        await _client.from('pos_order_lines').insert({
-          'order_id': orderId,
-          'product_id': productId,
-          'product_name': productName,
-          'unit_name': unitName,
-          'quantity': qty,
-          'unit_price': unitPrice,
-          'line_total': lineTotal,
-          'tax_exempt': isTaxExempt,
-          'tax_rate': productTaxRate,
-          'note': item['note'] ?? '',
-        });
+          // Insert order line
+          await _client.from('pos_order_lines').insert({
+            'order_id': orderId,
+            'product_id': productId,
+            'product_name': productName,
+            'unit_name': unitName,
+            'quantity': qty,
+            'unit_price': unitPrice,
+            'line_total': lineTotal,
+            'tax_exempt': isTaxExempt,
+            'tax_rate': productTaxRate,
+            'note': item['note'] ?? '',
+          });
 
-        // ลดสต็อก
-        final productResp = await _client
-            .from('inventory_products')
-            .select('quantity')
-            .eq('id', productId)
-            .single();
-        final currentQty = (productResp['quantity'] as num).toDouble();
-        final newQty = currentQty - qty;
+          // ลดสต็อก
+          final productResp = await _client
+              .from('inventory_products')
+              .select('quantity')
+              .eq('id', productId)
+              .single();
+          final currentQty = (productResp['quantity'] as num).toDouble();
+          final newQty = currentQty - qty;
 
-        await _client.from('inventory_products').update({
-          'quantity': newQty,
-          'updated_at': DateTime.now().toIso8601String(),
-        }).eq('id', productId);
+          if (newQty < 0) {
+            throw Exception('สต็อกไม่พอสำหรับ $productName');
+          }
 
-        // บันทึก adjustment
-        await _client.from('inventory_adjustments').insert({
-          'product_id': productId,
-          'type': 'sale',
-          'quantity_before': currentQty,
-          'quantity_after': newQty,
-          'quantity_change': -qty.toDouble(),
-          'reason': 'ขาย POS ($orderNumber)',
-          'reference_id': orderId,
-          'user_name': userName ?? 'พนักงาน',
-        });
+          await _client.from('inventory_products').update({
+            'quantity': newQty,
+            'updated_at': DateTime.now().toIso8601String(),
+          }).eq('id', productId);
+
+          // บันทึก adjustment
+          await _client.from('inventory_adjustments').insert({
+            'product_id': productId,
+            'type': 'sale',
+            'quantity_before': currentQty,
+            'quantity_after': newQty,
+            'quantity_change': -qty.toDouble(),
+            'reason': 'ขาย POS ($orderNumber)',
+            'reference_id': orderId,
+            'user_name': userName ?? 'พนักงาน',
+          });
+
+          processedItems.add({'product_id': productId, 'qty': qty, 'prev_qty': currentQty});
+        }
+      } catch (rollbackError) {
+        // Rollback: คืนสต็อกที่ถูกตัดไปแล้ว
+        debugPrint('❌ Stock decrement failed, rolling back: $rollbackError');
+        for (final p in processedItems) {
+          try {
+            await _client.from('inventory_products').update({
+              'quantity': p['prev_qty'],
+              'updated_at': DateTime.now().toIso8601String(),
+            }).eq('id', p['product_id']);
+          } catch (_) {}
+        }
+        // ยกเลิก order ที่สร้างไปแล้ว
+        try {
+          await _client.from('pos_orders').update({
+            'status': 'voided',
+            'discount_note': 'Rollback: ${rollbackError.toString()}',
+          }).eq('id', orderId);
+        } catch (_) {}
+        return null;
       }
 
       if (tableId != null && tableSessionId != null) {

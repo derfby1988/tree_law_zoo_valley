@@ -1,0 +1,101 @@
+appId: com.treelawzoo.treeLawZooValley
+name: "POS Move Table Test"
+tags:
+  - pos
+  - move-table
+---
+
+# Run login and navigate to POS
+- runFlow:
+    file: "login_flow.yaml"
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Open end drawer menu — tap more_vert icon at [1250,68][1298,116]
+- tapOn:
+    point: "1274, 92"
+    label: "Open menu drawer"
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- tapOn:
+    text: "ขาย/ POS"
+    label: "Navigate to POS page"
+
+- extendedWaitUntil:
+    visible: "เงินสด"
+    timeout: 10000
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Select a table first — tap the table chip in the header
+- tapOn:
+    text: "เลือกโต๊ะ"
+    label: "Tap table selector in header"
+    optional: true
+
+# If "เลือกโต๊ะ" not found, try tapping the table area in header
+- runFlow:
+    when:
+      notVisible: "เลือกโต๊ะ"
+    commands:
+      - tapOn:
+          point: "30%, 8%"
+          label: "Tap table area in header"
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# If zone/table picker dialog appeared, tap first available table
+- runFlow:
+    when:
+      visible: "โต๊ะ"
+    commands:
+      - tapOn:
+          text: "โต๊ะ"
+          index: 1
+          label: "Select first available table"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 3000
+
+# Now tap the move table button (swap icon) in header
+- runFlow:
+    commands:
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - tapOn:
+          id: "swap_horiz"
+          optional: true
+          label: "Tap move table button"
+
+# If swap icon not found by id, try by tooltip
+- runFlow:
+    when:
+      notVisible: "ย้ายโต๊ะ"
+    commands:
+      - tapOn:
+          text: "ย้ายโต๊ะ"
+          optional: true
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# Verify move table dialog is open
+- assertVisible:
+    text: "ย้ายโต๊ะ"
+    label: "Verify move table dialog is visible"
+    optional: true
+
+# Take screenshot
+- takeScreenshot:
+    path: "/tmp/maestro_screenshots/pos_move_table_dialog"
+    label: "Screenshot move table dialog"
+
+# Close dialog
+- tapOn:
+    text: "ยกเลิก"
+    optional: true

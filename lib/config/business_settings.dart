@@ -8,6 +8,7 @@ class AppBusinessSettings {
   static const String defaultOrderTypeWalkIn = 'walk_in';
   static const String defaultOrderTypeDineIn = 'dine_in';
   static const double defaultTaxRate = 7.0;
+  static const double pointValueRatio = 1.0; // 1 แต้ม = 1 บาท
   static const double defaultServiceRate = 0.10;
   static const String defaultTaxInclusion = 'included';
   static const int defaultPosProductGridCount = 3;

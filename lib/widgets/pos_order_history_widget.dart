@@ -461,6 +461,7 @@ class _PosOrderHistoryWidgetState extends State<PosOrderHistoryWidget> {
 
   void _showVoidDialog(Map<String, dynamic> order) {
     final reasonController = TextEditingController();
+    final pinController = TextEditingController();
     final orderNumber = (order['order_number'] ?? '-').toString();
     final netTotal = (order['net_total'] ?? 0).toDouble();
 
@@ -513,6 +514,20 @@ class _PosOrderHistoryWidgetState extends State<PosOrderHistoryWidget> {
                 ),
                 style: const TextStyle(fontSize: 13),
               ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: pinController,
+                keyboardType: TextInputType.number,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'รหัสผ่านผู้จัดการ (PIN) *',
+                  prefixIcon: const Icon(Icons.admin_panel_settings_outlined),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  filled: true,
+                  fillColor: _bgColor,
+                ),
+                style: const TextStyle(fontSize: 13),
+              ),
             ],
           ),
         ),
@@ -527,6 +542,22 @@ class _PosOrderHistoryWidgetState extends State<PosOrderHistoryWidget> {
                 );
                 return;
               }
+              final pin = pinController.text.trim();
+              if (pin.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('กรุณาใส่รหัสผ่านผู้จัดการ'), backgroundColor: Colors.orange),
+                );
+                return;
+              }
+              final approved = await _verifyManagerPin(pin);
+              if (!approved) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('รหัสผ่านผู้จัดการไม่ถูกต้อง'), backgroundColor: Colors.red),
+                  );
+                }
+                return;
+              }
               final user = Supabase.instance.client.auth.currentUser;
               final userName = _displayName(user);
 
@@ -536,6 +567,8 @@ class _PosOrderHistoryWidgetState extends State<PosOrderHistoryWidget> {
                 reason: reason,
                 userId: user?.id ?? '',
                 userName: userName,
+                approvedByUserId: user?.id,
+                approvedByName: userName,
               );
 
               if (result != null && mounted) {
@@ -544,6 +577,10 @@ class _PosOrderHistoryWidgetState extends State<PosOrderHistoryWidget> {
                   SnackBar(content: Text('Void บิล $orderNumber สำเร็จ'), backgroundColor: _accentGreen),
                 );
                 _loadOrders();
+              } else if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('เกิดข้อผิดพลาดในการ Void บิล'), backgroundColor: Colors.red),
+                );
               }
             },
             icon: Icon(Icons.remove_circle_outline, color: Colors.white, size: 18),
@@ -561,6 +598,7 @@ class _PosOrderHistoryWidgetState extends State<PosOrderHistoryWidget> {
 
   void _showRefundDialog(Map<String, dynamic> order) {
     final reasonController = TextEditingController();
+    final pinController = TextEditingController();
     final orderNumber = (order['order_number'] ?? '-').toString();
     final netTotal = (order['net_total'] ?? 0).toDouble();
     final paymentMethod = (order['payment_method'] ?? 'cash').toString();
@@ -617,6 +655,20 @@ class _PosOrderHistoryWidgetState extends State<PosOrderHistoryWidget> {
                 ),
                 style: const TextStyle(fontSize: 13),
               ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: pinController,
+                keyboardType: TextInputType.number,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'รหัสผ่านผู้จัดการ (PIN) *',
+                  prefixIcon: const Icon(Icons.admin_panel_settings_outlined),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  filled: true,
+                  fillColor: _bgColor,
+                ),
+                style: const TextStyle(fontSize: 13),
+              ),
             ],
           ),
         ),
@@ -631,6 +683,22 @@ class _PosOrderHistoryWidgetState extends State<PosOrderHistoryWidget> {
                 );
                 return;
               }
+              final pin = pinController.text.trim();
+              if (pin.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('กรุณาใส่รหัสผ่านผู้จัดการ'), backgroundColor: Colors.orange),
+                );
+                return;
+              }
+              final approved = await _verifyManagerPin(pin);
+              if (!approved) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('รหัสผ่านผู้จัดการไม่ถูกต้อง'), backgroundColor: Colors.red),
+                  );
+                }
+                return;
+              }
               final user = Supabase.instance.client.auth.currentUser;
               final userName = _displayName(user);
 
@@ -641,6 +709,8 @@ class _PosOrderHistoryWidgetState extends State<PosOrderHistoryWidget> {
                 reason: reason,
                 userId: user?.id ?? '',
                 userName: userName,
+                approvedByUserId: user?.id,
+                approvedByName: userName,
               );
 
               if (result != null && mounted) {
@@ -650,6 +720,10 @@ class _PosOrderHistoryWidgetState extends State<PosOrderHistoryWidget> {
                       backgroundColor: _accentGreen),
                 );
                 _loadOrders();
+              } else if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('เกิดข้อผิดพลาดในการคืนเงิน'), backgroundColor: Colors.red),
+                );
               }
             },
             icon: const Icon(Icons.reply_all, size: 18),
@@ -760,5 +834,26 @@ class _PosOrderHistoryWidgetState extends State<PosOrderHistoryWidget> {
     final last = (meta['last_name'] ?? '').toString();
     if (first.isNotEmpty || last.isNotEmpty) return '$first $last'.trim();
     return meta['display_name']?.toString() ?? user.email ?? 'ไม่ทราบชื่อ';
+  }
+
+  Future<bool> _verifyManagerPin(String pin) async {
+    try {
+      final currentUser = Supabase.instance.client.auth.currentUser;
+      if (currentUser == null) return false;
+      final resp = await Supabase.instance.client
+          .from('users')
+          .select('manager_pin, role')
+          .eq('id', currentUser.id)
+          .maybeSingle();
+      if (resp == null) return false;
+      final storedPin = resp['manager_pin']?.toString();
+      if (storedPin != null && storedPin.isNotEmpty && storedPin == pin) {
+        return true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint('Error _verifyManagerPin: $e');
+      return false;
+    }
   }
 }

@@ -245,39 +245,55 @@ class PosRefundService {
     }
   }
 
-  /// คืน stock ทั้งบิล
+  /// คืน stock ทั้งบิล + บันทึก inventory_adjustments
   static Future<void> _returnStock(String orderId) async {
     try {
       final lines = await _client
           .from('pos_order_lines')
-          .select('product_id, qty')
+          .select('product_id, quantity')
           .eq('order_id', orderId);
 
       for (final line in (lines as List)) {
         final productId = line['product_id'];
-        final qty = (line['qty'] ?? 0).toDouble();
+        final qty = (line['quantity'] ?? 0).toDouble();
         if (productId == null || qty <= 0) continue;
 
-        // ดึง stock ปัจจุบัน
+        // ดึง stock ปัจจุบันจาก inventory_products
         final product = await _client
-            .from('products')
-            .select('stock_quantity')
+            .from('inventory_products')
+            .select('quantity')
             .eq('id', productId)
             .maybeSingle();
 
         if (product != null) {
-          final currentStock = (product['stock_quantity'] ?? 0).toDouble();
-          await _client.from('products').update({
-            'stock_quantity': currentStock + qty,
+          final currentQty = (product['quantity'] ?? 0).toDouble();
+          final newQty = currentQty + qty;
+          await _client.from('inventory_products').update({
+            'quantity': newQty,
+            'updated_at': DateTime.now().toIso8601String(),
           }).eq('id', productId);
+
+          // บันทึก adjustment
+          await _client.from('inventory_adjustments').insert({
+            'product_id': productId,
+            'type': 'void_return',
+            'quantity_before': currentQty,
+            'quantity_after': newQty,
+            'quantity_change': qty,
+            'reason': 'คืน stock จาก Void/Refund order $orderId',
+            'reference_id': orderId,
+          });
         }
       }
+
+      // อัปเดตสถานะโต๊ะกลับเป็น available สำหรับ dine-in orders
+      await _resetTableStatus(orderId);
     } catch (e) {
       debugPrint('Error _returnStock: $e');
     }
   }
 
-  /// คืน stock เฉพาะบางรายการ
+  /// คืน stock เฉพาะบางรายการ + บันทึก inventory_adjustments
   static Future<void> _returnPartialStock(List<Map<String, dynamic>> refundLines) async {
     try {
       for (final line in refundLines) {
@@ -297,20 +313,56 @@ class PosRefundService {
         if (productId == null) continue;
 
         final product = await _client
-            .from('products')
-            .select('stock_quantity')
+            .from('inventory_products')
+            .select('quantity')
             .eq('id', productId)
             .maybeSingle();
 
         if (product != null) {
-          final currentStock = (product['stock_quantity'] ?? 0).toDouble();
-          await _client.from('products').update({
-            'stock_quantity': currentStock + qty,
+          final currentQty = (product['quantity'] ?? 0).toDouble();
+          final newQty = currentQty + qty;
+          await _client.from('inventory_products').update({
+            'quantity': newQty,
+            'updated_at': DateTime.now().toIso8601String(),
           }).eq('id', productId);
+
+          // บันทึก adjustment
+          await _client.from('inventory_adjustments').insert({
+            'product_id': productId,
+            'type': 'void_return',
+            'quantity_before': currentQty,
+            'quantity_after': newQty,
+            'quantity_change': qty,
+            'reason': 'คืน stock บางรายการจาก order',
+            'reference_id': orderLineId,
+          });
         }
       }
     } catch (e) {
       debugPrint('Error _returnPartialStock: $e');
+    }
+  }
+
+  /// อัปเดตสถานะโต๊ะกลับเป็น available เมื่อ void/refund dine-in order
+  static Future<void> _resetTableStatus(String orderId) async {
+    try {
+      final order = await _client
+          .from('pos_orders')
+          .select('table_id, order_type')
+          .eq('id', orderId)
+          .maybeSingle();
+      if (order == null) return;
+      final tableId = order['table_id'];
+      final orderType = order['order_type'];
+      if (tableId == null || orderType != 'dine_in') return;
+
+      await _client.from('pos_tables').update({
+        'status': 'available',
+        'current_order_id': null,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', tableId);
+    } catch (e) {
+      debugPrint('Error _resetTableStatus: $e');
     }
   }
 }

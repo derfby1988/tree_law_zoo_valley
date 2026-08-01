@@ -1,0 +1,99 @@
+appId: com.treelawzoo.treeLawZooValley
+name: "Login Flow"
+tags:
+  - smoke
+  - login
+---
+
+# Launch app — do NOT clear state so we keep the auth session
+- launchApp:
+    clearState: false
+    clearKeychain: false
+    stopApp: true
+
+# Wait for app to load
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# Check if already logged in (home page shows "สวัสดี คุณลูกค้า" for guest)
+- runFlow:
+    when:
+      visible: "สวัสดี คุณลูกค้า"
+    label: "User is in guest mode — need to login"
+    commands:
+      # The "เข้าสู่ระบบ" link is inside a WidgetSpan/GestureDetector in RichText
+      # The RichText is at [85,93][438,114]. The GestureDetector wraps the
+      # "เข้าสู่ระบบ" text which is roughly at x=135-221, y=93-114
+      - tapOn:
+          point: "178, 103"
+          label: "Tap login link (absolute coords)"
+
+      - waitForAnimationToEnd:
+          timeout: 2000
+
+      # If still on home page, try slightly different positions
+      - runFlow:
+          when:
+            visible: "สวัสดี คุณลูกค้า"
+          commands:
+            - tapOn:
+                point: "150, 103"
+                label: "Retry tap login link (left)"
+            - waitForAnimationToEnd:
+                timeout: 2000
+
+      - runFlow:
+          when:
+            visible: "สวัสดี คุณลูกค้า"
+          commands:
+            - tapOn:
+                point: "200, 103"
+                label: "Retry tap login link (right)"
+            - waitForAnimationToEnd:
+                timeout: 2000
+
+      - runFlow:
+          when:
+            visible: "สวัสดี คุณลูกค้า"
+          commands:
+            - tapOn:
+                point: "178, 100"
+                label: "Retry tap login link (slightly up)"
+            - waitForAnimationToEnd:
+                timeout: 2000
+
+      # Now should be on login page — enter credentials
+      - extendedWaitUntil:
+          visible: "เบอร์โทรศัพท์ | อีเมล | ชื่อผู้ใช้"
+          timeout: 5000
+
+      # Enter username
+      - tapOn:
+          text: "เบอร์โทรศัพท์ | อีเมล | ชื่อผู้ใช้"
+          label: "Tap username/email field"
+      - inputText: "derfby"
+
+      # Enter password
+      - tapOn:
+          text: "รหัสผ่าน"
+          label: "Tap password field"
+      - inputText: "123456"
+
+      # Dismiss keyboard — tap outside the text field area
+      - tapOn:
+          point: "50%, 10%"
+          label: "Tap header area to dismiss keyboard"
+
+      # Tap login button — it's the second "เข้าสู่ระบบ" element (index 1)
+      - tapOn:
+          text: "เข้าสู่ระบบ"
+          index: 1
+          label: "Tap login button"
+
+      # Wait for login to complete and home page to load
+      - extendedWaitUntil:
+          visible: "TREE LAW ZOO valley"
+          timeout: 15000
+
+      - waitForAnimationToEnd:
+          timeout: 3000

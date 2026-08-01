@@ -8,6 +8,7 @@ import '../services/pos_payment_split_service.dart';
 import '../services/pos_discount_service.dart';
 import '../services/pos_shift_service.dart';
 import '../services/table_management_service.dart';
+import '../services/multi_store_sync_service.dart';
 import '../services/supabase_service.dart';
 import '../models/pos_shift_model.dart';
 import '../utils/permission_helpers.dart';
@@ -21,6 +22,7 @@ import '../widgets/pos_shift_widget.dart';
 
 import '../widgets/pos_printer_settings_widget.dart';
 import '../services/pos_printer_service.dart';
+import '../widgets/pos/pos_header_widget.dart';
 
 enum _PosWorkspaceMode {
   pos,
@@ -100,6 +102,11 @@ class _PosPageState extends State<PosPage> {
   // Phase 2B: Shift Management
   PosShift? _currentShift;
 
+  // Phase 3f: Multi-store / Multi-device Sync
+  String? _selectedStoreId;
+  String? _selectedStoreName;
+  List<Map<String, dynamic>> _availableStores = [];
+
   // Phase 2E: Refund / Void workspace
   _PosWorkspaceMode _workspaceMode = _PosWorkspaceMode.pos;
 
@@ -136,8 +143,8 @@ class _PosPageState extends State<PosPage> {
     });
     _loadData();
     PosPrinterService.initOnPosOpen();
-    // โหลดโซนล่าสุดของพนักงาน (ถ้าไม่มีโซนเริ่มต้น)
     _loadLastPosZone();
+    _loadCurrentStore();
   }
 
   /// โหลดโซน POS ล่าสุดของพนักงาน
@@ -163,6 +170,97 @@ class _PosPageState extends State<PosPage> {
     } catch (e) {
       debugPrint('Error loading last POS zone: $e');
     }
+  }
+
+  /// โหลดร้าน/สาขาปัจจุบันของอุปกรณ์
+  Future<void> _loadCurrentStore() async {
+    try {
+      final stores = await MultiStoreSyncService.getStores();
+      final storeId = await MultiStoreSyncService.getCurrentStoreId();
+      if (mounted) {
+        setState(() {
+          _availableStores = stores;
+          _selectedStoreId = storeId;
+          if (storeId != null) {
+            final store = stores.firstWhere(
+              (s) => s['id'] == storeId,
+              orElse: () => <String, dynamic>{},
+            );
+            _selectedStoreName = store.isNotEmpty ? store['name']?.toString() : null;
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading current store: $e');
+    }
+  }
+
+  /// เลือกร้าน/สาขา
+  Future<void> _showStorePickerDialog() async {
+    if (_availableStores.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ไม่มีร้าน/สาขาในระบบ'), backgroundColor: Colors.orange),
+      );
+      return;
+    }
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.store, color: _accentGreen, size: 22),
+            const SizedBox(width: 8),
+            const Text('เลือกร้าน/สาขา', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: SizedBox(
+          width: 400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: _availableStores.map((store) {
+              final storeId = store['id']?.toString() ?? '';
+              final storeName = store['name']?.toString() ?? '';
+              final storeCode = store['code']?.toString() ?? '';
+              final isSelected = _selectedStoreId == storeId;
+
+              return Card(
+                color: isSelected ? _accentGreen.withValues(alpha: 0.05) : null,
+                margin: const EdgeInsets.only(bottom: 6),
+                child: ListTile(
+                  leading: Icon(
+                    isSelected ? Icons.check_circle : Icons.store_outlined,
+                    color: isSelected ? _accentGreen : _textSecondary,
+                    size: 20,
+                  ),
+                  title: Text(storeName, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                  subtitle: storeCode.isNotEmpty ? Text(storeCode, style: const TextStyle(fontSize: 11)) : null,
+                  trailing: isSelected
+                      ? Text('เลือกแล้ว', style: TextStyle(fontSize: 11, color: _accentGreen, fontWeight: FontWeight.bold))
+                      : null,
+                  onTap: () async {
+                    final success = await MultiStoreSyncService.setCurrentStore(storeId, storeName);
+                    if (success && mounted) {
+                      setState(() {
+                        _selectedStoreId = storeId;
+                        _selectedStoreName = storeName;
+                      });
+                      Navigator.pop(ctx);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('เลือกร้าน $storeName สำเร็จ'), backgroundColor: _accentGreen),
+                      );
+                    }
+                  },
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('ปิด')),
+        ],
+      ),
+    );
   }
 
   Widget _gradientIcon(IconData icon, {double size = 18}) {
@@ -347,16 +445,6 @@ class _PosPageState extends State<PosPage> {
             'ไม่ระบุ';
   }
 
-  String _displayFullNameFromUser(Map<String, dynamic>? user) {
-    if (user == null) return 'ไม่ระบุ';
-    final fullName = user['full_name']?.toString();
-    final email = user['email']?.toString();
-    final username = user['username']?.toString();
-    return fullName ??
-        username ??
-        (email != null && email.contains('@') ? email.split('@').first : null) ??
-        'ไม่ระบุ';
-  }
 
   String _displayNameFromAuthUser(User? user) {
     if (user == null) return 'พนักงาน';
@@ -370,86 +458,6 @@ class _PosPageState extends State<PosPage> {
             'พนักงาน';
   }
 
-  Widget _buildResponsibleStaffSelector() {
-    final selected = _selectedResponsibleStaff;
-    final hasSelection = selected != null;
-
-    return PopupMenuButton<String>(
-      tooltip: 'เลือกพนักงานผู้รับผิดชอบ',
-      enabled: _salesStaffUsers.isNotEmpty,
-      position: PopupMenuPosition.under,
-      offset: const Offset(0, 8),
-      onSelected: (userId) {
-        final selectedUser = _salesStaffUsers.firstWhere(
-          (user) => user['id']?.toString() == userId,
-          orElse: () => <String, dynamic>{},
-        );
-        setState(() {
-          _selectedResponsibleStaff = selectedUser.isEmpty ? null : selectedUser;
-        });
-      },
-      itemBuilder: (context) => _salesStaffUsers
-          .map(
-            (user) => PopupMenuItem<String>(
-              value: user['id']?.toString() ?? '',
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.badge,
-                    size: 18,
-                    color: (user['id']?.toString() == selected?['id']?.toString())
-                        ? _accentGreen
-                        : _textSecondary,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _displayFullNameFromUser(user),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          )
-          .toList(),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: hasSelection ? _bgColor : Colors.orange.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: hasSelection ? _borderColor : Colors.orange.withValues(alpha: 0.35),
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _gradientIcon(Icons.badge, size: 14),
-            const SizedBox(width: 6),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 180),
-              child: Text(
-                hasSelection ? _displayNameFromUser(selected) : 'เลือกพนักงานรับผิดชอบ',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: hasSelection ? _textSecondary : Colors.orange[800],
-                  fontWeight: FontWeight.w600,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            const SizedBox(width: 4),
-            Icon(
-              Icons.arrow_drop_down,
-              size: 18,
-              color: hasSelection ? _textSecondary : Colors.orange[800],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   // Cart logic
   Future<void> _addToCart(Map<String, dynamic> product) async {
@@ -510,8 +518,8 @@ class _PosPageState extends State<PosPage> {
     return total;
   }
 
-  /// ส่วนลดจากระบบสมาชิก (ยังไม่ implement)
-  double get _discount => 0;
+  /// ส่วนลดจากระบบสมาชิก (แต้มสะสม × อัตราแปลงแต้มเป็นบาท)
+  double get _discount => _redeemedPoints * AppBusinessSettings.pointValueRatio;
   
   /// ยอดรวมหลังหักส่วนลดทั้งหมด (รวมส่วนลดจากระบบ + ส่วนลดเพิ่มเติม)
   double get _preTaxTotal => _subtotal - _discount - _totalDiscountAmount;
@@ -771,92 +779,35 @@ class _PosPageState extends State<PosPage> {
     final now = DateTime.now();
     final dateStr = _formatThaiShortDate(now);
     final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} น.';
-    final tableLabel = _selectedTableNumber?.trim().isNotEmpty == true ? _selectedTableNumber!.trim() : '-';
-    final orderTypeLabel = _orderType == 'dine_in' ? 'Dine-in' : 'Walk-in';
-    final customerLabel = _selectedCustomerName?.trim().isNotEmpty == true ? _selectedCustomerName!.trim() : null;
-    final customerPhoneLabel = _selectedCustomerPhone?.trim().isNotEmpty == true ? _selectedCustomerPhone!.trim() : null;
 
-    return Container(
-      height: 68,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: _cardColor,
-        border: Border(bottom: BorderSide(color: _borderColor, width: 1)),
-      ),
-      child: Row(
-        children: [
-          IconButton(
-            icon: _gradientIcon(Icons.arrow_back, size: 20),
-            color: _textSecondary,
-            onPressed: () => Navigator.pop(context),
-            tooltip: 'กลับ',
-          ),
-          const SizedBox(width: 8),
-          _gradientIcon(Icons.storefront, size: 22),
-          const SizedBox(width: 8),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 160),
-            child: Text(
-              AppBusinessSettings.brandShortName,
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: _textSecondary),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Scrollbar(
-              controller: _headerScrollController,
-              thumbVisibility: true,
-              scrollbarOrientation: ScrollbarOrientation.bottom,
-              child: SingleChildScrollView(
-                controller: _headerScrollController,
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // โซน/ร้าน (แสดงก่อน)
-                    if (_selectedZoneName != null) ...[
-                      InkWell(
-                        onTap: _showTablePickerDialog,
-                        borderRadius: BorderRadius.circular(6),
-                        child: _headerChip(Icons.store, _selectedZoneName!),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
-                    // โต๊ะ
-                    InkWell(
-                      onTap: _showTablePickerDialog,
-                      borderRadius: BorderRadius.circular(6),
-                      child: _headerChip(Icons.table_restaurant, _orderType == 'dine_in' ? 'โต๊ะ $tableLabel' : 'โต๊ะ -'),
-                    ),
-                    const SizedBox(width: 8),
-                    // ประเภทออเดอร์
-                    _headerChip(Icons.receipt_long, orderTypeLabel),
-                    if (customerLabel != null) ...[
-                      const SizedBox(width: 8),
-                      _headerChip(Icons.person_pin, customerLabel),
-                    ],
-                    if (customerPhoneLabel != null) ...[
-                      const SizedBox(width: 8),
-                      _headerChip(Icons.phone, customerPhoneLabel),
-                    ],
-                    const SizedBox(width: 8),
-                    _headerChip(Icons.person, userName),
-                    const SizedBox(width: 8),
-                    _buildResponsibleStaffSelector(),
-                    const SizedBox(width: 8),
-                    _buildShiftChip(),
-                    const SizedBox(width: 8),
-                    _headerChip(Icons.calendar_today, dateStr),
-                    const SizedBox(width: 8),
-                    _headerChip(Icons.access_time, timeStr),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+    return PosHeaderWidget(
+      brandName: AppBusinessSettings.brandShortName,
+      userName: userName,
+      dateStr: dateStr,
+      timeStr: timeStr,
+      orderType: _orderType,
+      tableNumber: _selectedTableNumber,
+      zoneName: _selectedZoneName,
+      customerName: _selectedCustomerName,
+      customerPhone: _selectedCustomerPhone,
+      selectedResponsibleStaff: _selectedResponsibleStaff,
+      salesStaffUsers: _salesStaffUsers,
+      currentShift: _currentShift,
+      onBack: () => Navigator.pop(context),
+      onTableTap: _showTablePickerDialog,
+      onMoveTable: _showMoveTableDialog,
+      onStoreTap: _showStorePickerDialog,
+      storeName: _selectedStoreName,
+      onStaffSelected: (staff) => setState(() => _selectedResponsibleStaff = staff),
+      onOpenShift: _showOpenShiftDialog,
+      onCloseShift: _showCloseShiftDialog,
+      accentGreen: _accentGreen,
+      textPrimary: _textPrimary,
+      textSecondary: _textSecondary,
+      bgColor: _bgColor,
+      cardColor: _cardColor,
+      borderColor: _borderColor,
+      iconGradient: _iconGradient,
     );
   }
 
@@ -867,34 +818,6 @@ class _PosPageState extends State<PosPage> {
     return '${weekDays[date.weekday - 1]}${date.day}${months[date.month - 1]}$thaiYear';
   }
 
-  Widget _headerChip(IconData icon, String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: _bgColor,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _gradientIcon(icon, size: 14),
-          const SizedBox(width: 4),
-          Text(label, style: TextStyle(fontSize: 11, color: _textSecondary)),
-        ],
-      ),
-    );
-  }
-
-  // =============================================
-  // Shift Chip (Header) — delegated to PosShiftChip widget
-  // =============================================
-  Widget _buildShiftChip() {
-    return PosShiftChip(
-      currentShift: _currentShift,
-      onOpenShift: _showOpenShiftDialog,
-      onCloseShift: _showCloseShiftDialog,
-    );
-  }
 
   // =============================================
   // Shift Dialogs — delegated to PosShiftDialogs
@@ -912,6 +835,26 @@ class _PosPageState extends State<PosPage> {
     if (closed != null && mounted) {
       setState(() => _currentShift = null);
     }
+  }
+
+  /// ตรวจสอบว่ากะเปิดอยู่ก่อนเปิด Payment Dialog
+  Future<bool> _ensureShiftIsOpen() async {
+    if (_currentShift != null && _currentShift!.isOpen) return true;
+    final freshShift = await PosShiftService.getCurrentOpenShift();
+    if (freshShift != null && freshShift.isOpen) {
+      setState(() => _currentShift = freshShift);
+      return true;
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('กรุณาเปิดกะก่อนชำระเงิน'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      _showOpenShiftDialog();
+    }
+    return false;
   }
 
   // =============================================
@@ -1195,6 +1138,353 @@ class _PosPageState extends State<PosPage> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  // =============================================
+  // Move Table Dialog
+  // =============================================
+  Future<void> _showMoveTableDialog() async {
+    if (_selectedTableId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ยังไม่ได้เลือกโต๊ะ'), backgroundColor: Colors.orange),
+      );
+      return;
+    }
+
+    final zonesWithTables = await TableManagementService.getZonesWithTables();
+    if (!mounted) return;
+
+    String? selectedZoneId;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          if (selectedZoneId == null) {
+            return AlertDialog(
+              title: Row(
+                children: [
+                  Icon(Icons.swap_horiz, color: _accentGreen),
+                  const SizedBox(width: 8),
+                  Text('ย้ายโต๊ะจาก $_selectedTableNumber'),
+                ],
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                height: 400,
+                child: zonesWithTables.isEmpty
+                    ? const Center(child: Text('ไม่มีร้าน/โซน'))
+                    : GridView.builder(
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          childAspectRatio: 2.5,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                        ),
+                        itemCount: zonesWithTables.length,
+                        itemBuilder: (context, index) {
+                          final zone = zonesWithTables[index];
+                          return InkWell(
+                            onTap: () => setDialogState(() => selectedZoneId = zone['id']?.toString()),
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: _bgColor,
+                                border: Border.all(color: _borderColor),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(Icons.store, size: 18, color: _accentGreen),
+                                      const SizedBox(width: 6),
+                                      Expanded(child: Text(zone['name'] ?? '', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: _textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            );
+          }
+
+          // Step 2: เลือกโต๊ะปลายทาง (เฉพาะที่ว่าง)
+          final zone = zonesWithTables.firstWhere((z) => z['id']?.toString() == selectedZoneId);
+          final tables = zone['tables'] as List<dynamic>? ?? [];
+          final availableTables = tables.where((t) => t['status'] == 'available' && t['id']?.toString() != _selectedTableId).toList();
+
+          return AlertDialog(
+            title: Row(
+              children: [
+                Icon(Icons.swap_horiz, color: _accentGreen),
+                const SizedBox(width: 8),
+                Text('ย้ายไปโต๊ะ ${zone['name'] ?? ''}'),
+              ],
+            ),
+            content: SizedBox(
+              width: double.maxFinite,
+              height: 400,
+              child: availableTables.isEmpty
+                  ? const Center(child: Text('ไม่มีโต๊ะว่างในโซนนี้'))
+                  : Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: availableTables.map((table) {
+                        final tableId = table['id']?.toString() ?? '';
+                        final tableName = table['name']?.toString() ?? 'โต๊ะ';
+
+                        return InkWell(
+                          onTap: () async {
+                            final success = await TableManagementService.moveTable(
+                              fromTableId: _selectedTableId!,
+                              toTableId: tableId,
+                            );
+                            if (success && mounted) {
+                              setState(() {
+                                _selectedTableId = tableId;
+                                _selectedTableNumber = tableName;
+                              });
+                              Navigator.pop(ctx);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('ย้ายไปโต๊ะ $tableName สำเร็จ'), backgroundColor: _accentGreen),
+                              );
+                            } else if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('ไม่สามารถย้ายโต๊ะได้'), backgroundColor: Colors.red),
+                              );
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            width: 80,
+                            height: 80,
+                            decoration: BoxDecoration(
+                              color: _bgColor,
+                              border: Border.all(color: _accentGreen.withValues(alpha: 0.3)),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.table_restaurant, color: _accentGreen, size: 28),
+                                const SizedBox(height: 6),
+                                Text(tableName, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _textPrimary), textAlign: TextAlign.center),
+                              ],
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('ยกเลิก')),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  // =============================================
+  // Split Bill by Item Dialog
+  // =============================================
+  void _showSplitBillDialog() {
+    final billAssignments = List<int>.filled(_cartItems.length, 0);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final bill0Items = <int>[];
+          final bill1Items = <int>[];
+          for (int i = 0; i < billAssignments.length; i++) {
+            if (billAssignments[i] == 0) bill0Items.add(i);
+            else bill1Items.add(i);
+          }
+
+          double bill0Total = 0;
+          double bill1Total = 0;
+          for (final i in bill0Items) {
+            final item = _cartItems[i];
+            final product = item['product'] as Map<String, dynamic>;
+            final qty = item['qty'] as int;
+            final price = (product['price'] ?? 0).toDouble();
+            bill0Total += price * qty;
+          }
+          for (final i in bill1Items) {
+            final item = _cartItems[i];
+            final product = item['product'] as Map<String, dynamic>;
+            final qty = item['qty'] as int;
+            final price = (product['price'] ?? 0).toDouble();
+            bill1Total += price * qty;
+          }
+
+          return AlertDialog(
+            title: Row(
+              children: [
+                Icon(Icons.call_split, color: Colors.blue, size: 22),
+                const SizedBox(width: 8),
+                const Text('แบ่งบิลตามรายการ', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            content: SizedBox(
+              width: 500,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('แตะรายการเพื่อสลับระหว่างบิล A และบิล B', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withValues(alpha: 0.05),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.blue.withValues(alpha: 0.2)),
+                          ),
+                          child: Column(
+                            children: [
+                              Text('บิล A', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blue)),
+                              Text('฿${bill0Total.toStringAsFixed(2)}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blue)),
+                              Text('${bill0Items.length} รายการ', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.purple.withValues(alpha: 0.05),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.purple.withValues(alpha: 0.2)),
+                          ),
+                          child: Column(
+                            children: [
+                              Text('บิล B', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.purple)),
+                              Text('฿${bill1Total.toStringAsFixed(2)}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.purple)),
+                              Text('${bill1Items.length} รายการ', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 300,
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: _cartItems.length,
+                      itemBuilder: (context, index) {
+                        final item = _cartItems[index];
+                        final product = item['product'] as Map<String, dynamic>;
+                        final name = product['name'] ?? '';
+                        final qty = item['qty'] as int;
+                        final price = (product['price'] ?? 0).toDouble();
+                        final total = price * qty;
+                        final isBillA = billAssignments[index] == 0;
+                        final color = isBillA ? Colors.blue : Colors.purple;
+                        final billLabel = isBillA ? 'A' : 'B';
+
+                        return Card(
+                          color: color.withValues(alpha: 0.05),
+                          margin: const EdgeInsets.only(bottom: 4),
+                          child: ListTile(
+                            dense: true,
+                            leading: CircleAvatar(
+                              radius: 14,
+                              backgroundColor: color.withValues(alpha: 0.15),
+                              child: Text(billLabel, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color)),
+                            ),
+                            title: Text(name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+                            subtitle: Text('$qty × ฿${price.toStringAsFixed(0)}', style: const TextStyle(fontSize: 10)),
+                            trailing: Text('฿${total.toStringAsFixed(0)}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color)),
+                            onTap: () {
+                              setDialogState(() {
+                                billAssignments[index] = isBillA ? 1 : 0;
+                              });
+                            },
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('ยกเลิก')),
+              FilledButton.icon(
+                onPressed: bill1Items.isEmpty ? null : () {
+                  Navigator.pop(ctx);
+                  _processSplitBill(bill0Items, bill1Items);
+                },
+                icon: const Icon(Icons.check, size: 18),
+                label: const Text('ดำเนินการแบ่งบิล'),
+                style: FilledButton.styleFrom(backgroundColor: Colors.blue),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _processSplitBill(List<int> bill0Indices, List<int> bill1Indices) {
+    final bill0Items = bill0Indices.map((i) => _cartItems[i]).toList();
+    final bill1Items = bill1Indices.map((i) => _cartItems[i]).toList();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('ยืนยันแบ่งบิล', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        content: SizedBox(
+          width: 400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('บิล A: ${bill0Items.length} รายการ', style: const TextStyle(fontSize: 13)),
+              Text('บิล B: ${bill1Items.length} รายการ', style: const TextStyle(fontSize: 13)),
+              const SizedBox(height: 12),
+              const Text('ระบบจะบันทึกบิล A ก่อน จากนั้นนำรายการบิล B กลับไปตะกร้าเพื่อชำระต่อ', style: TextStyle(fontSize: 11, color: Colors.grey)),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('ยกเลิก')),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              setState(() {
+                _cartItems.clear();
+                _cartItems.addAll(bill0Items);
+              });
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('บิล A พร้อมชำระ (${bill0Items.length} รายการ) — บิล B รอในตะกร้า'),
+                  backgroundColor: Colors.blue,
+                  duration: const Duration(seconds: 3),
+                ),
+              );
+            },
+            child: const Text('ยืนยัน'),
+          ),
+        ],
       ),
     );
   }
@@ -1539,6 +1829,21 @@ class _PosPageState extends State<PosPage> {
                                 ),
                               ),
                             ),
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: _cartItems.length >= 2 ? _showSplitBillDialog : null,
+                                icon: const Icon(Icons.call_split, size: 18),
+                                label: const Text('แบ่งบิลตามรายการ'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.blue,
+                                  side: BorderSide(color: Colors.blue.withValues(alpha: 0.35)),
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -1559,13 +1864,14 @@ class _PosPageState extends State<PosPage> {
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
-        onTap: () {
+        onTap: () async {
           if (_cartItems.isEmpty) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('ยังไม่มีสินค้าในตะกร้า'), backgroundColor: Colors.orange),
             );
             return;
           }
+          if (!await _ensureShiftIsOpen()) return;
           _showPaymentDialog(method.label);
         },
         child: Center(
@@ -1632,7 +1938,7 @@ class _PosPageState extends State<PosPage> {
                     children: [
                       IconButton(
                         icon: _gradientIcon(Icons.qr_code_scanner, size: 18),
-                        onPressed: () {},
+                        onPressed: _showBarcodeDialog,
                         tooltip: 'สแกนบาร์โค้ด',
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
@@ -1664,36 +1970,74 @@ class _PosPageState extends State<PosPage> {
                         final price = (product['price'] ?? 0).toDouble();
                         final name = product['name'] ?? '';
                         final isSelected = _selectedProduct != null && _selectedProduct!['id'] == product['id'];
+                        final qty = (product['quantity'] ?? 0).toDouble();
+                        final reserved = (product['reserved_quantity'] ?? 0).toDouble();
+                        final available = qty - reserved;
+                        final isOutOfStock = available <= 0;
+                        final isLowStock = available > 0 && available <= 10;
 
                         return Material(
                           color: isSelected ? _accentGreen.withValues(alpha: 0.1) : _bgColor,
                           borderRadius: BorderRadius.circular(AppBusinessSettings.defaultPosProductRadius),
                           child: InkWell(
                             borderRadius: BorderRadius.circular(AppBusinessSettings.defaultPosProductRadius),
-                            onTap: () => _addToCart(product),
-                            child: Padding(
-                              padding: const EdgeInsets.all(8),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    name,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: isSelected ? _accentGreen : _textPrimary,
+                            onTap: isOutOfStock ? null : () => _addToCart(product),
+                            child: Stack(
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.all(8),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        name,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: isOutOfStock
+                                              ? _textSecondary.withValues(alpha: 0.5)
+                                              : (isSelected ? _accentGreen : _textPrimary),
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        '฿${price.toStringAsFixed(0)}',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          color: isOutOfStock
+                                              ? _textSecondary.withValues(alpha: 0.5)
+                                              : _accentGreen,
+                                        ),
+                                      ),
+                                      if (isLowStock)
+                                        Text(
+                                          'เหลือ ${available.toStringAsFixed(0)}',
+                                          style: TextStyle(fontSize: 9, color: Colors.orange.shade600),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                                if (isOutOfStock || isLowStock)
+                                  Positioned(
+                                    top: 4,
+                                    right: 4,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: isOutOfStock ? Colors.red : Colors.orange,
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        isOutOfStock ? 'หมด' : 'ต่ำ',
+                                        style: const TextStyle(fontSize: 8, color: Colors.white, fontWeight: FontWeight.bold),
+                                      ),
                                     ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    '฿${price.toStringAsFixed(0)}',
-                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _accentGreen),
-                                  ),
-                                ],
-                              ),
+                              ],
                             ),
                           ),
                         );
@@ -1820,15 +2164,44 @@ class _PosPageState extends State<PosPage> {
                           padding: const EdgeInsets.symmetric(vertical: 6),
                           child: Row(
                             children: [
-                              // Product name
+                              // Product name + note
                               Expanded(
                                 flex: 4,
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(name, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(name, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                        ),
+                                        InkWell(
+                                          onTap: () => _showNoteDialog(index),
+                                          borderRadius: BorderRadius.circular(4),
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(2),
+                                            child: Icon(
+                                              item['note'] != null && (item['note'] as String).isNotEmpty
+                                                  ? Icons.sticky_note_2
+                                                  : Icons.note_add_outlined,
+                                              size: 14,
+                                              color: item['note'] != null && (item['note'] as String).isNotEmpty
+                                                  ? Colors.orange.shade600
+                                                  : _textSecondary,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                     if (unitName.isNotEmpty)
                                       Text(unitName, style: TextStyle(fontSize: 10, color: _textSecondary)),
+                                    if (item['note'] != null && (item['note'] as String).isNotEmpty)
+                                      Text(
+                                        '📝 ${item['note']}',
+                                        style: TextStyle(fontSize: 10, color: Colors.orange.shade600, fontStyle: FontStyle.italic),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                   ],
                                 ),
                               ),
@@ -1886,6 +2259,152 @@ class _PosPageState extends State<PosPage> {
           border: Border.all(color: _borderColor),
         ),
         child: Icon(icon, size: 14, color: _textPrimary),
+      ),
+    );
+  }
+
+  void _showNoteDialog(int cartIndex) {
+    final noteController = TextEditingController(text: _cartItems[cartIndex]['note'] ?? '');
+    const presetNotes = ['ไม่ใส่น้ำแข็ง', 'หวานน้อย', 'เผ็ดน้อย', 'ส่งกลับบ้าน', 'เพิ่มช็อต', 'ไม่งาม'];
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.note_add_outlined, color: Colors.orange.shade600, size: 22),
+            const SizedBox(width: 8),
+            const Text('หมายเหตุสินค้า', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: SizedBox(
+          width: 400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: presetNotes.map((preset) {
+                  return ActionChip(
+                    label: Text(preset, style: const TextStyle(fontSize: 11)),
+                    onPressed: () {
+                      noteController.text = preset;
+                    },
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: noteController,
+                maxLines: 2,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: 'หมายเหตุ',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  filled: true,
+                  fillColor: _bgColor,
+                ),
+                style: const TextStyle(fontSize: 13),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              setState(() {
+                _cartItems[cartIndex]['note'] = '';
+              });
+              Navigator.pop(ctx);
+            },
+            child: const Text('ล้าง'),
+          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('ยกเลิก')),
+          FilledButton(
+            onPressed: () {
+              setState(() {
+                _cartItems[cartIndex]['note'] = noteController.text.trim();
+              });
+              Navigator.pop(ctx);
+            },
+            child: const Text('บันทึก'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showBarcodeDialog() {
+    final barcodeController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.qr_code_scanner, color: _accentGreen, size: 22),
+            const SizedBox(width: 8),
+            const Text('สแกน/กรอกบาร์โค้ด', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: SizedBox(
+          width: 400,
+          child: TextField(
+            controller: barcodeController,
+            autofocus: true,
+            keyboardType: TextInputType.text,
+            textInputAction: TextInputAction.search,
+            onSubmitted: (value) => _processBarcode(ctx, value),
+            decoration: InputDecoration(
+              labelText: 'บาร์โค้ด / SKU',
+              prefixIcon: const Icon(Icons.barcode_reader),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              filled: true,
+              fillColor: _bgColor,
+            ),
+            style: const TextStyle(fontSize: 14),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('ยกเลิก')),
+          FilledButton.icon(
+            onPressed: () => _processBarcode(ctx, barcodeController.text),
+            icon: const Icon(Icons.search, size: 18),
+            label: const Text('ค้นหา'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _processBarcode(BuildContext dialogCtx, String code) {
+    final trimmed = code.trim();
+    if (trimmed.isEmpty) return;
+
+    final product = _products.firstWhere(
+      (p) => (p['sku'] ?? '').toString() == trimmed,
+      orElse: () => <String, dynamic>{},
+    );
+
+    if (product.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('ไม่พบสินค้าที่มีบาร์โค้ด/SKU: $trimmed'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    Navigator.pop(dialogCtx);
+    _addToCart(product);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('เพิ่ม "${product['name']}" ลงตะกร้าแล้ว'),
+        backgroundColor: _accentGreen,
+        duration: const Duration(seconds: 1),
       ),
     );
   }
@@ -2733,7 +3252,7 @@ class _PosPageState extends State<PosPage> {
       return;
     }
 
-    // Phase 2B: บังคับเปิดกะก่อนชำระเงิน
+    // Phase 2B: ตรวจสอบกะอีกครั้งก่อนยืนยัน (safety net)
     if (_currentShift == null || !_currentShift!.isOpen) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -2778,6 +3297,7 @@ class _PosPageState extends State<PosPage> {
       totalDiscountAmount: _totalDiscountAmount,
       customerId: _selectedCustomer?['id']?.toString(),
       loyaltyPointsRedeemed: _redeemedPoints,
+      loyaltyDiscountAmount: _discount,
       shiftId: _currentShift?.id,
     );
 
@@ -2876,7 +3396,7 @@ class _PosPageState extends State<PosPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('เกิดข้อผิดพลาดในการบันทึกออเดอร์'),
+            content: Text('เกิดข้อผิดพลาดในการบันทึกออเดอร์ (สต็อกอาจไม่เพียงพอ)'),
             backgroundColor: Colors.red,
           ),
         );

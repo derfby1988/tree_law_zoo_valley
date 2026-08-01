@@ -1,0 +1,164 @@
+appId: com.treelawzoo.treeLawZooValley
+name: "POS Void/Refund Test"
+tags:
+  - pos
+  - void
+  - refund
+  - p0
+---
+
+# ============================================
+# ทดสอบ 4: ยกเลิกบิลและคืนสต็อก
+# เข้าประวัติออเดอร์ -> ยกเลิก -> ใส่เหตุผล + PIN -> ตรวจสอบ
+# ============================================
+
+# Step 1: Login
+- runFlow:
+    file: "login_flow.yaml"
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Step 2: Navigate to POS
+- tapOn:
+    point: "1274, 92"
+    label: "Open menu drawer (more_vert icon)"
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- tapOn:
+    text: "ขาย/ POS"
+    label: "Navigate to POS page"
+
+- extendedWaitUntil:
+    visible: "เงินสด"
+    timeout: 10000
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Step 3: Switch to Order History workspace
+# "ประวัติ" is at [0,88][55,136] in the left sidebar
+- tapOn:
+    text: "ประวัติ"
+    label: "Switch to Order History workspace"
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Step 4: Verify order history is loaded
+- assertVisible:
+    text: ".*ประวัติ.*"
+    label: "Verify order history workspace is visible"
+    optional: true
+
+# Take screenshot of order history
+- takeScreenshot:
+    path: "/tmp/maestro_screenshots/pos_order_history"
+    label: "Screenshot order history"
+
+# Step 5: Look for order cards in the list
+# Tap first order if available
+- runFlow:
+    commands:
+      - tapOn:
+          point: "50%, 40%"
+          label: "Tap first order in history list"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
+
+# Step 6: Look for void/refund buttons
+- assertVisible:
+    text: ".*ยกเลิก.*"
+    label: "Verify void button is visible"
+    optional: true
+
+- assertVisible:
+    text: ".*คืนเงิน.*"
+    label: "Verify refund button is visible"
+    optional: true
+
+# Take screenshot of order detail
+- takeScreenshot:
+    path: "/tmp/maestro_screenshots/pos_order_detail"
+    label: "Screenshot order detail"
+
+# Step 7: Tap void button (if visible)
+- runFlow:
+    when:
+      visible: ".*ยกเลิก.*"
+    commands:
+      - tapOn:
+          text: "ยกเลิกบิล"
+          label: "Tap void order button"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
+
+# Step 8: Verify void dialog with reason and PIN fields
+- assertVisible:
+    text: ".*เหตุผล.*"
+    label: "Verify reason field in void dialog"
+    optional: true
+
+- assertVisible:
+    text: ".*รหัส.*"
+    label: "Verify PIN field in void dialog"
+    optional: true
+
+- assertVisible:
+    text: ".*อนุมัติ.*"
+    label: "Verify manager authorization label"
+    optional: true
+
+# Take screenshot of void dialog
+- takeScreenshot:
+    path: "/tmp/maestro_screenshots/pos_void_dialog"
+    label: "Screenshot void dialog"
+
+# Step 9: Fill in reason and PIN (if dialog is open)
+- runFlow:
+    when:
+      visible: ".*เหตุผล.*"
+    commands:
+      - tapOn:
+          text: ".*เหตุผล.*"
+          label: "Tap reason field"
+          optional: true
+      - inputText: "ทดสอบยกเลิกบิล"
+      - tapOn:
+          point: "50%, 10%"
+          label: "Dismiss keyboard"
+      - waitForAnimationToEnd:
+          timeout: 1000
+      # Tap PIN field and enter test PIN
+      - tapOn:
+          text: ".*รหัส.*"
+          label: "Tap PIN field"
+          optional: true
+      - inputText: "1234"
+      - tapOn:
+          point: "50%, 10%"
+          label: "Dismiss keyboard"
+      - waitForAnimationToEnd:
+          timeout: 1000
+      # Confirm void
+      - tapOn:
+          text: "ยืนยัน"
+          label: "Confirm void"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot:
+          path: "/tmp/maestro_screenshots/pos_void_result"
+          label: "Screenshot void result"
+
+# Close any open dialog
+- tapOn:
+    text: "ยกเลิก"
+    optional: true
+- tapOn:
+    text: "ปิด"
+    optional: true

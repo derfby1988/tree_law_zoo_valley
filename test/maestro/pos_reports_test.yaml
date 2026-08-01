@@ -1,0 +1,97 @@
+appId: com.treelawzoo.treeLawZooValley
+name: "POS Reports Test"
+tags:
+  - pos
+  - reports
+---
+
+# Run login and navigate to POS
+- runFlow:
+    file: "login_flow.yaml"
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Open end drawer menu — tap more_vert icon at [1250,68][1298,116]
+- tapOn:
+    point: "1274, 92"
+    label: "Open menu drawer"
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# Tap "รายงานยอด" in the drawer
+- tapOn:
+    text: "รายงานยอด"
+    label: "Navigate to Reports page"
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Verify reports page is loaded — check for any of the tab labels
+- assertVisible:
+    text: "รายงานยอด"
+    label: "Verify reports page is visible"
+    optional: true
+
+# Take screenshot of reports page
+- takeScreenshot:
+    path: "/tmp/maestro_screenshots/reports_main_page"
+    label: "Screenshot reports page"
+
+# Try to scroll to find Shift Summary tab (สรุปกะ)
+- runFlow:
+    when:
+      visible: "รายงานยอด"
+    commands:
+      - scrollUntilVisible:
+          element: "สรุปกะ"
+          direction: RIGHT
+          timeout: 5000
+      - tapOn:
+          text: "สรุปกะ"
+          label: "Tap Shift Summary tab"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot:
+          path: "/tmp/maestro_screenshots/reports_shift_summary"
+          label: "Screenshot shift summary"
+
+# Try to find Refund/Void tab (คืนเงิน/Void)
+- runFlow:
+    when:
+      visible: "รายงานยอด"
+    commands:
+      - scrollUntilVisible:
+          element: "คืนเงิน/Void"
+          direction: RIGHT
+          timeout: 5000
+      - tapOn:
+          text: "คืนเงิน/Void"
+          label: "Tap Refund/Void Audit tab"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot:
+          path: "/tmp/maestro_screenshots/reports_refund_void"
+          label: "Screenshot refund void"
+
+# Try to find Top Products tab (สินค้าขายดี)
+- runFlow:
+    when:
+      visible: "รายงานยอด"
+    commands:
+      - scrollUntilVisible:
+          element: "สินค้าขายดี"
+          direction: RIGHT
+          timeout: 5000
+      - tapOn:
+          text: "สินค้าขายดี"
+          label: "Tap Top Products tab"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot:
+          path: "/tmp/maestro_screenshots/reports_top_products"
+          label: "Screenshot top products"

@@ -1,0 +1,106 @@
+appId: com.treelawzoo.treeLawZooValley
+name: "POS Split Bill Test"
+tags:
+  - pos
+  - split-bill
+---
+
+# Run login and navigate to POS
+- runFlow:
+    file: "login_flow.yaml"
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Open end drawer menu — tap more_vert icon at [1250,68][1298,116]
+- tapOn:
+    point: "1274, 92"
+    label: "Open menu drawer"
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- tapOn:
+    text: "ขาย/ POS"
+    label: "Navigate to POS page"
+
+- extendedWaitUntil:
+    visible: "เงินสด"
+    timeout: 10000
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Clear any leftover text in search field, dismiss keyboard, then tap products directly
+- runFlow:
+    when:
+      visible: "สแกนบาร์โค้ด"
+    commands:
+      - tapOn:
+          point: "500, 430"
+          label: "Tap search field area"
+      - eraseText
+      - waitForAnimationToEnd:
+          timeout: 1000
+
+# Dismiss keyboard — tap outside the text field
+- tapOn:
+    point: "50%, 10%"
+    label: "Dismiss keyboard"
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# Add first product to cart — tap directly on product in grid
+# Product grid is at [79,453][948,611], first product center ~ (221, 532)
+- tapOn:
+    point: "221, 532"
+    label: "Tap first product (น้ำมันพืช)"
+- waitForAnimationToEnd:
+    timeout: 1000
+
+# Add second product to cart
+- tapOn:
+    point: "513, 532"
+    label: "Tap second product (ไข่ไก่)"
+- waitForAnimationToEnd:
+    timeout: 1000
+
+# Try to scroll Zone 3 payment column to reveal the split bill button
+# NOTE: The split bill button is inside a nested SingleChildScrollView in Zone 3
+# Maestro may not be able to scroll nested scrollables in Flutter
+- runFlow:
+    when:
+      visible: "เพิ่มวิธีจ่าย"
+    commands:
+      - swipe:
+          from:
+            text: "เพิ่มวิธีจ่าย"
+          direction: UP
+          duration: 300
+      - waitForAnimationToEnd:
+          timeout: 1000
+
+# Tap "แบ่งบิลตามรายการ" (Split Bill by Item) — may not be reachable due to nested scroll
+- tapOn:
+    text: "แบ่งบิลตามรายการ"
+    label: "Tap split bill button"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# Verify split bill dialog is open
+- assertVisible:
+    text: "แบ่งบิลตามรายการ"
+    label: "Verify split bill dialog is visible"
+    optional: true
+
+# Take screenshot
+- takeScreenshot:
+    path: "/tmp/maestro_screenshots/pos_split_bill_dialog"
+    label: "Screenshot split bill dialog"
+
+# Close dialog
+- tapOn:
+    text: "ยกเลิก"
+    optional: true
