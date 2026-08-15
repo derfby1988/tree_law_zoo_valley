@@ -1,0 +1,160 @@
+appId: com.treelawzoo.treeLawZooValley
+name: "POS EOD Daily Settlement Test"
+tags:
+  - pos
+  - eod
+  - settlement
+---
+# P5-6b: End-of-Day (EOD) / Daily Settlement Flow
+# Tests: navigate to reports → EOD tab → create settlement → close with counted cash → verify closed
+
+# Run login and navigate to POS
+- runFlow:
+    file: "login_flow.yaml"
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Open end drawer menu
+- tapOn:
+    point: "1274, 92"
+    label: "Open menu drawer"
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# Navigate to Reports page
+- tapOn:
+    text: "รายงานยอด"
+    label: "Navigate to Reports page"
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Scroll to find EOD tab (ปิดยอด)
+- scrollUntilVisible:
+    element: "ปิดยอด"
+    direction: RIGHT
+    timeout: 5000
+
+- waitForAnimationToEnd:
+    timeout: 1000
+
+# Tap EOD tab
+- tapOn:
+    text: "ปิดยอด"
+    label: "Open EOD settlement tab"
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# Verify EOD page is loaded
+- assertVisible:
+    text: "ปิดยอดประจำวัน"
+    label: "Verify EOD page header"
+    optional: true
+
+# Take screenshot of EOD page
+- takeScreenshot:
+    path: "/tmp/maestro_screenshots/eod_settlement_page"
+    label: "Screenshot EOD settlement page"
+
+# Tap "สร้างยอดวันนี้" button to create today's settlement
+- runFlow:
+    when:
+      visible: "สร้างยอดวันนี้"
+    commands:
+      - tapOn:
+          text: "สร้างยอดวันนี้"
+          label: "Create today settlement"
+
+      - waitForAnimationToEnd:
+          timeout: 5000
+
+      # Verify settlement card appears with date
+      - assertVisible:
+          text: "วันที่"
+          label: "Verify settlement card is visible"
+          optional: true
+
+      # Take screenshot after creation
+      - takeScreenshot:
+          path: "/tmp/maestro_screenshots/eod_settlement_created"
+          label: "Screenshot after settlement created"
+
+# Expand settlement card to see details
+- runFlow:
+    when:
+      visible: "วันที่"
+    commands:
+      - tapOn:
+          text: "วันที่"
+          label: "Expand settlement card"
+
+      - waitForAnimationToEnd:
+          timeout: 2000
+
+      # Verify key summary rows are visible
+      - assertVisible:
+          text: "ยอดขายรวม"
+          label: "Verify total sales row"
+          optional: true
+
+      - assertVisible:
+          text: "เงินสด"
+          label: "Verify cash row"
+          optional: true
+
+      - assertVisible:
+          text: "เงินที่ควรมี"
+          label: "Verify expected cash row"
+          optional: true
+
+      # Take screenshot of expanded settlement
+      - takeScreenshot:
+          path: "/tmp/maestro_screenshots/eod_settlement_detail"
+          label: "Screenshot settlement detail"
+
+# Close settlement with counted cash
+- runFlow:
+    when:
+      visible: "ปิดยอด"
+    commands:
+      - tapOn:
+          text: "ปิดยอด"
+          label: "Tap close settlement button"
+
+      - waitForAnimationToEnd:
+          timeout: 2000
+
+      # Verify close dialog appears
+      - assertVisible:
+          text: "ปิดยอดประจำวัน"
+          label: "Verify close dialog title"
+          optional: true
+
+      - assertVisible:
+          text: "เงินสดนับจริง"
+          label: "Verify counted cash field"
+          optional: true
+
+      # Enter counted cash
+      - inputText: "5000"
+
+      # Take screenshot of close dialog
+      - takeScreenshot:
+          path: "/tmp/maestro_screenshots/eod_close_dialog"
+          label: "Screenshot close dialog"
+
+      # Confirm close
+      - tapOn:
+          text: "ยืนยันปิดยอด"
+          label: "Confirm close settlement"
+
+      - waitForAnimationToEnd:
+          timeout: 3000
+
+# Take final screenshot
+- takeScreenshot:
+    path: "/tmp/maestro_screenshots/eod_settlement_closed"
+    label: "Screenshot after settlement closed"

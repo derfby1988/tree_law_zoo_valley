@@ -488,6 +488,7 @@ class _PosPageState extends State<PosPage> {
           'product': product,
           'qty': 1,
           'note': '',
+          'item_discount': 0.0,
         });
       }
       _selectedProduct = product;
@@ -513,9 +514,17 @@ class _PosPageState extends State<PosPage> {
     double total = 0;
     for (final item in _cartItems) {
       final price = (item['product']['price'] ?? 0).toDouble();
-      total += price * (item['qty'] as int);
+      final qty = item['qty'] as int;
+      final itemDiscount = (item['item_discount'] ?? 0.0).toDouble();
+      total += (price * qty) - itemDiscount;
     }
     return total;
+  }
+
+  void _setItemDiscount(int index, double amount) {
+    setState(() {
+      _cartItems[index]['item_discount'] = amount;
+    });
   }
 
   /// ส่วนลดจากระบบสมาชิก (แต้มสะสม × อัตราแปลงแต้มเป็นบาท)
@@ -571,7 +580,9 @@ class _PosPageState extends State<PosPage> {
     final query = _searchController.text.trim().toLowerCase();
     if (query.isNotEmpty) {
       list = list.where((p) =>
-        (p['name'] ?? '').toString().toLowerCase().contains(query),
+        (p['name'] ?? '').toString().toLowerCase().contains(query) ||
+        (p['sku'] ?? '').toString().toLowerCase().contains(query) ||
+        (p['barcode'] ?? '').toString().toLowerCase().contains(query),
       ).toList();
     }
     return list;
@@ -1974,7 +1985,8 @@ class _PosPageState extends State<PosPage> {
                         final reserved = (product['reserved_quantity'] ?? 0).toDouble();
                         final available = qty - reserved;
                         final isOutOfStock = available <= 0;
-                        final isLowStock = available > 0 && available <= 10;
+                        final minQty = (product['min_quantity'] ?? product['min_qty'] ?? 10).toDouble();
+                        final isLowStock = available > 0 && available <= minQty;
 
                         return Material(
                           color: isSelected ? _accentGreen.withValues(alpha: 0.1) : _bgColor,
@@ -2384,7 +2396,8 @@ class _PosPageState extends State<PosPage> {
     if (trimmed.isEmpty) return;
 
     final product = _products.firstWhere(
-      (p) => (p['sku'] ?? '').toString() == trimmed,
+      (p) => (p['sku'] ?? '').toString().toLowerCase() == trimmed.toLowerCase() ||
+             (p['barcode'] ?? '').toString().toLowerCase() == trimmed.toLowerCase(),
       orElse: () => <String, dynamic>{},
     );
 

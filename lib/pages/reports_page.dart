@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/inventory_service.dart';
 import '../services/pos_shift_service.dart';
 import '../utils/thai_date_utils.dart';
+import '../widgets/pos_eod_settlement_widget.dart';
 
 class ReportsPage extends StatefulWidget {
   const ReportsPage({super.key});
@@ -17,7 +18,7 @@ class _ReportsPageState extends State<ReportsPage> with SingleTickerProviderStat
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 6, vsync: this);
+    _tabController = TabController(length: 7, vsync: this);
   }
 
   @override
@@ -61,6 +62,7 @@ class _ReportsPageState extends State<ReportsPage> with SingleTickerProviderStat
             Tab(icon: Icon(Icons.badge), text: 'สรุปกะ'),
             Tab(icon: Icon(Icons.undo), text: 'คืนเงิน/Void'),
             Tab(icon: Icon(Icons.trending_up), text: 'สินค้าขายดี'),
+            Tab(icon: Icon(Icons.account_balance_wallet), text: 'ปิดยอด'),
           ],
         ),
       ),
@@ -73,6 +75,7 @@ class _ReportsPageState extends State<ReportsPage> with SingleTickerProviderStat
           _ShiftSummaryTab(),
           _RefundVoidAuditTab(),
           _SalesInsightsTab(),
+          const PosEodSettlementWidget(),
         ],
       ),
     );

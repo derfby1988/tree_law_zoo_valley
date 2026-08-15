@@ -937,4 +937,99 @@ class PosDiscountService {
     }
   }
 
+  // =============================================
+  // Coupon Code Application (P5-6c)
+  // =============================================
+
+  /// Find discount by coupon code
+  static Future<PosDiscount?> getDiscountByCouponCode(String code) async {
+    try {
+      final response = await _client
+          .from('pos_discounts')
+          .select()
+          .eq('coupon_code', code)
+          .eq('is_active', true)
+          .maybeSingle();
+
+      if (response == null) return null;
+      return PosDiscount.fromMap(Map<String, dynamic>.from(response));
+    } catch (e) {
+      debugPrint('Error getDiscountByCouponCode: $e');
+      return null;
+    }
+  }
+
+  /// Apply coupon to order (records discount + increments usage)
+  static Future<Map<String, dynamic>?> applyCouponToOrder({
+    required String orderId,
+    required String discountId,
+    required double discountAmount,
+    String? appliedBy,
+  }) async {
+    try {
+      final discount = await _client
+          .from('pos_discounts')
+          .select('name, discount_type, value')
+          .eq('id', discountId)
+          .single();
+
+      final payload = {
+        'order_id': orderId,
+        'discount_id': discountId,
+        'discount_name': discount['name'],
+        'discount_type': discount['discount_type'],
+        'discount_value': discount['value'],
+        'discount_amount': discountAmount,
+        if (appliedBy != null) 'applied_by': appliedBy,
+      };
+
+      await _client.from('pos_order_discounts').insert(payload);
+      await _incrementUsageCount(discountId);
+
+      return {'success': true, 'discount_name': discount['name'], 'amount': discountAmount};
+    } catch (e) {
+      debugPrint('Error applyCouponToOrder: $e');
+      return null;
+    }
+  }
+
+  static Future<void> _incrementUsageCount(String discountId) async {
+    try {
+      await _client.rpc('increment_discount_usage', params: {'p_discount_id': discountId});
+    } catch (e) {
+      debugPrint('Error _incrementUsageCount: $e');
+    }
+  }
+
+  /// Validate coupon before applying
+  static Future<Map<String, dynamic>> validateCoupon({
+    required String code,
+    required double orderSubtotal,
+    String? customerId,
+  }) async {
+    try {
+      final discount = await getDiscountByCouponCode(code);
+      if (discount == null) {
+        return {'valid': false, 'error': 'ไม่พบรหัสคูปอง หรือคูปองหมดอายุ'};
+      }
+
+      if (!discount.isValid) {
+        return {'valid': false, 'error': 'คูปองหมดอายุหรือถูกระงับการใช้งาน'};
+      }
+
+      if (discount.usageLimit != null && discount.usedCount >= discount.usageLimit!) {
+        return {'valid': false, 'error': 'คูปองถูกใช้ครบจำนวนแล้ว'};
+      }
+
+      if (discount.minAmount != null && orderSubtotal < discount.minAmount!) {
+        return {'valid': false, 'error': 'ยอดสั่งซื้อขั้นต่ำต้องไม่น้อยกว่า ฿${discount.minAmount!.toStringAsFixed(2)}'};
+      }
+
+      return {'valid': true, 'discount': discount};
+    } catch (e) {
+      debugPrint('Error validateCoupon: $e');
+      return {'valid': false, 'error': 'เกิดข้อผิดพลาดในการตรวจสอบคูปอง'};
+    }
+  }
+
 }

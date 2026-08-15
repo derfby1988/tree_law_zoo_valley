@@ -149,6 +149,9 @@ final List<Map<String, dynamic>> _systemActions = [
   {'id': 'pos_main_sell', 'tab_id': 'pos_main', 'name': 'ขายสินค้า', 'icon': Icons.point_of_sale},
   {'id': 'pos_main_discount', 'tab_id': 'pos_main', 'name': 'ให้ส่วนลด', 'icon': Icons.discount},
   {'id': 'pos_main_void', 'tab_id': 'pos_main', 'name': 'ยกเลิกรายการ', 'icon': Icons.cancel},
+  {'id': 'pos_eod_create', 'tab_id': 'pos_main', 'name': 'สร้างยอดประจำวัน (EOD)', 'icon': Icons.add},
+  {'id': 'pos_eod_close', 'tab_id': 'pos_main', 'name': 'ปิดยอดประจำวัน (EOD)', 'icon': Icons.lock},
+  {'id': 'pos_eod_reopen', 'tab_id': 'pos_main', 'name': 'เปิดยอดใหม่ (EOD)', 'icon': Icons.lock_open},
   // Tab: Stock Movement (stock_movement_main)
   {'id': 'stock_movement_main_view', 'tab_id': 'stock_movement_main', 'name': 'ดูรายงาน', 'icon': Icons.visibility},
   {'id': 'stock_movement_main_export', 'tab_id': 'stock_movement_main', 'name': 'ส่งออกรายงาน', 'icon': Icons.file_download},

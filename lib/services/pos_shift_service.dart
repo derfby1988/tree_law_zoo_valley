@@ -214,4 +214,46 @@ class PosShiftService {
       return [];
     }
   }
+
+  // =============================================
+  // Cash Movements (P5-6d: Cash In/Out)
+  // =============================================
+
+  static Future<bool> recordCashMovement({
+    required String shiftId,
+    required String movementType, // 'paid_in' | 'paid_out' | 'drop'
+    required double amount,
+    required String reason,
+    required String userId,
+    required String userName,
+  }) async {
+    try {
+      await _client.from('pos_cash_movements').insert({
+        'shift_id': shiftId,
+        'movement_type': movementType,
+        'amount': amount,
+        'reason': reason,
+        'performed_by': userId,
+        'performed_by_name': userName,
+      });
+      return true;
+    } catch (e) {
+      debugPrint('Error recordCashMovement: $e');
+      return false;
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> getCashMovements(String shiftId) async {
+    try {
+      final response = await _client
+          .from('pos_cash_movements')
+          .select()
+          .eq('shift_id', shiftId)
+          .order('created_at', ascending: false);
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error getCashMovements: $e');
+      return [];
+    }
+  }
 }
