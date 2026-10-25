@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 
 class SupabaseService {
   static const String _supabaseUrl = 'https://otdspdcxzdygkfahyfpg.supabase.co';
-  static const String _supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im90ZHNwZGN4emR5Z2tmYWh5ZnBnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgzNzE1MjgsImV4cCI6MjA4Mzk0NzUyOH0.z9wUxKYHHgmAEqHKRbxwV_FLWYx9330WzyH875H91r0';
+  static const String _supabaseAnonKey = 'sb_publishable_hOlPCE1XiPIRfEk66UDMOA_1Lg4PlXZ';
 
   static Future<void> initialize() async {
     await Supabase.initialize(
